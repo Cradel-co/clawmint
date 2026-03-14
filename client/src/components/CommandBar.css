@@ -1,0 +1,56 @@
+.command-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #1e1e1e;
+  border-bottom: 1px solid #333;
+  padding: 5px 12px;
+  flex-shrink: 0;
+}
+
+.command-prefix {
+  color: #28c840;
+  font-size: 14px;
+  font-family: monospace;
+  font-weight: bold;
+  user-select: none;
+}
+
+.command-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #e0e0e0;
+  font-family: 'Cascadia Code', 'Fira Code', 'Courier New', monospace;
+  font-size: 13px;
+  caret-color: #28c840;
+}
+
+.command-input::placeholder {
+  color: #444;
+}
+
+.command-submit {
+  background: #2d2d2d;
+  border: 1px solid #444;
+  color: #aaa;
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.command-submit:hover {
+  background: #28c840;
+  border-color: #28c840;
+  color: #000;
+}
+
+.command-error {
+  color: #ff5f57;
+  font-size: 11px;
+  margin-left: 6px;
+  white-space: nowrap;
+}

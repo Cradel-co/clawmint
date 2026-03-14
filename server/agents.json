@@ -1,0 +1,22 @@
+[
+  {
+    "key": "claude",
+    "command": "claude",
+    "description": "Claude CLI (IA)"
+  },
+  {
+    "key": "bash",
+    "command": null,
+    "description": "Bash shell"
+  },
+  {
+    "key": "python",
+    "command": "python3",
+    "description": "Python 3 interactivo"
+  },
+  {
+    "key": "cc",
+    "command": "claude --dangerously-skip-permissions",
+    "description": "Claude Code PTY"
+  }
+]

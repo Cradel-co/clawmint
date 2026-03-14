@@ -1,0 +1,354 @@
+import { useState, useEffect, useCallback, useRef } from 'react';
+import './TelegramPanel.css';
+
+const API = 'http://localhost:3001/api/telegram';
+
+function timeAgo(ts) {
+  const secs = Math.floor((Date.now() - ts) / 1000);
+  if (secs < 60) return `${secs}s`;
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m`;
+  return `${Math.floor(mins / 60)}h`;
+}
+
+function ChatRow({ botKey, chat, onOpenSession, onRefresh }) {
+  const [linking, setLinking] = useState(false);
+  const [sessions, setSessions] = useState([]);
+
+  const handleLink = async () => {
+    if (linking) { setLinking(false); return; }
+    try {
+      const res = await fetch('http://localhost:3001/api/sessions');
+      const data = await res.json();
+      setSessions(Array.isArray(data) ? data.filter(s => s.active) : []);
+    } catch { setSessions([]); }
+    setLinking(true);
+  };
+
+  const handleSelectSession = async (sessionId) => {
+    setLinking(false);
+    try {
+      await fetch(`${API}/bots/${botKey}/chats/${chat.chatId}/session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId }),
+      });
+      onRefresh();
+    } catch { /* ignorar */ }
+  };
+
+  const handleDisconnect = async () => {
+    try {
+      await fetch(`${API}/bots/${botKey}/chats/${chat.chatId}`, { method: 'DELETE' });
+      onRefresh();
+    } catch { /* ignorar */ }
+  };
+
+  return (
+    <div className="tg-chat-row">
+      <div className="tg-chat-top">
+        <span className="tg-chat-name">
+          {chat.username ? `@${chat.username}` : chat.firstName || `Chat ${chat.chatId}`}
+        </span>
+        <span className="tg-chat-time">{timeAgo(chat.lastMessageAt)}</span>
+      </div>
+      {chat.lastPreview && (
+        <p className="tg-chat-preview">"{chat.lastPreview}"</p>
+      )}
+      {chat.sessionId && (
+        <p className="tg-chat-session">
+          sesión: <code>{chat.sessionId.slice(0, 8)}…</code>
+        </p>
+      )}
+      {linking && (
+        <div className="tg-session-picker">
+          {sessions.length === 0
+            ? <span className="tg-session-empty">Sin sesiones activas</span>
+            : sessions.map(s => (
+              <button
+                key={s.id}
+                className="tg-session-option"
+                onClick={() => handleSelectSession(s.id)}
+              >
+                <span className="tg-session-title">{s.title || s.id.slice(0, 8)}</span>
+                <code className="tg-session-id">{s.id.slice(0, 8)}…</code>
+              </button>
+            ))
+          }
+        </div>
+      )}
+      <div className="tg-chat-btns">
+        {chat.sessionId && (
+          <button
+            className="tg-btn tg-btn-sm tg-btn-ghost"
+            onClick={() => onOpenSession(chat.sessionId)}
+          >
+            Ver terminal
+          </button>
+        )}
+        <button
+          className={`tg-btn tg-btn-sm ${linking ? 'tg-btn-link-active' : 'tg-btn-ghost'}`}
+          onClick={handleLink}
+        >
+          {linking ? 'Cancelar' : 'Vincular'}
+        </button>
+        <button
+          className="tg-btn tg-btn-sm tg-btn-danger-ghost"
+          onClick={handleDisconnect}
+        >
+          Desconectar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function BotCard({ bot, onOpenSession, onRefresh }) {
+  const [expanded, setExpanded] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleStart = async () => {
+    setLoading(true);
+    try {
+      await fetch(`${API}/bots/${bot.key}/start`, { method: 'POST' });
+      onRefresh();
+    } catch { /* ignorar */ } finally { setLoading(false); }
+  };
+
+  const handleStop = async () => {
+    setLoading(true);
+    try {
+      await fetch(`${API}/bots/${bot.key}/stop`, { method: 'POST' });
+      onRefresh();
+    } catch { /* ignorar */ } finally { setLoading(false); }
+  };
+
+  const handleRemove = async () => {
+    if (!confirm(`¿Eliminar el bot "${bot.key}"?`)) return;
+    setLoading(true);
+    try {
+      await fetch(`${API}/bots/${bot.key}`, { method: 'DELETE' });
+      onRefresh();
+    } catch { /* ignorar */ } finally { setLoading(false); }
+  };
+
+  const handleToggleAgent = async (e) => {
+    e.stopPropagation();
+    const next = bot.defaultAgent === 'cc' ? 'claude' : 'cc';
+    try {
+      await fetch(`${API}/bots/${bot.key}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ defaultAgent: next }),
+      });
+      onRefresh();
+    } catch { /* ignorar */ }
+  };
+
+  return (
+    <div className={`tg-bot-card ${bot.running ? 'running' : 'stopped'}`}>
+      <div className="tg-bot-header" onClick={() => setExpanded(v => !v)}>
+        <div className="tg-bot-info">
+          <span className={`tg-status-dot ${bot.running ? 'active' : 'inactive'}`} />
+          <span className="tg-bot-key">{bot.key}</span>
+          {bot.botInfo && (
+            <span className="tg-bot-username">@{bot.botInfo.username}</span>
+          )}
+          <button
+            className={`tg-agent-chip ${bot.defaultAgent === 'cc' ? 'cc' : ''}`}
+            onClick={handleToggleAgent}
+            title={`Agente: ${bot.defaultAgent} — click para cambiar`}
+          >
+            {bot.defaultAgent || 'claude'}
+          </button>
+        </div>
+        <div className="tg-bot-actions" onClick={e => e.stopPropagation()}>
+          {bot.running ? (
+            <button className="tg-btn tg-btn-sm tg-btn-stop" onClick={handleStop} disabled={loading}>
+              ■ Stop
+            </button>
+          ) : (
+            <button className="tg-btn tg-btn-sm tg-btn-start" onClick={handleStart} disabled={loading}>
+              ▶ Start
+            </button>
+          )}
+          <button className="tg-btn tg-btn-sm tg-btn-delete" onClick={handleRemove} disabled={loading} title="Eliminar bot">
+            ✕
+          </button>
+          <span className="tg-bot-expand">{expanded ? '▲' : '▼'}</span>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="tg-bot-body">
+          {bot.running && bot.chats.length === 0 && (
+            <p className="tg-empty-small">Sin chats activos</p>
+          )}
+          {!bot.running && (
+            <p className="tg-empty-small">Bot detenido</p>
+          )}
+          {bot.chats.map(chat => (
+            <ChatRow
+              key={chat.chatId}
+              botKey={bot.key}
+              chat={chat}
+              onOpenSession={onOpenSession}
+              onRefresh={onRefresh}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AddBotForm({ onAdd, onCancel }) {
+  const [key, setKey] = useState('');
+  const [token, setToken] = useState('');
+  const [showToken, setShowToken] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async () => {
+    setError('');
+    if (!key.trim() || !token.trim()) { setError('Completá ambos campos'); return; }
+    setLoading(true);
+    try {
+      const res = await fetch(`${API}/bots`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: key.trim(), token: token.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || 'Error');
+      onAdd();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="tg-add-form">
+      <p className="tg-form-title">Agregar bot</p>
+
+      <label className="tg-label">Clave (identificador)</label>
+      <input
+        className="tg-input"
+        type="text"
+        placeholder="mibot, iglesia, radio..."
+        value={key}
+        onChange={e => { setKey(e.target.value); setError(''); }}
+      />
+
+      <label className="tg-label" style={{ marginTop: 8 }}>Token de BotFather</label>
+      <div className="tg-token-input-row">
+        <input
+          className="tg-input"
+          type={showToken ? 'text' : 'password'}
+          placeholder="123456:ABC-DEF..."
+          value={token}
+          onChange={e => { setToken(e.target.value); setError(''); }}
+          onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+        />
+        <button className="tg-icon-btn" onClick={() => setShowToken(v => !v)}>
+          {showToken ? '🙈' : '👁'}
+        </button>
+      </div>
+
+      {error && <p className="tg-error">{error}</p>}
+
+      <div className="tg-form-help">
+        <p>Obtené el token en <strong>@BotFather</strong> → /newbot</p>
+      </div>
+
+      <div className="tg-btn-row">
+        <button className="tg-btn tg-btn-primary" onClick={handleSubmit} disabled={loading || !key || !token}>
+          {loading ? '...' : '✓ Agregar'}
+        </button>
+        <button className="tg-btn tg-btn-ghost" onClick={onCancel}>
+          Cancelar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default function TelegramPanel({ onClose, onOpenSession }) {
+  const [bots, setBots] = useState([]);
+  const [showAdd, setShowAdd] = useState(false);
+  const intervalRef = useRef(null);
+
+  const fetchBots = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/bots`);
+      const data = await res.json();
+      setBots(Array.isArray(data) ? data : []);
+    } catch { /* ignorar */ }
+  }, []);
+
+  useEffect(() => {
+    fetchBots();
+    intervalRef.current = setInterval(fetchBots, 3000);
+    return () => clearInterval(intervalRef.current);
+  }, [fetchBots]);
+
+  const handleAdd = () => {
+    setShowAdd(false);
+    fetchBots();
+  };
+
+  const totalChats = bots.reduce((n, b) => n + (b.chats?.length || 0), 0);
+  const activeBots = bots.filter(b => b.running).length;
+
+  return (
+    <div className="tg-panel">
+      <div className="tg-header">
+        <span className="tg-header-title">
+          <span className="tg-icon">🤖</span>
+          Bots de Telegram
+          {activeBots > 0 && <span className="tg-header-badge">{activeBots} activo{activeBots > 1 ? 's' : ''}</span>}
+        </span>
+        <button className="tg-close" onClick={onClose} title="Cerrar">×</button>
+      </div>
+
+      <div className="tg-body">
+        {/* Resumen */}
+        {bots.length > 0 && (
+          <div className="tg-summary">
+            <span>{bots.length} bot{bots.length > 1 ? 's' : ''}</span>
+            <span>·</span>
+            <span>{totalChats} chat{totalChats !== 1 ? 's' : ''} activo{totalChats !== 1 ? 's' : ''}</span>
+          </div>
+        )}
+
+        {/* Lista de bots */}
+        {bots.length === 0 && !showAdd && (
+          <div className="tg-empty-state">
+            <p>Sin bots configurados</p>
+            <p className="tg-empty-hint">Agregá tu primer bot con el token de @BotFather</p>
+          </div>
+        )}
+
+        {bots.map(bot => (
+          <BotCard
+            key={bot.key}
+            bot={bot}
+            onOpenSession={(sessionId) => { onOpenSession(sessionId); onClose(); }}
+            onRefresh={fetchBots}
+          />
+        ))}
+
+        {/* Formulario agregar */}
+        {showAdd ? (
+          <AddBotForm onAdd={handleAdd} onCancel={() => setShowAdd(false)} />
+        ) : (
+          <button className="tg-btn tg-btn-add" onClick={() => setShowAdd(true)}>
+            + Agregar bot
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,102 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #2d2d2d;
+  padding: 8px 16px;
+  border-bottom: 1px solid #444;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.dot.red    { background: #ff5f57; }
+.dot.yellow { background: #febc2e; }
+.dot.green  { background: #28c840; }
+
+.title {
+  margin-left: 8px;
+  font-size: 12px;
+  color: #888;
+  letter-spacing: 0.05em;
+}
+
+/* Empuja el botón de Telegram a la derecha */
+.header-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ─── Botón Telegram ──────────────────────────────────────────────────────── */
+
+.telegram-btn {
+  position: relative;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #888;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 3px 7px;
+  line-height: 1;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.telegram-btn:hover {
+  color: #29b6f6;
+  border-color: #29b6f633;
+  background: #29b6f611;
+}
+
+.telegram-btn.active {
+  color: #29b6f6;
+  border-color: #29b6f644;
+  background: #29b6f618;
+}
+
+/* Badge con conteo de chats */
+.telegram-badge {
+  position: absolute;
+  top: -4px;
+  right: -5px;
+  background: #28c840;
+  color: #000;
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 50%;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* ─── Layout con panel lateral ────────────────────────────────────────────── */
+
+.app-body-wrap {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.app-body {
+  flex: 1;
+  overflow: hidden;
+  padding: 8px;
+  position: relative;
+}
