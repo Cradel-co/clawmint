@@ -3,12 +3,13 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
-const { spawn } = require('child_process');
-const pty = require('node-pty');
+const { spawn, execSync } = require('child_process');
+const os = require('os');
 const crypto = require('crypto');
 const sessionManager = require('./sessionManager');
 const agentsModule = require('./agents');
 const skillsModule = require('./skills');
+const memoryModule = require('./memory');
 const events = require('./events');
 
 const BOTS_FILE = path.join(__dirname, 'bots.json');
@@ -83,6 +84,82 @@ function chunkText(text, size = 4096) {
   return chunks.length > 0 ? chunks : [''];
 }
 
+// ─── Monitor helpers ──────────────────────────────────────────────────────────
+
+function formatBytes(bytes) {
+  if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(1) + ' GB';
+  if (bytes >= 1048576)    return (bytes / 1048576).toFixed(0)   + ' MB';
+  return (bytes / 1024).toFixed(0) + ' KB';
+}
+
+function getSystemStats() {
+  const totalMem = os.totalmem();
+  const freeMem  = os.freemem();
+  const usedMem  = totalMem - freeMem;
+  const memPct   = Math.round((usedMem / totalMem) * 100);
+
+  const [l1, l5, l15] = os.loadavg();
+  const cpuCount = os.cpus().length;
+  const cpuPct   = Math.min(100, Math.round((l1 / cpuCount) * 100));
+
+  const uptimeSecs = os.uptime();
+  const days  = Math.floor(uptimeSecs / 86400);
+  const hours = Math.floor((uptimeSecs % 86400) / 3600);
+  const mins  = Math.floor((uptimeSecs % 3600) / 60);
+
+  let disk = 'N/A';
+  try {
+    const df  = execSync('df -h /', { encoding: 'utf8', timeout: 3000 });
+    const row = df.trim().split('\n')[1]?.split(/\s+/);
+    if (row) disk = `${row[2]} / ${row[1]} (${row[4]})`;
+  } catch {}
+
+  return {
+    cpu:    `${cpuPct}% (load: ${l1.toFixed(1)}, ${l5.toFixed(1)}, ${l15.toFixed(1)})`,
+    ram:    `${formatBytes(usedMem)} / ${formatBytes(totalMem)} (${memPct}%)`,
+    disk,
+    uptime: `${days}d ${hours}h ${mins}m`,
+  };
+}
+
+function buildLsText(dirPath) {
+  const entries = fs.readdirSync(dirPath);
+  const items = [];
+  for (const name of entries) {
+    try {
+      const s = fs.statSync(path.join(dirPath, name));
+      items.push({ name, isDir: s.isDirectory() });
+    } catch {
+      items.push({ name, isDir: false });
+    }
+  }
+  items.sort((a, b) => (b.isDir ? 1 : 0) - (a.isDir ? 1 : 0) || a.name.localeCompare(b.name));
+
+  const dirs  = items.filter(i => i.isDir);
+  const files = items.filter(i => !i.isDir);
+
+  const lines = [`📂 ${dirPath}`];
+  if (dirPath !== '/') lines.push('/ls ..');
+
+  if (dirs.length) {
+    lines.push(`📁 Carpetas (${dirs.length}):`);
+    for (const d of dirs.slice(0, 25)) lines.push(`/ls ${d.name}`);
+    if (dirs.length > 25) lines.push(`...y ${dirs.length - 25} más`);
+  }
+
+  if (files.length) {
+    lines.push(`📄 Archivos (${files.length}):`);
+    for (const f of files.slice(0, 25)) lines.push(`/cat ${f.name}`);
+    if (files.length > 25) lines.push(`...y ${files.length - 25} más`);
+  }
+
+  if (!dirs.length && !files.length) lines.push('(directorio vacío)');
+
+  return lines.join('\n');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function httpsPost(urlPath, body, timeoutMs = 35000) {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
@@ -144,13 +221,11 @@ class ClaudePrintSession {
       delete env.CLAUDECODE;
       delete env.CLAUDE_CODE_ENTRYPOINT;
 
-      // Usar node-pty para que el CLI crea que está en un TTY → flush inmediato por línea
-      const child = pty.spawn('claude', claudeArgs, {
-        name: 'xterm',
-        cols: 220,
-        rows: 50,
+      // Usar spawn con stdin: 'ignore' para evitar hang y crash de node-pty en WSL2
+      const child = spawn('claude', claudeArgs, {
         cwd: process.env.HOME,
         env,
+        stdio: ['ignore', 'pipe', 'ignore'],
       });
 
       let lineBuffer = '';
@@ -161,13 +236,10 @@ class ClaudePrintSession {
       const killTimer = setTimeout(() => {
         killed = true;
         try { child.kill('SIGTERM'); } catch {}
-      }, 120000);
+      }, 1080000); // 18 minutos
 
       const processLine = (line) => {
-        let jsonStr = line.trim();
-        if (!jsonStr) return;
-        // Limpiar posibles secuencias ANSI del PTY antes de parsear JSON
-        jsonStr = jsonStr.replace(/\x1B\[[0-9;?]*[A-Za-z@]/g, '').replace(/\r/g, '').trim();
+        const jsonStr = line.trim();
         if (!jsonStr || jsonStr === '[DONE]') return;
 
         try {
@@ -209,20 +281,20 @@ class ClaudePrintSession {
         } catch { /* ignorar líneas no-JSON */ }
       };
 
-      child.onData((chunk) => {
-        lineBuffer += chunk;
+      child.stdout.on('data', (chunk) => {
+        lineBuffer += chunk.toString();
         const lines = lineBuffer.split('\n');
         lineBuffer = lines.pop();
         for (const line of lines) processLine(line);
       });
 
-      child.onExit(({ exitCode }) => {
+      child.on('close', (exitCode) => {
         if (exited) return;
         exited = true;
         clearTimeout(killTimer);
         // Procesar cualquier dato residual en el buffer
         if (lineBuffer.trim()) processLine(lineBuffer);
-        if (killed) return reject(new Error('Timeout: claude -p no respondió en 120s'));
+        if (killed) return reject(new Error('Timeout: claude -p no respondió en 18 min'));
         if (exitCode !== 0 && !fullText) {
           console.error('[ClaudePrintSession] exitCode:', exitCode);
           return reject(new Error(`claude salió con código ${exitCode}`));
@@ -237,11 +309,12 @@ class ClaudePrintSession {
 // ─── Clase TelegramBot (una instancia por bot) ────────────────────────────────
 
 class TelegramBot {
-  constructor(key, token) {
+  constructor(key, token, { initialOffset = 0, onOffsetSave = null } = {}) {
     this.key = key;
     this.token = token;
     this.running = false;
-    this.offset = 0;
+    this.offset = initialOffset;
+    this._onOffsetSave = onOffsetSave;
     this.botInfo = null;
     this.defaultAgent = 'claude'; // key del agente por defecto
     this.whitelist = [];          // array de chatIds permitidos (vacío = todos)
@@ -296,7 +369,7 @@ class TelegramBot {
     const data = await httpsPost(urlPath, {
       offset: this.offset,
       timeout: POLL_TIMEOUT,
-      allowed_updates: ['message'],
+      allowed_updates: ['message', 'callback_query'],
     }, (POLL_TIMEOUT + 10) * 1000);
     if (!data.ok) throw new Error(data.description || 'getUpdates error');
     return data.result;
@@ -318,6 +391,10 @@ class TelegramBot {
     console.log(`[Telegram] Bot "${this.key}" detenido`);
   }
 
+  async _answerCallback(id, text = '') {
+    try { await this._apiCall('answerCallbackQuery', { callback_query_id: id, text }); } catch {}
+  }
+
   async _poll() {
     while (this.running) {
       try {
@@ -328,6 +405,8 @@ class TelegramBot {
             console.error(`[Telegram:${this.key}] Error en update:`, err.message);
           }
         }
+        // Persistir offset tras cada batch para sobrevivir reinicios
+        if (updates.length > 0 && this._onOffsetSave) this._onOffsetSave();
       } catch (err) {
         if (!this.running) break;
         console.error(`[Telegram:${this.key}] Error en polling:`, err.message);
@@ -337,6 +416,10 @@ class TelegramBot {
   }
 
   async _handleUpdate(update) {
+    if (update.callback_query) {
+      await this._handleCallbackQuery(update.callback_query);
+      return;
+    }
     const msg = update.message;
     if (!msg || !msg.text) return;
     await this._handleMessage(msg);
@@ -372,6 +455,8 @@ class TelegramBot {
         lastPreview: '',
         rateLimited: false,
         rateLimitedUntil: 0,
+        monitorCwd: process.env.HOME,
+        busy: false,
       };
       this.chats.set(chatId, chat);
     }
@@ -439,9 +524,14 @@ class TelegramBot {
         const agentKey = this.defaultAgent;
         const name = chat.firstName || 'usuario';
         if (!this._isClaudeBased()) await this.getOrCreateSession(chatId, chat);
-        await this.sendText(chatId,
+        await this.sendWithButtons(chatId,
           `Hola ${name}! 👋\n\nSoy @${this.botInfo?.username}. Agente activo: *${agentKey}*.\n\n` +
-          `Escribí cualquier cosa y lo enviaré a tu sesión.\nUsá /ayuda para ver los comandos.`
+          `Escribí cualquier cosa y lo enviaré a tu sesión.`,
+          [
+            [{ text: '📊 Estado VPS', callback_data: 'status_vps' }, { text: '💬 Nueva conv.', callback_data: 'nueva' }],
+            [{ text: '🎭 Agentes', callback_data: 'agentes' },        { text: '🔧 Skills',     callback_data: 'skills' }],
+            [{ text: '🤖 Menú', callback_data: 'menu' }],
+          ]
         );
         break;
       }
@@ -452,10 +542,16 @@ class TelegramBot {
         if (this._isClaudeBased()) {
           const model = chat.claudeSession?.model || null;
           chat.claudeSession = new ClaudePrintSession({ model });
-          await this.sendText(chatId, `✅ Nueva conversación *${this.defaultAgent}* iniciada (\`${chat.claudeSession.id.slice(0,8)}…\`)`);
+          await this.sendWithButtons(chatId,
+            `✅ Nueva conversación *${this.defaultAgent}* iniciada (\`${chat.claudeSession.id.slice(0,8)}…\`)`,
+            [[{ text: '🤖 Menú', callback_data: 'menu' }]]
+          );
         } else {
           const s = await this.getOrCreateSession(chatId, chat, true);
-          await this.sendText(chatId, `✅ Nueva sesión *${s.title}* creada (\`${s.id.slice(0,8)}…\`)`);
+          await this.sendWithButtons(chatId,
+            `✅ Nueva sesión *${s.title}* creada (\`${s.id.slice(0,8)}…\`)`,
+            [[{ text: '🤖 Menú', callback_data: 'menu' }]]
+          );
         }
         break;
       }
@@ -584,7 +680,8 @@ class TelegramBot {
       case 'dir':
       case 'cwd':
       case 'directorio': {
-        await this.sendText(chatId, `📁 Directorio de trabajo: \`${process.env.HOME}\``);
+        const cwd = chat.monitorCwd || process.env.HOME;
+        await this.sendText(chatId, `📁 Directorio actual: \`${cwd}\``);
         break;
       }
 
@@ -602,9 +699,10 @@ class TelegramBot {
             `• /${a.key} — ${a.description || a.key}` +
             (a.prompt ? `\n  _"${a.prompt.slice(0, 60)}${a.prompt.length > 60 ? '…' : ''}"_` : '')
           ).join('\n');
-          await this.sendText(chatId,
-            `🎭 *Agentes de rol disponibles*\n\n${lines}\n\n` +
-            `Activá un agente con /<key>. Desactivá con /basta.`
+          const agentButtons = roleAgents.map(a => [{ text: `🎭 ${a.key}`, callback_data: `agent:${a.key}` }]);
+          await this.sendWithButtons(chatId,
+            `🎭 *Agentes de rol disponibles*\n\n${lines}\n\nActivá un agente tocando el botón:`,
+            agentButtons
           );
         }
         break;
@@ -666,6 +764,12 @@ class TelegramBot {
           `*Skills:*\n` +
           `/skills — ver skills instalados\n` +
           `/buscar-skill — buscar e instalar skills de ClawHub\n\n` +
+          `*Monitor:*\n` +
+          `/monitor — panel de navegación\n` +
+          `/ls [path] — listar directorio\n` +
+          `/cat archivo — ver archivo\n` +
+          `/mkdir nombre — crear carpeta\n` +
+          `/status-vps — CPU, RAM y disco\n\n` +
           `*Bot:*\n` +
           `/agente [key] — ver/cambiar agente\n` +
           `/ayuda — esta ayuda`
@@ -701,6 +805,98 @@ class TelegramBot {
         }
         const lines = list.map(s => `• \`${s.slug}\` — ${s.name}${s.description ? `\n  _${s.description.slice(0, 80)}_` : ''}`).join('\n');
         await this.sendText(chatId, `🔧 *Skills instalados* (${list.length})\n\n${lines}`);
+        break;
+      }
+
+      // ── Monitor ───────────────────────────────────────────────────────────
+      case 'monitor': {
+        const cwd = chat.monitorCwd || process.env.HOME;
+        await this.sendText(chatId,
+          `🖥️ *Monitor VPS*\n\n` +
+          `Directorio: \`${cwd}\`\n\n` +
+          `*Navegación:*\n` +
+          `/ls — listar directorio actual\n` +
+          `/dir — ver ruta actual\n` +
+          `/cat archivo — ver contenido\n` +
+          `/mkdir nombre — crear carpeta\n\n` +
+          `*Sistema:*\n` +
+          `/status-vps — CPU, RAM y disco`
+        );
+        break;
+      }
+
+      case 'ls': {
+        let dir = chat.monitorCwd || process.env.HOME;
+        if (args.length > 0) dir = path.resolve(dir, args.join(' '));
+        try {
+          const stat = fs.statSync(dir);
+          if (!stat.isDirectory()) {
+            let content;
+            try { content = fs.readFileSync(dir, 'utf8'); }
+            catch { await this.sendText(chatId, `⚠️ Archivo binario o sin permisos: ${path.basename(dir)}`); break; }
+            const note = content.length > 3500 ? `\n[...truncado, ${content.length} chars total]` : '';
+            await this.sendText(chatId, `📄 ${path.basename(dir)}\n\n${content.slice(0, 3500)}${note}`);
+          } else {
+            chat.monitorCwd = dir;
+            await this.sendText(chatId, buildLsText(dir));
+          }
+        } catch (err) {
+          await this.sendText(chatId, `❌ Error: ${err.message}`);
+        }
+        break;
+      }
+
+      case 'cat': {
+        const filename = args.join(' ');
+        if (!filename) { await this.sendText(chatId, '❌ Usá /cat <nombre-archivo>'); break; }
+        const base     = chat.monitorCwd || process.env.HOME;
+        const filePath = path.resolve(base, filename);
+        try {
+          const stat = fs.statSync(filePath);
+          if (stat.isDirectory()) {
+            chat.monitorCwd = filePath;
+            await this.sendText(chatId, buildLsText(filePath));
+          } else {
+            let content;
+            try { content = fs.readFileSync(filePath, 'utf8'); }
+            catch { await this.sendText(chatId, `⚠️ Archivo binario o sin permisos: ${filename}`); break; }
+            const note = content.length > 3500 ? `\n[...truncado, ${content.length} chars total]` : '';
+            await this.sendText(chatId, `📄 ${filename}\n\n${content.slice(0, 3500)}${note}`);
+          }
+        } catch (err) {
+          await this.sendText(chatId, `❌ Error: ${err.message}`);
+        }
+        break;
+      }
+
+      case 'mkdir': {
+        const dirname = args.join(' ');
+        if (!dirname) { await this.sendText(chatId, '❌ Usá /mkdir <nombre>'); break; }
+        const base    = chat.monitorCwd || process.env.HOME;
+        const newPath = path.resolve(base, dirname);
+        try {
+          fs.mkdirSync(newPath, { recursive: true });
+          await this.sendText(chatId, `✅ Carpeta creada: \`${newPath}\``);
+        } catch (err) {
+          await this.sendText(chatId, `❌ Error: ${err.message}`);
+        }
+        break;
+      }
+
+      case 'status-vps': {
+        try {
+          const s = getSystemStats();
+          await this.sendWithButtons(chatId,
+            `📊 *Estado del VPS*\n\n` +
+            `🖥️ CPU: ${s.cpu}\n` +
+            `🧠 RAM: ${s.ram}\n` +
+            `💾 Disco: ${s.disk}\n` +
+            `⏱️ Uptime: ${s.uptime}`,
+            [[{ text: '🔄 Actualizar', callback_data: 'status_vps' }]]
+          );
+        } catch (err) {
+          await this.sendText(chatId, `❌ Error: ${err.message}`);
+        }
         break;
       }
 
@@ -786,11 +982,28 @@ class TelegramBot {
   }
 
   async _sendToSession(chatId, text, chat) {
+    if (chat.busy) return; // ignorar si ya hay un mensaje en proceso
+    chat.busy = true;
     try {
       // Agentes claude-based → ClaudePrintSession (modo no-interactivo con streaming)
       if (this._isClaudeBased()) {
         if (!chat.claudeSession) {
           chat.claudeSession = new ClaudePrintSession();
+        }
+
+        // Resolver agente activo para memoria
+        const agentKey = chat.activeAgent?.key || this.defaultAgent;
+        const agentDef = agentsModule.get(agentKey);
+        const memoryFiles = agentDef?.memoryFiles || [];
+
+        // En el primer mensaje de la sesión: inyectar contexto de memoria + instrucciones
+        let messageText = text;
+        if (chat.claudeSession.messageCount === 0 && memoryFiles.length > 0) {
+          const memCtx = memoryModule.buildMemoryContext(agentKey, memoryFiles);
+          const parts = [memCtx, memoryModule.TOOL_INSTRUCTIONS].filter(Boolean);
+          if (parts.length > 0) {
+            messageText = `${parts.join('\n\n')}\n\n---\n\n${text}`;
+          }
         }
 
         // Enviar placeholder inmediato → obtener message_id para editar progresivamente
@@ -809,23 +1022,39 @@ class TelegramBot {
           lastEditAt = now;
           console.error('[onChunk] edit at', new Date().toISOString(), '| chars:', partial.length);
           try {
+            // En chunks parciales no extraemos ops para no cortar etiquetas a mitad
+            const preview = cleanPtyOutput(partial).slice(0, 4000) || partial.slice(0, 4000);
             await this._apiCall('editMessageText', {
               chat_id: chatId,
               message_id: sentMsg.message_id,
-              text: cleanPtyOutput(partial).slice(0, 4000) || partial.slice(0, 4000),
+              text: preview,
             });
           } catch (e) { console.error('[onChunk] edit failed:', e.message); }
         };
 
         try {
-          const response = await chat.claudeSession.sendMessage(text, onChunk);
+          const rawResponse = await chat.claudeSession.sendMessage(messageText, onChunk);
+
+          // Extraer y aplicar operaciones de memoria
+          let response = rawResponse;
+          if (memoryFiles.length > 0 && rawResponse) {
+            const { clean, ops } = memoryModule.extractMemoryOps(rawResponse);
+            if (ops.length > 0) {
+              const saved = memoryModule.applyOps(agentKey, ops);
+              response = clean || rawResponse;
+              console.log(`[Memory:Telegram] ${agentKey} → guardado en: ${saved.join(', ')}`);
+            }
+          }
+
+          const finalText = cleanPtyOutput(response || '');
+
           // Edición final garantizada con texto completo
-          if (sentMsg && response) {
+          if (sentMsg && finalText) {
             try {
               await this._apiCall('editMessageText', {
                 chat_id: chatId,
                 message_id: sentMsg.message_id,
-                text: cleanPtyOutput(response).slice(0, 4096) || response.slice(0, 4096),
+                text: finalText.slice(0, 4096),
               });
             } catch {
               await this.sendText(chatId, response); // fallback: nuevo mensaje
@@ -857,12 +1086,14 @@ class TelegramBot {
       // Header visual en la terminal (solo display, no va al PTY)
       session.injectOutput(`\r\n\x1b[34m┌─ 📨 Telegram: ${fromName}\x1b[0m\r\n`);
       try { await this._apiCall('sendChatAction', { chat_id: chatId, action: 'typing' }); } catch {}
-      const result = await session.sendMessage(text, { timeout: 60000, stableMs: 3000 });
+      const result = await session.sendMessage(text, { timeout: 1080000, stableMs: 3000 });
       const response = cleanPtyOutput(result.raw || '');
       if (response) await this.sendText(chatId, response);
     } catch (err) {
       console.error(`[Telegram:${this.key}] Error en sesión para chat ${chatId}:`, err.message);
       try { await this.sendText(chatId, `⚠️ Error: ${err.message}`); } catch {}
+    } finally {
+      chat.busy = false;
     }
   }
 
@@ -884,6 +1115,190 @@ class TelegramBot {
     });
     chat.sessionId = session.id;
     return session;
+  }
+
+  async sendWithButtons(chatId, text, buttons, editMsgId = null) {
+    const body = { chat_id: chatId, text: text.slice(0, 4096), parse_mode: 'Markdown',
+                   reply_markup: { inline_keyboard: buttons } };
+    if (editMsgId) {
+      try { return await this._apiCall('editMessageText', { ...body, message_id: editMsgId }); }
+      catch (e) { if (!e.message?.includes('not modified')) throw e; }
+      return;
+    }
+    try { return await this._apiCall('sendMessage', body); }
+    catch { body.parse_mode = undefined; return this._apiCall('sendMessage', body); }
+  }
+
+  async _sendMenu(chatId, editMsgId = null) {
+    await this.sendWithButtons(chatId, '🤖 *Menú principal*\n\nElegí una opción:', [
+      [{ text: '📊 Estado VPS', callback_data: 'status_vps' }, { text: '💬 Nueva conv.', callback_data: 'nueva' }],
+      [{ text: '🔄 Resetear',   callback_data: 'reset' },      { text: '🎭 Agentes',     callback_data: 'agentes' }],
+      [{ text: '🔧 Skills',     callback_data: 'skills' },     { text: '❓ Ayuda',        callback_data: 'ayuda' }],
+    ], editMsgId);
+  }
+
+  async _handleCallbackQuery(cbq) {
+    const chatId = cbq.message?.chat?.id;
+    if (!chatId) return;
+    const msgId  = cbq.message?.message_id;
+
+    // Whitelist check
+    if (!this._isAllowed(chatId)) {
+      await this._answerCallback(cbq.id, '⛔ Sin acceso');
+      return;
+    }
+
+    // Inicializar chat si no existe
+    let chat = this.chats.get(chatId);
+    if (!chat) {
+      chat = {
+        chatId,
+        username: cbq.from?.username || null,
+        firstName: cbq.from?.first_name || 'Usuario',
+        sessionId: null,
+        claudeSession: null,
+        activeAgent: null,
+        pendingAction: null,
+        lastMessageAt: Date.now(),
+        lastPreview: '',
+        rateLimited: false,
+        rateLimitedUntil: 0,
+        monitorCwd: process.env.HOME,
+        busy: false,
+      };
+      this.chats.set(chatId, chat);
+    }
+
+    await this._answerCallback(cbq.id);
+
+    const data = cbq.data || '';
+
+    if (data.startsWith('agent:')) {
+      const agentKey = data.slice(6);
+      const agentDef = agentsModule.get(agentKey);
+      if (agentDef?.prompt) {
+        chat.claudeSession = new ClaudePrintSession();
+        chat.activeAgent = { key: agentDef.key, prompt: agentDef.prompt };
+        const fullPrompt = skillsModule.buildAgentPrompt(agentDef);
+        await this._sendToSession(chatId, fullPrompt, chat);
+      } else {
+        await this.sendText(chatId, `❌ Agente "${agentKey}" no encontrado o sin prompt.`);
+      }
+      return;
+    }
+
+    switch (data) {
+      case 'status_vps': {
+        try {
+          const s = getSystemStats();
+          const text =
+            `📊 *Estado del VPS*\n\n` +
+            `🖥️ CPU: ${s.cpu}\n` +
+            `🧠 RAM: ${s.ram}\n` +
+            `💾 Disco: ${s.disk}\n` +
+            `⏱️ Uptime: ${s.uptime}`;
+          await this.sendWithButtons(chatId, text,
+            [[{ text: '🔄 Actualizar', callback_data: 'status_vps' }]],
+            msgId
+          );
+        } catch (err) {
+          await this.sendText(chatId, `❌ Error: ${err.message}`);
+        }
+        break;
+      }
+
+      case 'nueva':
+      case 'reset': {
+        if (this._isClaudeBased()) {
+          const model = chat.claudeSession?.model || null;
+          chat.claudeSession = new ClaudePrintSession({ model });
+          await this.sendWithButtons(chatId,
+            `✅ Nueva conversación *${this.defaultAgent}* iniciada (\`${chat.claudeSession.id.slice(0,8)}…\`)`,
+            [[{ text: '🤖 Menú', callback_data: 'menu' }]]
+          );
+        } else {
+          const s = await this.getOrCreateSession(chatId, chat, true);
+          await this.sendWithButtons(chatId,
+            `✅ Nueva sesión *${s.title}* creada (\`${s.id.slice(0,8)}…\`)`,
+            [[{ text: '🤖 Menú', callback_data: 'menu' }]]
+          );
+        }
+        break;
+      }
+
+      case 'skills': {
+        const list = skillsModule.listSkills();
+        if (!list.length) {
+          await this.sendText(chatId, '🔧 *Skills instalados*\n\nNo hay skills instalados.\nInstalá uno desde el panel web o la API.');
+        } else {
+          const lines = list.map(s => `• \`${s.slug}\` — ${s.name}${s.description ? `\n  _${s.description.slice(0, 80)}_` : ''}`).join('\n');
+          await this.sendText(chatId, `🔧 *Skills instalados* (${list.length})\n\n${lines}`);
+        }
+        break;
+      }
+
+      case 'agentes': {
+        const roleAgents = agentsModule.list().filter(a => a.prompt);
+        if (roleAgents.length === 0) {
+          await this.sendText(chatId,
+            `🎭 *Agentes de rol disponibles*\n\n` +
+            `No hay agentes con prompt configurado.\n` +
+            `Creá uno desde el panel web (botón 🎭) y usalo aquí.`
+          );
+        } else {
+          const lines = roleAgents.map(a =>
+            `• /${a.key} — ${a.description || a.key}` +
+            (a.prompt ? `\n  _"${a.prompt.slice(0, 60)}${a.prompt.length > 60 ? '…' : ''}"_` : '')
+          ).join('\n');
+          const agentButtons = roleAgents.map(a => [{ text: `🎭 ${a.key}`, callback_data: `agent:${a.key}` }]);
+          await this.sendWithButtons(chatId,
+            `🎭 *Agentes de rol disponibles*\n\n${lines}\n\nActivá un agente tocando el botón:`,
+            agentButtons
+          );
+        }
+        break;
+      }
+
+      case 'ayuda': {
+        await this.sendText(chatId,
+          `🤖 *Comandos disponibles*\n\n` +
+          `*Sesión:*\n` +
+          `/start — saludo e inicio\n` +
+          `/nueva — nueva conversación\n` +
+          `/reset — reiniciar sesión\n` +
+          `/compact — compactar contexto\n` +
+          `/bash — nueva sesión bash\n\n` +
+          `*Claude Code:*\n` +
+          `/modelo [nombre] — ver/cambiar modelo\n` +
+          `/costo — costo de la sesión\n` +
+          `/estado — estado detallado\n` +
+          `/memoria — ver archivos de memoria\n` +
+          `/dir — directorio de trabajo\n\n` +
+          `*Agentes de rol:*\n` +
+          `/agentes — listar agentes con prompt\n` +
+          `/<key> — activar agente de rol\n` +
+          `/basta — desactivar agente de rol\n\n` +
+          `*Skills:*\n` +
+          `/skills — ver skills instalados\n` +
+          `/buscar-skill — buscar e instalar skills de ClawHub\n\n` +
+          `*Monitor:*\n` +
+          `/monitor — panel de navegación\n` +
+          `/ls [path] — listar directorio\n` +
+          `/cat archivo — ver archivo\n` +
+          `/mkdir nombre — crear carpeta\n` +
+          `/status-vps — CPU, RAM y disco\n\n` +
+          `*Bot:*\n` +
+          `/agente [key] — ver/cambiar agente\n` +
+          `/ayuda — esta ayuda`
+        );
+        break;
+      }
+
+      case 'menu': {
+        await this._sendMenu(chatId);
+        break;
+      }
+    }
   }
 
   async sendText(chatId, text) {
@@ -926,8 +1341,11 @@ class BotManager {
   async loadAndStart() {
     const saved = this._readFile();
     for (const saved_entry of saved) {
-      const { key, token, defaultAgent, whitelist, rateLimit, rateLimitKeyword } = saved_entry;
-      const bot = new TelegramBot(key, token);
+      const { key, token, defaultAgent, whitelist, rateLimit, rateLimitKeyword, offset } = saved_entry;
+      const bot = new TelegramBot(key, token, {
+        initialOffset: offset || 0,
+        onOffsetSave: () => this._saveFile(),
+      });
       if (defaultAgent) bot.defaultAgent = defaultAgent;
       if (whitelist) bot.whitelist = whitelist;
       if (rateLimit !== undefined) bot.rateLimit = rateLimit;
@@ -947,7 +1365,7 @@ class BotManager {
     if (this.bots.has(key)) {
       await this.bots.get(key).stop();
     }
-    const bot = new TelegramBot(key, token);
+    const bot = new TelegramBot(key, token, { onOffsetSave: () => this._saveFile() });
     // Verificar token antes de guardar
     const info = await bot.start();
     this.bots.set(key, bot);
@@ -1024,6 +1442,7 @@ class BotManager {
       whitelist: bot.whitelist,
       rateLimit: bot.rateLimit,
       rateLimitKeyword: bot.rateLimitKeyword,
+      offset: bot.offset,
     }));
     try {
       fs.writeFileSync(BOTS_FILE, JSON.stringify(data, null, 2), 'utf8');

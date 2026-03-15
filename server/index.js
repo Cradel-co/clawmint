@@ -5,13 +5,70 @@ const http = require('http');
 const { WebSocketServer } = require('ws');
 const cors = require('cors');
 const Anthropic = require('@anthropic-ai/sdk');
-const sessionManager = require('./sessionManager');
-const telegram = require('./telegram');
-const agents = require('./agents');
-const skills = require('./skills');
-const events = require('./events');
 const fs = require('fs');
 const path = require('path');
+
+// ─── Logger global ────────────────────────────────────────────────────────────
+const LOG_FILE        = path.join(__dirname, 'server.log');
+const LOG_CONFIG_FILE = path.join(__dirname, 'logs.json');
+
+function _loadLogConfig() {
+  try {
+    if (fs.existsSync(LOG_CONFIG_FILE))
+      return JSON.parse(fs.readFileSync(LOG_CONFIG_FILE, 'utf8'));
+  } catch {}
+  return { enabled: true };
+}
+
+function _saveLogConfig(cfg) {
+  try { fs.writeFileSync(LOG_CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf8'); } catch {}
+}
+
+// Inicializar config si no existe
+if (!fs.existsSync(LOG_CONFIG_FILE)) _saveLogConfig({ enabled: true });
+
+let logConfig = _loadLogConfig();
+
+function log(level, ...args) {
+  logConfig = _loadLogConfig(); // re-leer en cada log para respetar cambios en caliente
+  const isError = level.trim() === 'ERROR';
+  if (!logConfig.enabled && !isError) return; // errores siempre se loguean
+  const ts = new Date().toISOString();
+  const line = `[${ts}] [${level}] ${args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')}\n`;
+  process.stdout.write(line);
+  try { fs.appendFileSync(LOG_FILE, line); } catch {}
+}
+
+const logger = {
+  info:  (...a) => log('INFO ', ...a),
+  warn:  (...a) => log('WARN ', ...a),
+  error: (...a) => log('ERROR', ...a),
+};
+
+process.on('uncaughtException', (err) => {
+  logger.error('UNCAUGHT EXCEPTION:', err.stack || err.message);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  logger.error('UNHANDLED REJECTION:', reason?.stack || reason);
+  process.exit(1);
+});
+
+logger.info('=== INICIO DEL SERVIDOR ===');
+logger.info('Node version:', process.version);
+logger.info('PATH:', process.env.PATH);
+logger.info('HOME:', process.env.HOME);
+
+logger.info('Cargando módulos...');
+let sessionManager, telegram, agents, skills, events, memory;
+try { sessionManager = require('./sessionManager'); logger.info('sessionManager OK'); } catch(e) { logger.error('sessionManager FAIL:', e.message); process.exit(1); }
+try { agents        = require('./agents');         logger.info('agents OK'); }        catch(e) { logger.error('agents FAIL:', e.message); process.exit(1); }
+try { skills        = require('./skills');         logger.info('skills OK'); }        catch(e) { logger.error('skills FAIL:', e.message); process.exit(1); }
+try { events        = require('./events');         logger.info('events OK'); }        catch(e) { logger.error('events FAIL:', e.message); process.exit(1); }
+try { memory        = require('./memory');         logger.info('memory OK'); }        catch(e) { logger.error('memory FAIL:', e.message); process.exit(1); }
+try { telegram      = require('./telegram');       logger.info('telegram OK'); }      catch(e) { logger.error('telegram FAIL:', e.message); process.exit(1); }
+logger.info('Todos los módulos cargados.');
 
 const app = express();
 app.use(cors());
@@ -207,6 +264,96 @@ app.delete('/api/skills/:slug', (req, res) => {
   if (!fs.existsSync(dir)) return res.status(404).json({ error: 'Skill no encontrado' });
   fs.rmSync(dir, { recursive: true });
   res.json({ ok: true });
+});
+
+// ─── Memory API ───────────────────────────────────────────────────────────────
+
+// GET /api/memory/:agentKey — listar archivos de memoria del agente
+app.get('/api/memory/:agentKey', (req, res) => {
+  res.json(memory.listFiles(req.params.agentKey));
+});
+
+// GET /api/memory/:agentKey/:filename — leer archivo
+app.get('/api/memory/:agentKey/:filename', (req, res) => {
+  const content = memory.read(req.params.agentKey, req.params.filename);
+  if (content === null) return res.status(404).json({ error: 'Archivo no encontrado' });
+  res.json({ content });
+});
+
+// PUT /api/memory/:agentKey/:filename — escribir/reemplazar archivo
+app.put('/api/memory/:agentKey/:filename', (req, res) => {
+  const { content } = req.body || {};
+  if (typeof content !== 'string') return res.status(400).json({ error: 'content requerido' });
+  try {
+    memory.write(req.params.agentKey, req.params.filename, content);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// POST /api/memory/:agentKey/:filename/append — agregar al final
+app.post('/api/memory/:agentKey/:filename/append', (req, res) => {
+  const { content } = req.body || {};
+  if (typeof content !== 'string') return res.status(400).json({ error: 'content requerido' });
+  try {
+    memory.append(req.params.agentKey, req.params.filename, content);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// DELETE /api/memory/:agentKey/:filename — eliminar archivo
+app.delete('/api/memory/:agentKey/:filename', (req, res) => {
+  try {
+    const ok = memory.remove(req.params.agentKey, req.params.filename);
+    if (!ok) return res.status(404).json({ error: 'Archivo no encontrado' });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ─── Logs API ─────────────────────────────────────────────────────────────────
+
+// GET /api/logs/config — ver estado actual
+app.get('/api/logs/config', (_req, res) => {
+  res.json(_loadLogConfig());
+});
+
+// POST /api/logs/config — cambiar config  { enabled: true|false }
+app.post('/api/logs/config', (req, res) => {
+  const { enabled } = req.body || {};
+  if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled (boolean) requerido' });
+  const cfg = { enabled };
+  _saveLogConfig(cfg);
+  logConfig = cfg;
+  logger.info(`Logs ${enabled ? 'activados' : 'desactivados'}.`);
+  res.json(cfg);
+});
+
+// GET /api/logs/tail?lines=100 — últimas N líneas del log
+app.get('/api/logs/tail', (req, res) => {
+  const n = Math.min(parseInt(req.query.lines) || 100, 2000);
+  try {
+    const content = fs.existsSync(LOG_FILE) ? fs.readFileSync(LOG_FILE, 'utf8') : '';
+    const lines = content.split('\n').filter(Boolean);
+    res.json({ lines: lines.slice(-n) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/logs — limpiar log
+app.delete('/api/logs', (_req, res) => {
+  try {
+    fs.writeFileSync(LOG_FILE, '', 'utf8');
+    logger.info('Log limpiado.');
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── Telegram API ─────────────────────────────────────────────────────────────
@@ -408,9 +555,20 @@ function startClaudeSession(ws, opts) {
   let inputBuffer = '';
   let processing = false;
 
-  const systemPrompt = opts.systemPrompt ||
+  // Memoria del agente
+  const agentKey = opts.agentKey || null;
+  const agentDef = agentKey ? agents.get(agentKey) : null;
+  const memoryFiles = agentDef?.memoryFiles || [];
+
+  const basePrompt = opts.systemPrompt ||
     'Sos un asistente útil. Respondé de forma concisa y clara. ' +
     'Usá texto plano sin markdown ya que tu respuesta se mostrará en una terminal.';
+
+  const memoryCtx = agentKey ? memory.buildMemoryContext(agentKey, memoryFiles) : '';
+  const toolInstructions = memoryFiles.length > 0 ? memory.TOOL_INSTRUCTIONS : '';
+
+  const systemPrompt = [basePrompt, memoryCtx, toolInstructions]
+    .filter(Boolean).join('\n\n');
 
   send('\x1b[1;32m╔══ Claude API ══╗\x1b[0m\r\n');
   send('\x1b[90mEscribí tu mensaje y presioná Enter. Ctrl+C para cancelar línea.\x1b[0m\r\n\r\n');
@@ -472,6 +630,16 @@ function startClaudeSession(ws, opts) {
         }
       }
 
+      // Extraer y aplicar operaciones de memoria
+      if (agentKey && memoryFiles.length > 0) {
+        const { clean, ops } = memory.extractMemoryOps(fullText);
+        if (ops.length > 0) {
+          const saved = memory.applyOps(agentKey, ops);
+          fullText = clean;
+          send(`\r\n\x1b[90m💾 Memoria guardada: ${saved.join(', ')}\x1b[0m`);
+        }
+      }
+
       history.push({ role: 'assistant', content: fullText });
       send('\r\n\r\n');
     } catch (err) {
@@ -493,10 +661,18 @@ function startClaudeSession(ws, opts) {
 // ─── Servidor ─────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3001;
+logger.info(`Iniciando servidor en puerto ${PORT}...`);
 server.listen(PORT, async () => {
+  logger.info(`Servidor escuchando en http://localhost:${PORT}`);
   console.log(`Servidor escuchando en http://localhost:${PORT}`);
   console.log(`HTTP API disponible en http://localhost:${PORT}/api/sessions`);
 
-  // Auto-iniciar bots guardados en bots.json
-  await telegram.loadAndStart();
+  logger.info('Iniciando bots de Telegram...');
+  try {
+    await telegram.loadAndStart();
+    logger.info('Bots de Telegram iniciados OK.');
+  } catch (err) {
+    logger.error('Error al iniciar bots de Telegram:', err.stack || err.message);
+  }
+  logger.info('=== SERVIDOR LISTO ===');
 });

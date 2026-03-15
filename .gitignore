@@ -4,3 +4,7 @@ dist/
 *.local
 server/agents/*.json
 server/skills/
+server/bots.json
+server/logs.json
+server/server.log
+server/memory/
