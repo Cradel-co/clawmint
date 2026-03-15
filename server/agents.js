@@ -23,13 +23,29 @@ class AgentManager {
       if (fs.existsSync(AGENTS_FILE)) {
         const data = JSON.parse(fs.readFileSync(AGENTS_FILE, 'utf8')) || [];
         for (const a of data) this.agents.set(a.key, a);
-        return;
+      } else {
+        // Primera vez: cargar defaults
+        for (const a of DEFAULT_AGENTS) this.agents.set(a.key, { ...a });
+        this._save();
       }
     } catch { /* ignorar */ }
 
-    // Primera vez: cargar defaults
-    for (const a of DEFAULT_AGENTS) this.agents.set(a.key, { ...a });
-    this._save();
+    // Cargar agentes privados desde server/agents/ (tienen prioridad)
+    this._loadFromFolder();
+  }
+
+  _loadFromFolder() {
+    const dir = path.join(__dirname, 'agents');
+    if (!fs.existsSync(dir)) return;
+    for (const file of fs.readdirSync(dir)) {
+      if (!file.endsWith('.json')) continue;
+      try {
+        const data = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
+        if (data.key) this.agents.set(data.key, data);
+      } catch (err) {
+        console.error(`[Agents] No se pudo cargar ${file}:`, err.message);
+      }
+    }
   }
 
   _save() {
@@ -48,19 +64,20 @@ class AgentManager {
     return this.agents.get(key);
   }
 
-  add(key, command, description = '') {
+  add(key, command, description = '', prompt = '') {
     if (!/^[a-zA-Z0-9_-]+$/.test(key)) throw new Error('key inválida (solo letras, números, _ y -)');
-    const agent = { key, command: command || null, description };
+    const agent = { key, command: command || null, description, prompt };
     this.agents.set(key, agent);
     this._save();
     return agent;
   }
 
-  update(key, { command, description }) {
+  update(key, { command, description, prompt }) {
     const agent = this.agents.get(key);
     if (!agent) throw new Error(`Agente "${key}" no encontrado`);
     if (command !== undefined) agent.command = command || null;
     if (description !== undefined) agent.description = description;
+    if (prompt !== undefined) agent.prompt = prompt;
     this._save();
     return agent;
   }
@@ -78,7 +95,7 @@ const manager = new AgentManager();
 module.exports = {
   list:   ()                        => manager.list(),
   get:    (key)                     => manager.get(key),
-  add:    (key, command, desc)      => manager.add(key, command, desc),
+  add:    (key, command, desc, prompt) => manager.add(key, command, desc, prompt),
   update: (key, opts)               => manager.update(key, opts),
   remove: (key)                     => manager.remove(key),
 };

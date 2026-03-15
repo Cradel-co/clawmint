@@ -103,9 +103,67 @@ function ChatRow({ botKey, chat, onOpenSession, onRefresh }) {
   );
 }
 
+function AccessConfig({ bot, onRefresh }) {
+  const [ids, setIds] = useState((bot.whitelist || []).join(', '));
+  const [limit, setLimit] = useState(bot.rateLimit ?? 30);
+  const [keyword, setKeyword] = useState(bot.rateLimitKeyword || '');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    const whitelist = ids.split(',').map(s => Number(s.trim())).filter(Boolean);
+    await fetch(`${API}/bots/${bot.key}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ whitelist, rateLimit: Number(limit), rateLimitKeyword: keyword }),
+    });
+    setSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+    onRefresh();
+  };
+
+  return (
+    <div className="access-config">
+      <h4>🔒 Control de acceso</h4>
+      <label>IDs de Telegram permitidos <span>(separados por coma — vacío = todos)</span></label>
+      <input
+        value={ids}
+        onChange={e => setIds(e.target.value)}
+        placeholder="123456789, 987654321"
+      />
+      <label>Límite de mensajes por hora <span>(0 = sin límite)</span></label>
+      <input
+        type="number"
+        min="0"
+        value={limit}
+        onChange={e => setLimit(e.target.value)}
+      />
+      <label>Palabra clave de emergencia <span>(enviar al bot para resetear el límite)</span></label>
+      <input
+        value={keyword}
+        onChange={e => setKeyword(e.target.value)}
+        placeholder="misecreta123"
+      />
+      <button onClick={save} disabled={saving}>
+        {saved ? '✅ Guardado' : saving ? 'Guardando…' : 'Guardar'}
+      </button>
+    </div>
+  );
+}
+
 function BotCard({ bot, onOpenSession, onRefresh }) {
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [allAgents, setAllAgents] = useState([]);
+
+  useEffect(() => {
+    fetch('http://localhost:3001/api/agents')
+      .then(r => r.json())
+      .then(data => setAllAgents(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
 
   const handleStart = async () => {
     setLoading(true);
@@ -132,14 +190,13 @@ function BotCard({ bot, onOpenSession, onRefresh }) {
     } catch { /* ignorar */ } finally { setLoading(false); }
   };
 
-  const handleToggleAgent = async (e) => {
+  const handleChangeAgent = async (e) => {
     e.stopPropagation();
-    const next = bot.defaultAgent === 'cc' ? 'claude' : 'cc';
     try {
       await fetch(`${API}/bots/${bot.key}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ defaultAgent: next }),
+        body: JSON.stringify({ defaultAgent: e.target.value }),
       });
       onRefresh();
     } catch { /* ignorar */ }
@@ -154,13 +211,19 @@ function BotCard({ bot, onOpenSession, onRefresh }) {
           {bot.botInfo && (
             <span className="tg-bot-username">@{bot.botInfo.username}</span>
           )}
-          <button
-            className={`tg-agent-chip ${bot.defaultAgent === 'cc' ? 'cc' : ''}`}
-            onClick={handleToggleAgent}
-            title={`Agente: ${bot.defaultAgent} — click para cambiar`}
+          <select
+            className="tg-agent-select"
+            value={bot.defaultAgent || 'claude'}
+            onChange={handleChangeAgent}
+            onClick={e => e.stopPropagation()}
+            title="Agente por defecto"
           >
-            {bot.defaultAgent || 'claude'}
-          </button>
+            {allAgents.map(a => (
+              <option key={a.key} value={a.key}>
+                {a.key}{a.prompt ? ' 🎭' : ''}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="tg-bot-actions" onClick={e => e.stopPropagation()}>
           {bot.running ? (
@@ -196,6 +259,7 @@ function BotCard({ bot, onOpenSession, onRefresh }) {
               onRefresh={onRefresh}
             />
           ))}
+          <AccessConfig bot={bot} onRefresh={onRefresh} />
         </div>
       )}
     </div>

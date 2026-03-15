@@ -3,6 +3,7 @@ import TabBar from './components/TabBar.jsx';
 import CommandBar from './components/CommandBar.jsx';
 import TerminalPanel from './components/TerminalPanel.jsx';
 import TelegramPanel from './components/TelegramPanel.jsx';
+import AgentsPanel from './components/AgentsPanel.jsx';
 import './App.css';
 
 const WS_URL = 'ws://localhost:3001';
@@ -26,6 +27,7 @@ export default function App() {
   const [activeId, setActiveId] = useState(1);
   const [telegramOpen, setTelegramOpen] = useState(false);
   const [telegramChatsCount, setTelegramChatsCount] = useState(0);
+  const [agentsOpen, setAgentsOpen] = useState(false);
 
   // Mapa: httpSessionId → frontendTabId
   const httpIdToTabId = useRef(new Map());
@@ -126,8 +128,15 @@ export default function App() {
 
         <div className="header-right">
           <button
+            className={`telegram-btn ${agentsOpen ? 'active' : ''}`}
+            onClick={() => { setAgentsOpen(v => !v); setTelegramOpen(false); }}
+            title="Agentes personalizados"
+          >
+            🎭
+          </button>
+          <button
             className={`telegram-btn ${telegramOpen ? 'active' : ''}`}
-            onClick={() => setTelegramOpen(v => !v)}
+            onClick={() => { setTelegramOpen(v => !v); setAgentsOpen(false); }}
             title="Panel de Telegram"
           >
             🤖
@@ -167,6 +176,10 @@ export default function App() {
             onClose={() => setTelegramOpen(false)}
             onOpenSession={handleOpenSession}
           />
+        )}
+
+        {agentsOpen && (
+          <AgentsPanel onClose={() => setAgentsOpen(false)} />
         )}
       </div>
     </div>

@@ -8,7 +8,10 @@ const Anthropic = require('@anthropic-ai/sdk');
 const sessionManager = require('./sessionManager');
 const telegram = require('./telegram');
 const agents = require('./agents');
+const skills = require('./skills');
 const events = require('./events');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 app.use(cors());
@@ -133,12 +136,12 @@ app.get('/api/agents', (_req, res) => {
 });
 
 // POST /api/agents — crear agente
-// Body: { key, command?, description? }
+// Body: { key, command?, description?, prompt? }
 app.post('/api/agents', (req, res) => {
-  const { key, command, description } = req.body || {};
+  const { key, command, description, prompt } = req.body || {};
   if (!key) return res.status(400).json({ error: 'key requerida' });
   try {
-    const agent = agents.add(key, command, description);
+    const agent = agents.add(key, command, description, prompt);
     res.status(201).json(agent);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -160,6 +163,49 @@ app.patch('/api/agents/:key', (req, res) => {
 app.delete('/api/agents/:key', (req, res) => {
   const ok = agents.remove(req.params.key);
   if (!ok) return res.status(404).json({ error: 'Agente no encontrado' });
+  res.json({ ok: true });
+});
+
+// ─── Skills API ───────────────────────────────────────────────────────────────
+
+// GET /api/skills — lista skills instalados
+app.get('/api/skills', (_req, res) => res.json(skills.listSkills()));
+
+// POST /api/skills/install — descarga un skill directamente desde clawhub.ai API
+app.post('/api/skills/install', async (req, res) => {
+  const { slug } = req.body || {};
+  if (!slug || !/^[a-z0-9_-]+$/.test(slug))
+    return res.status(400).json({ error: 'slug inválido' });
+  try {
+    const response = await fetch(`https://clawhub.ai/api/v1/skills/${slug}/file?path=SKILL.md`);
+    if (!response.ok) throw new Error(`ClawHub respondió ${response.status}`);
+    const content = await response.text();
+    const dir = path.join(skills.SKILLS_DIR, slug);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'SKILL.md'), content, 'utf8');
+    res.json({ ok: true, slug });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/skills/search?q=query — buscar skills en ClawHub
+app.get('/api/skills/search', async (req, res) => {
+  const q = (req.query.q || '').trim();
+  if (!q) return res.status(400).json({ error: 'Parámetro q requerido' });
+  try {
+    const results = await skills.searchClawHub(q);
+    res.json(results);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/skills/:slug — elimina un skill instalado
+app.delete('/api/skills/:slug', (req, res) => {
+  const dir = path.join(skills.SKILLS_DIR, req.params.slug);
+  if (!fs.existsSync(dir)) return res.status(404).json({ error: 'Skill no encontrado' });
+  fs.rmSync(dir, { recursive: true });
   res.json({ ok: true });
 });
 
@@ -201,19 +247,18 @@ app.post('/api/telegram/bots/:key/start', async (req, res) => {
   }
 });
 
-// PATCH /api/telegram/bots/:key — actualizar config del bot (ej: defaultAgent)
-// Body: { defaultAgent }
+// PATCH /api/telegram/bots/:key — actualizar config del bot
+// Body: { defaultAgent?, whitelist?, rateLimit? }
 app.patch('/api/telegram/bots/:key', (req, res) => {
-  const { defaultAgent } = req.body || {};
-  if (defaultAgent !== undefined) {
-    try {
-      const bot = telegram.setBotAgent(req.params.key, defaultAgent);
-      return res.json(bot);
-    } catch (err) {
-      return res.status(404).json({ error: err.message });
-    }
-  }
-  res.status(400).json({ error: 'Nada que actualizar' });
+  const bot = telegram.getBot(req.params.key);
+  if (!bot) return res.status(404).json({ error: 'Bot no encontrado' });
+  const { defaultAgent, whitelist, rateLimit, rateLimitKeyword } = req.body || {};
+  if (defaultAgent !== undefined) bot.setDefaultAgent(defaultAgent);
+  if (whitelist !== undefined) bot.setWhitelist(whitelist);
+  if (rateLimit !== undefined) bot.setRateLimit(rateLimit);
+  if (rateLimitKeyword !== undefined) bot.setRateLimitKeyword(rateLimitKeyword);
+  telegram.saveBots();
+  res.json(bot.toJSON());
 });
 
 // POST /api/telegram/bots/:key/stop — detener bot
