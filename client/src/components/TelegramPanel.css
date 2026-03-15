@@ -373,6 +373,24 @@
 }
 .tg-icon-btn:hover { opacity: 0.7; }
 
+/* ─── Agent select ────────────────────────────────────────────────────────── */
+
+.tg-agent-select {
+  background: #2a2a2a;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  color: #aaa;
+  font-size: 11px;
+  padding: 2px 6px;
+  cursor: pointer;
+  font-family: monospace;
+  outline: none;
+  max-width: 110px;
+}
+
+.tg-agent-select:focus { border-color: #667eea; color: #e0e0e0; }
+.tg-agent-select option { background: #1a1a1a; }
+
 /* ─── Agent chip ──────────────────────────────────────────────────────────── */
 
 .tg-agent-chip {
@@ -454,3 +472,57 @@
   border: 1px solid #29b6f644;
 }
 .tg-btn-link-active:hover:not(:disabled) { background: #29b6f633; }
+
+/* ─── Access config ───────────────────────────────────────────────────────── */
+
+.access-config {
+  border-top: 1px solid #333;
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.access-config h4 {
+  margin: 0 0 10px;
+  font-size: 0.85rem;
+  color: #aaa;
+}
+
+.access-config label {
+  display: block;
+  font-size: 0.75rem;
+  color: #888;
+  margin-bottom: 4px;
+}
+
+.access-config label span {
+  color: #555;
+  font-size: 0.7rem;
+}
+
+.access-config input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #eee;
+  padding: 6px 8px;
+  font-size: 0.8rem;
+  margin-bottom: 10px;
+}
+
+.access-config button {
+  float: right;
+  background: #2a4a2a;
+  border: 1px solid #3a6a3a;
+  border-radius: 4px;
+  color: #8fc88f;
+  padding: 5px 14px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.access-config button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

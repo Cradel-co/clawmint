@@ -2,3 +2,5 @@ node_modules/
 dist/
 .env
 *.local
+server/agents/*.json
+server/skills/
