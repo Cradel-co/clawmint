@@ -95,7 +95,7 @@ class PtySession {
    * @param {string} text
    * @param {{ timeout?: number, stableMs?: number }} opts
    */
-  sendMessage(text, { timeout = 30000, stableMs = 1500 } = {}) {
+  sendMessage(text, { timeout = 1080000, stableMs = 1500 } = {}) {
     return new Promise((resolve) => {
       const accumulated = [];
       let stableTimer = null;
