@@ -303,12 +303,13 @@ class ClaudePrintSession {
               if (onChunk) onChunk(fullText);
             }
           }
-          // assistant event con texto acumulado (fallback)
+          // assistant event con texto acumulado (fallback solo si streaming no dio nada)
           else if (event.type === 'assistant') {
             const content = event.message?.content;
             if (Array.isArray(content)) {
               const textBlock = content.find(b => b.type === 'text');
-              if (textBlock?.text && textBlock.text.length > fullText.length) {
+              // Solo usar si los deltas no produjeron nada (evita mezclar turnos anteriores)
+              if (textBlock?.text && !fullText) {
                 fullText = textBlock.text;
                 if (onChunk) onChunk(fullText);
               }
@@ -321,7 +322,8 @@ class ClaudePrintSession {
           }
           // result event: texto final definitivo + metadatos
           else if (event.type === 'result') {
-            if (event.result) fullText = event.result;
+            // Solo usar como fallback; el streaming acumulado es más confiable
+            if (event.result && !fullText) fullText = event.result;
             if (event.session_id) this.claudeSessionId = event.session_id;
             if (event.cwd) this.cwd = event.cwd;
             if (event.total_cost_usd != null) {
