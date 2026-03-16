@@ -64,20 +64,25 @@ class AgentManager {
     return this.agents.get(key);
   }
 
-  add(key, command, description = '', prompt = '') {
+  add(key, command, description = '', prompt = '', provider = '') {
     if (!/^[a-zA-Z0-9_-]+$/.test(key)) throw new Error('key inválida (solo letras, números, _ y -)');
     const agent = { key, command: command || null, description, prompt };
+    if (provider) agent.provider = provider;
     this.agents.set(key, agent);
     this._save();
     return agent;
   }
 
-  update(key, { command, description, prompt }) {
+  update(key, { command, description, prompt, provider }) {
     const agent = this.agents.get(key);
     if (!agent) throw new Error(`Agente "${key}" no encontrado`);
     if (command !== undefined) agent.command = command || null;
     if (description !== undefined) agent.description = description;
     if (prompt !== undefined) agent.prompt = prompt;
+    if (provider !== undefined) {
+      if (provider) agent.provider = provider;
+      else delete agent.provider;
+    }
     this._save();
     return agent;
   }
@@ -95,7 +100,7 @@ const manager = new AgentManager();
 module.exports = {
   list:   ()                        => manager.list(),
   get:    (key)                     => manager.get(key),
-  add:    (key, command, desc, prompt) => manager.add(key, command, desc, prompt),
+  add:    (key, command, desc, prompt, provider) => manager.add(key, command, desc, prompt, provider),
   update: (key, opts)               => manager.update(key, opts),
   remove: (key)                     => manager.remove(key),
 };
