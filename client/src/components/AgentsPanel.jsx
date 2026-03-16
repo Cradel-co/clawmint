@@ -237,7 +237,7 @@ export default function AgentsPanel({ onClose }) {
         {agents.length === 0 && !showForm && (
           <div className="ap-empty-state">
             <p>Sin agentes configurados</p>
-            <p className="ap-empty-hint">Creá un agente con un prompt de rol para usarlo en Telegram con /<key></p>
+            <p className="ap-empty-hint">Creá un agente con un prompt de rol para usarlo en Telegram con /{'<key>'}</p>
           </div>
         )}
 

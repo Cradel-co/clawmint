@@ -159,6 +159,79 @@ function httpsPost(urlPath, body, timeoutMs = 35000) {
   });
 }
 
+// ─── Audio: descarga + transcripción ─────────────────────────────────────────
+
+/**
+ * Descarga un archivo binario por HTTPS y lo guarda en disco.
+ * Retorna la ruta local del archivo descargado.
+ */
+function httpsDownload(url, destPath) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const options = {
+      hostname: parsed.hostname,
+      path: parsed.pathname + parsed.search,
+      method: 'GET',
+      family: 4,
+    };
+    const req = https.request(options, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        return httpsDownload(res.headers.location, destPath).then(resolve, reject);
+      }
+      if (res.statusCode !== 200) {
+        return reject(new Error(`Download failed: HTTP ${res.statusCode}`));
+      }
+      const ws = fs.createWriteStream(destPath);
+      res.pipe(ws);
+      ws.on('finish', () => { ws.close(); resolve(destPath); });
+      ws.on('error', reject);
+    });
+    req.setTimeout(30000, () => { req.destroy(new Error('Download timeout')); });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+/**
+ * Transcribe un archivo de audio usando faster-whisper (CTranslate2).
+ * @param {string} filePath - ruta al archivo OGG/MP3/WAV
+ * @returns {Promise<string>} texto transcrito
+ */
+function transcribeAudio(filePath) {
+  return new Promise((resolve, reject) => {
+    const pythonBin = path.join(process.env.HOME, '.venvs', 'whisper', 'bin', 'python3');
+    const script = `
+import sys
+from faster_whisper import WhisperModel
+model = WhisperModel("medium", device="cpu", compute_type="int8")
+segments, _ = model.transcribe(sys.argv[1], language="es", beam_size=5)
+print(" ".join(s.text.strip() for s in segments))
+`;
+    const child = spawn(pythonBin, ['-c', script, filePath], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 300000,
+    });
+
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', chunk => { stdout += chunk; });
+    child.stderr.on('data', chunk => { stderr += chunk; });
+
+    child.on('close', (exitCode) => {
+      if (exitCode !== 0) {
+        return reject(new Error(`faster-whisper salió con código ${exitCode}: ${stderr.slice(0, 300)}`));
+      }
+      const text = stdout.trim();
+      if (!text) {
+        return reject(new Error('No se pudo extraer texto del audio'));
+      }
+      resolve(text);
+    });
+
+    child.on('error', reject);
+  });
+}
+
 // ─── ClaudePrintSession (modo no-interactivo via `claude -p`) ─────────────────
 
 class ClaudePrintSession {
@@ -173,6 +246,7 @@ class ClaudePrintSession {
     this.totalCostUsd = 0;        // costo acumulado de la sesión
     this.lastCostUsd = 0;         // costo del último mensaje
     this.claudeSessionId = null;  // session_id interno de claude
+    this.cwd = process.env.HOME;  // directorio de trabajo de la sesión
   }
 
   async sendMessage(text, onChunk = null) {
@@ -240,14 +314,16 @@ class ClaudePrintSession {
               }
             }
           }
-          // system event: capturar modelo activo
-          else if (event.type === 'system' && event.model) {
-            this.model = this.model || event.model;
+          // system event: capturar modelo activo y cwd
+          else if (event.type === 'system') {
+            if (event.model) this.model = this.model || event.model;
+            if (event.cwd) this.cwd = event.cwd;
           }
           // result event: texto final definitivo + metadatos
           else if (event.type === 'result') {
             if (event.result) fullText = event.result;
             if (event.session_id) this.claudeSessionId = event.session_id;
+            if (event.cwd) this.cwd = event.cwd;
             if (event.total_cost_usd != null) {
               this.lastCostUsd = event.total_cost_usd - this.totalCostUsd;
               this.totalCostUsd = event.total_cost_usd;
@@ -307,6 +383,7 @@ class TelegramBot {
   setWhitelist(ids) { this.whitelist = ids.map(Number).filter(Boolean); }
   setRateLimit(n)   { this.rateLimit = Math.max(0, parseInt(n, 10) || 0); }
   setRateLimitKeyword(kw) { this.rateLimitKeyword = (kw || '').trim(); }
+
 
   _isAllowed(chatId) {
     if (this.whitelist.length === 0) return true;
@@ -396,8 +473,64 @@ class TelegramBot {
       return;
     }
     const msg = update.message;
-    if (!msg || !msg.text) return;
+    if (!msg) return;
+
+    // Voice/audio message → transcribir y tratar como texto
+    if (msg.voice || msg.audio) {
+      await this._handleVoiceMessage(msg);
+      return;
+    }
+
+    if (!msg.text) return;
     await this._handleMessage(msg);
+  }
+
+  async _handleVoiceMessage(msg) {
+    const chatId = msg.chat.id;
+
+    if (!this._isAllowed(chatId)) {
+      await this.sendText(chatId, '⛔ No tenés acceso a este bot.');
+      return;
+    }
+
+    const fileId = msg.voice?.file_id || msg.audio?.file_id;
+    const duration = msg.voice?.duration || msg.audio?.duration || 0;
+
+    if (duration > 300) {
+      await this.sendText(chatId, '⚠️ El audio es muy largo (máx 5 min).');
+      return;
+    }
+
+    try {
+      // 1. Obtener ruta del archivo en Telegram
+      const fileInfo = await this._apiCall('getFile', { file_id: fileId });
+      const fileUrl = `https://api.telegram.org/file/bot${this.token}/${fileInfo.file_path}`;
+
+      // 2. Descargar a /tmp
+      const tmpFile = path.join(os.tmpdir(), `clawmint_voice_${Date.now()}.ogg`);
+      await httpsDownload(fileUrl, tmpFile);
+
+      // 3. Transcribir con Whisper local
+      await this.sendText(chatId, '🎙️ Transcribiendo audio...');
+      const text = await transcribeAudio(tmpFile);
+
+      // 4. Limpiar archivo temporal
+      try { fs.unlinkSync(tmpFile); } catch {}
+
+      if (!text || !text.trim()) {
+        await this.sendText(chatId, '⚠️ No se pudo extraer texto del audio.');
+        return;
+      }
+
+      console.log(`[Telegram:${this.key}] Audio transcrito de ${chatId}: ${text.slice(0, 60)}`);
+
+      // 5. Inyectar como mensaje de texto normal
+      msg.text = text;
+      await this._handleMessage(msg);
+    } catch (err) {
+      console.error(`[Telegram:${this.key}] Error procesando audio:`, err.message);
+      await this.sendText(chatId, `❌ Error al procesar audio: ${err.message}`);
+    }
   }
 
   async _handleMessage(msg) {
@@ -653,6 +786,22 @@ class TelegramBot {
         break;
       }
 
+      // ── Directorio ────────────────────────────────────────────────────────
+      case 'dir':
+      case 'pwd':
+      case 'cwd':
+      case 'directorio': {
+        const sessionCwd = this._isClaudeBased() && chat.claudeSession
+          ? chat.claudeSession.cwd
+          : null;
+        const monitorCwd = chat.monitorCwd || process.env.HOME;
+        let lines = `📁 *Directorio de trabajo*\n\n`;
+        lines += `Sesión Claude: \`${sessionCwd || 'sin sesión activa'}\`\n`;
+        lines += `Monitor: \`${monitorCwd}\``;
+        await this.sendText(chatId, lines);
+        break;
+      }
+
       // ── Agentes con prompt (roles) ────────────────────────────────────────
       case 'agentes': {
         const roleAgents = agentsModule.list().filter(a => a.prompt);
@@ -724,7 +873,8 @@ class TelegramBot {
           `/permisos [modo] — ver/cambiar modo (auto/ask/plan)\n` +
           `/costo — costo de la sesión\n` +
           `/estado — estado detallado\n` +
-          `/memoria — ver archivos de memoria\n\n` +
+          `/memoria — ver archivos de memoria\n` +
+          `/dir — directorio de trabajo (alias: /pwd)\n\n` +
           `*Agentes de rol:*\n` +
           `/agentes — listar agentes con prompt\n` +
           `/<key> — activar agente de rol\n` +
@@ -737,6 +887,8 @@ class TelegramBot {
           `*Monitor:*\n` +
           `/consola — modo consola bash (toggle)\n` +
           `/status-vps — CPU, RAM y disco\n\n` +
+          `*Audio:*\n` +
+          `🎙️ Enviá un audio de voz y se transcribe automáticamente\n\n` +
           `*Bot:*\n` +
           `/agente [key] — ver/cambiar agente\n` +
           `/ayuda — esta ayuda`
@@ -839,6 +991,81 @@ class TelegramBot {
         }
         const lines = list.map(s => `• \`${s.slug}\` — ${s.name}${s.description ? `\n  _${s.description.slice(0, 80)}_` : ''}`).join('\n');
         await this.sendText(chatId, `🔧 *Skills instalados* (${list.length})\n\n${lines}`);
+        break;
+      }
+
+      // ── Monitor ───────────────────────────────────────────────────────────
+      case 'monitor': {
+        const cwd = chat.monitorCwd || process.env.HOME;
+        await this.sendText(chatId,
+          `🖥️ *Monitor VPS*\n\n` +
+          `Directorio: \`${cwd}\`\n\n` +
+          `*Navegación:*\n` +
+          `/ls — listar directorio actual\n` +
+          `/dir — ver ruta actual (alias: /pwd)\n` +
+          `/cat archivo — ver contenido\n` +
+          `/mkdir nombre — crear carpeta\n\n` +
+          `*Sistema:*\n` +
+          `/status-vps — CPU, RAM y disco`
+        );
+        break;
+      }
+
+      case 'ls': {
+        let dir = chat.monitorCwd || process.env.HOME;
+        if (args.length > 0) dir = path.resolve(dir, args.join(' '));
+        try {
+          const stat = fs.statSync(dir);
+          if (!stat.isDirectory()) {
+            let content;
+            try { content = fs.readFileSync(dir, 'utf8'); }
+            catch { await this.sendText(chatId, `⚠️ Archivo binario o sin permisos: ${path.basename(dir)}`); break; }
+            const note = content.length > 3500 ? `\n[...truncado, ${content.length} chars total]` : '';
+            await this.sendText(chatId, `📄 ${path.basename(dir)}\n\n${content.slice(0, 3500)}${note}`);
+          } else {
+            chat.monitorCwd = dir;
+            await this.sendText(chatId, buildLsText(dir));
+          }
+        } catch (err) {
+          await this.sendText(chatId, `❌ Error: ${err.message}`);
+        }
+        break;
+      }
+
+      case 'cat': {
+        const filename = args.join(' ');
+        if (!filename) { await this.sendText(chatId, '❌ Usá /cat <nombre-archivo>'); break; }
+        const base     = chat.monitorCwd || process.env.HOME;
+        const filePath = path.resolve(base, filename);
+        try {
+          const stat = fs.statSync(filePath);
+          if (stat.isDirectory()) {
+            chat.monitorCwd = filePath;
+            await this.sendText(chatId, buildLsText(filePath));
+          } else {
+            let content;
+            try { content = fs.readFileSync(filePath, 'utf8'); }
+            catch { await this.sendText(chatId, `⚠️ Archivo binario o sin permisos: ${filename}`); break; }
+            const note = content.length > 3500 ? `\n[...truncado, ${content.length} chars total]` : '';
+            await this.sendText(chatId, `📄 ${filename}\n\n${content.slice(0, 3500)}${note}`);
+          }
+        } catch (err) {
+          await this.sendText(chatId, `❌ Error: ${err.message}`);
+        }
+        break;
+      }
+
+      case 'mkdir': {
+        const dirname = args.join(' ');
+        if (!dirname) { await this.sendText(chatId, '❌ Usá /mkdir <nombre>'); break; }
+        const base    = chat.monitorCwd || process.env.HOME;
+        const newPath = path.resolve(base, dirname);
+        try {
+          fs.mkdirSync(newPath, { recursive: true });
+          await this.sendText(chatId, `✅ Carpeta creada: \`${newPath}\``);
+        } catch (err) {
+          await this.sendText(chatId, `❌ Error: ${err.message}`);
+        }
         break;
       }
 
@@ -1163,19 +1390,33 @@ class TelegramBot {
 
           const finalText = cleanPtyOutput(response || '');
 
-          // Edición final garantizada con texto completo
-          if (sentMsg && finalText) {
-            try {
-              await this._apiCall('editMessageText', {
-                chat_id: chatId,
-                message_id: sentMsg.message_id,
-                text: finalText.slice(0, 4096),
-              });
-            } catch {
-              await this.sendText(chatId, response); // fallback: nuevo mensaje
+          // Enviar respuesta final: partir en bloques de 4096 si es necesario
+          if (finalText) {
+            const chunks = [];
+            for (let i = 0; i < finalText.length; i += 4096) {
+              chunks.push(finalText.slice(i, i + 4096));
             }
-          } else if (!sentMsg && response) {
-            await this.sendText(chatId, response);
+
+            if (sentMsg) {
+              // Primer bloque: editar el placeholder
+              try {
+                await this._apiCall('editMessageText', {
+                  chat_id: chatId,
+                  message_id: sentMsg.message_id,
+                  text: chunks[0],
+                });
+              } catch {
+                await this.sendText(chatId, chunks[0]);
+              }
+              // Bloques restantes: mensajes nuevos
+              for (let i = 1; i < chunks.length; i++) {
+                await this.sendText(chatId, chunks[i]);
+              }
+            } else {
+              for (const chunk of chunks) {
+                await this.sendText(chatId, chunk);
+              }
+            }
           }
         } catch (err) {
           console.error(`[Telegram:${this.key}] Error en sesión para chat ${chatId}:`, err.message);
@@ -1878,7 +2119,8 @@ class TelegramBot {
           `/permisos [modo] — ver/cambiar modo (auto/ask/plan)\n` +
           `/costo — costo de la sesión\n` +
           `/estado — estado detallado\n` +
-          `/memoria — ver archivos de memoria\n\n` +
+          `/memoria — ver archivos de memoria\n` +
+          `/dir — directorio de trabajo (alias: /pwd)\n\n` +
           `*Agentes de rol:*\n` +
           `/agentes — listar agentes con prompt\n` +
           `/<key> — activar agente de rol\n` +
@@ -1891,6 +2133,8 @@ class TelegramBot {
           `*Monitor:*\n` +
           `/consola — modo consola bash (toggle)\n` +
           `/status-vps — CPU, RAM y disco\n\n` +
+          `*Audio:*\n` +
+          `🎙️ Enviá un audio de voz y se transcribe automáticamente\n\n` +
           `*Bot:*\n` +
           `/agente [key] — ver/cambiar agente\n` +
           `/ayuda — esta ayuda`
