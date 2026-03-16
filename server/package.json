@@ -4,8 +4,8 @@
   "description": "Backend WebSocket + node-pty para terminal en tiempo real",
   "main": "index.js",
   "scripts": {
-    "start": "node --stack-size=65536 index.js",
-    "dev": "nodemon --exec 'node --stack-size=65536' index.js"
+    "start": "node --stack-size=65536 --env-file-if-exists=.env index.js",
+    "dev": "nodemon --exec 'node --stack-size=65536 --env-file-if-exists=.env' index.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
