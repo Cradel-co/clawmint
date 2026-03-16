@@ -1,0 +1,17 @@
+{
+  "default": "claude-code",
+  "providers": {
+    "anthropic": {
+      "apiKey": "",
+      "model": "claude-opus-4-6"
+    },
+    "gemini": {
+      "apiKey": "",
+      "model": "gemini-2.0-flash"
+    },
+    "openai": {
+      "apiKey": "",
+      "model": "gpt-4o"
+    }
+  }
+}

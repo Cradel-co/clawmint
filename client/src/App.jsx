@@ -4,22 +4,27 @@ import CommandBar from './components/CommandBar.jsx';
 import TerminalPanel from './components/TerminalPanel.jsx';
 import TelegramPanel from './components/TelegramPanel.jsx';
 import AgentsPanel from './components/AgentsPanel.jsx';
+import ProvidersPanel from './components/ProvidersPanel.jsx';
 import './App.css';
 
 const WS_URL = 'ws://localhost:3001';
 let nextId = 1;
 
-function createSession(command = null, type = 'pty', httpSessionId = null) {
+function createSession(command = null, type = 'pty', httpSessionId = null, provider = null) {
   const id = nextId++;
   let title;
-  if (type === 'claude') {
+  if (provider === 'gemini') {
+    title = `Gemini ${id}`;
+  } else if (provider === 'openai') {
+    title = `GPT ${id}`;
+  } else if (provider === 'anthropic' || type === 'claude') {
     title = `Claude ${id}`;
   } else if (command && command.startsWith('claude')) {
     title = `CC ${id}`;
   } else {
     title = command ? command.split(' ')[0] : `bash ${id}`;
   }
-  return { id, title, command, type, httpSessionId };
+  return { id, title, command, type, httpSessionId, provider };
 }
 
 export default function App() {
@@ -28,6 +33,7 @@ export default function App() {
   const [telegramOpen, setTelegramOpen] = useState(false);
   const [telegramChatsCount, setTelegramChatsCount] = useState(0);
   const [agentsOpen, setAgentsOpen] = useState(false);
+  const [providersOpen, setProvidersOpen] = useState(false);
 
   // Mapa: httpSessionId → frontendTabId
   const httpIdToTabId = useRef(new Map());
@@ -78,8 +84,8 @@ export default function App() {
     }
   }, [telegramOpen]);
 
-  const openNew = useCallback((command = null, type = 'pty', httpSessionId = null) => {
-    const session = createSession(command, type, httpSessionId);
+  const openNew = useCallback((command = null, type = 'pty', httpSessionId = null, provider = null) => {
+    const session = createSession(command, type, httpSessionId, provider);
     setSessions((prev) => [...prev, session]);
     setActiveId(session.id);
     return session;
@@ -128,15 +134,22 @@ export default function App() {
 
         <div className="header-right">
           <button
+            className={`telegram-btn ${providersOpen ? 'active' : ''}`}
+            onClick={() => { setProvidersOpen(v => !v); setAgentsOpen(false); setTelegramOpen(false); }}
+            title="Providers de IA"
+          >
+            ⚙️
+          </button>
+          <button
             className={`telegram-btn ${agentsOpen ? 'active' : ''}`}
-            onClick={() => { setAgentsOpen(v => !v); setTelegramOpen(false); }}
+            onClick={() => { setAgentsOpen(v => !v); setTelegramOpen(false); setProvidersOpen(false); }}
             title="Agentes personalizados"
           >
             🎭
           </button>
           <button
             className={`telegram-btn ${telegramOpen ? 'active' : ''}`}
-            onClick={() => { setTelegramOpen(v => !v); setAgentsOpen(false); }}
+            onClick={() => { setTelegramOpen(v => !v); setAgentsOpen(false); setProvidersOpen(false); }}
             title="Panel de Telegram"
           >
             🤖
@@ -155,7 +168,11 @@ export default function App() {
         onNew={() => openNew()}
       />
 
-      <CommandBar onCommand={openNew} onClaude={(sys) => openNew(sys || null, 'claude')} />
+      <CommandBar
+        onCommand={openNew}
+        onClaude={(sys) => openNew(sys || null, 'ai', null, 'anthropic')}
+        onAI={(provider, sys) => openNew(sys || null, 'ai', null, provider)}
+      />
 
       <div className="app-body-wrap">
         <main className="app-body">
@@ -180,6 +197,10 @@ export default function App() {
 
         {agentsOpen && (
           <AgentsPanel onClose={() => setAgentsOpen(false)} />
+        )}
+
+        {providersOpen && (
+          <ProvidersPanel onClose={() => setProvidersOpen(false)} />
         )}
       </div>
     </div>
