@@ -10,6 +10,7 @@ const sessionManager = require('./sessionManager');
 const agentsModule = require('./agents');
 const skillsModule = require('./skills');
 const memoryModule = require('./memory');
+const remindersModule = require('./reminders');
 const events = require('./events');
 
 // Cargar providers y config (pueden no estar disponibles en versiones viejas)
@@ -368,7 +369,8 @@ class TelegramBot {
     this._onOffsetSave = onOffsetSave;
     this.botInfo = null;
     this.defaultAgent = 'claude'; // key del agente por defecto
-    this.whitelist = [];          // array de chatIds permitidos (vacío = todos)
+    this.whitelist = [];          // array de chatIds de usuarios permitidos (vacío = todos)
+    this.groupWhitelist = [];     // array de chatIds de grupos permitidos (vacío = todos)
     this.rateLimit = 30;          // mensajes por hora (0 = sin límite)
     this.rateLimitKeyword = '';   // palabra clave para resetear rate limit ('' = deshabilitado)
     this.rateCounts = new Map();  // chatId → { count, windowStart }
@@ -381,13 +383,63 @@ class TelegramBot {
   }
 
   setWhitelist(ids) { this.whitelist = ids.map(Number).filter(Boolean); }
+  setGroupWhitelist(ids) { this.groupWhitelist = ids.map(Number).filter(Boolean); }
   setRateLimit(n)   { this.rateLimit = Math.max(0, parseInt(n, 10) || 0); }
   setRateLimitKeyword(kw) { this.rateLimitKeyword = (kw || '').trim(); }
 
+  addToWhitelist(chatId) {
+    const id = Number(chatId);
+    if (!id || this.whitelist.includes(id)) return false;
+    this.whitelist.push(id);
+    return true;
+  }
 
-  _isAllowed(chatId) {
+  removeFromWhitelist(chatId) {
+    const id = Number(chatId);
+    const idx = this.whitelist.indexOf(id);
+    if (idx === -1) return false;
+    this.whitelist.splice(idx, 1);
+    return true;
+  }
+
+  addToGroupWhitelist(groupId) {
+    const id = Number(groupId);
+    if (!id || this.groupWhitelist.includes(id)) return false;
+    this.groupWhitelist.push(id);
+    return true;
+  }
+
+  removeFromGroupWhitelist(groupId) {
+    const id = Number(groupId);
+    const idx = this.groupWhitelist.indexOf(id);
+    if (idx === -1) return false;
+    this.groupWhitelist.splice(idx, 1);
+    return true;
+  }
+
+  _isGroup(chatType) {
+    return chatType === 'group' || chatType === 'supergroup';
+  }
+
+  _isAllowed(chatId, chatType) {
+    if (this._isGroup(chatType)) {
+      if (this.groupWhitelist.length === 0) return true;
+      return this.groupWhitelist.includes(chatId);
+    }
     if (this.whitelist.length === 0) return true;
     return this.whitelist.includes(chatId);
+  }
+
+  _isMentionedOrReply(msg) {
+    if (!this.botInfo) return false;
+    // Reply al bot
+    if (msg.reply_to_message && msg.reply_to_message.from?.id === this.botInfo.id) return true;
+    // Mención directa @bot
+    const text = msg.text || msg.caption || '';
+    if (text.includes(`@${this.botInfo.username}`)) return true;
+    // Comando (empieza con /)
+    if (text.startsWith('/')) return true;
+    return false;
   }
 
   _checkRateLimit(chatId) {
@@ -475,6 +527,11 @@ class TelegramBot {
     const msg = update.message;
     if (!msg) return;
 
+    const isGroup = this._isGroup(msg.chat.type);
+
+    // En grupos, solo responder si mencionan al bot, responden a su mensaje, o usan comando
+    if (isGroup && !this._isMentionedOrReply(msg)) return;
+
     // Voice/audio message → transcribir y tratar como texto
     if (msg.voice || msg.audio) {
       await this._handleVoiceMessage(msg);
@@ -488,8 +545,8 @@ class TelegramBot {
   async _handleVoiceMessage(msg) {
     const chatId = msg.chat.id;
 
-    if (!this._isAllowed(chatId)) {
-      await this.sendText(chatId, '⛔ No tenés acceso a este bot.');
+    if (!this._isAllowed(chatId, msg.chat.type)) {
+      await this.sendText(chatId, '⛔ No tenés acceso a este bot.', msg.message_id);
       return;
     }
 
@@ -535,16 +592,26 @@ class TelegramBot {
 
   async _handleMessage(msg) {
     const chatId = msg.chat.id;
-    const text = msg.text.trim();
+    const isGroup = this._isGroup(msg.chat.type);
+    const replyTo = isGroup ? msg.message_id : undefined;
+    let text = msg.text.trim();
+
+    // En grupos, quitar la mención @bot del texto
+    if (isGroup && this.botInfo?.username) {
+      text = text.replace(new RegExp(`@${this.botInfo.username}\\b`, 'gi'), '').trim();
+    }
 
     // /id siempre disponible, incluso sin whitelist
     if (text === '/id') {
-      await this.sendText(chatId, `🪪 Tu chat ID es: \`${chatId}\``);
+      const idMsg = isGroup
+        ? `🪪 Chat ID del grupo: \`${chatId}\`\nTu user ID: \`${msg.from.id}\``
+        : `🪪 Tu chat ID es: \`${chatId}\``;
+      await this.sendText(chatId, idMsg, replyTo);
       return;
     }
 
-    if (!this._isAllowed(chatId)) {
-      await this.sendText(chatId, '⛔ No tenés acceso a este bot.');
+    if (!this._isAllowed(chatId, msg.chat.type)) {
+      await this.sendText(chatId, '⛔ No tenés acceso a este bot.', replyTo);
       return;
     }
 
@@ -884,6 +951,9 @@ class TelegramBot {
           `/buscar-skill — buscar e instalar skills de ClawHub\n` +
           `/mcps — ver MCPs configurados\n` +
           `/buscar-mcp [query] — buscar e instalar MCPs de Smithery\n\n` +
+          `*Recordatorios:*\n` +
+          `/recordar <tiempo> <msg> — crear alarma\n` +
+          `/recordatorios — ver pendientes\n\n` +
           `*Monitor:*\n` +
           `/consola — modo consola bash (toggle)\n` +
           `/status-vps — CPU, RAM y disco\n\n` +
@@ -1161,6 +1231,67 @@ class TelegramBot {
             `_El contexto de conversación se mantiene._`
           );
         }
+        break;
+      }
+
+      // ── Recordatorios ─────────────────────────────────────────────────
+      case 'recordar':
+      case 'alarma':
+      case 'reminder': {
+        const raw = args.join(' ');
+        if (!raw) {
+          await this.sendText(chatId,
+            `⏰ *Recordatorio*\n\n` +
+            `Usá: /recordar <tiempo> <mensaje>\n\n` +
+            `Ejemplos:\n` +
+            `• \`/recordar 10m revisar el deploy\`\n` +
+            `• \`/recordar 2h llamar al cliente\`\n` +
+            `• \`/recordar 1d renovar dominio\`\n` +
+            `• \`/recordar 1h30m sacar la comida\`\n\n` +
+            `Unidades: \`s\` seg, \`m\` min, \`h\` horas, \`d\` días`
+          );
+          break;
+        }
+        // Extraer duración del inicio del texto
+        const durationMatch = raw.match(/^([\d]+\s*(?:s|seg|min|m|h|hs|d|dias?)\s*)+/i);
+        if (!durationMatch) {
+          await this.sendText(chatId, '❌ No pude entender la duración. Ejemplo: `/recordar 10m mensaje`');
+          break;
+        }
+        const durationStr = durationMatch[0];
+        const durationMs = remindersModule.parseDuration(durationStr);
+        if (!durationMs) {
+          await this.sendText(chatId, '❌ Duración inválida. Unidades: `s`, `m`, `h`, `d`');
+          break;
+        }
+        const reminderText = raw.slice(durationStr.length).trim() || '⏰ ¡Recordatorio!';
+        const reminder = remindersModule.add(chatId, this.key, reminderText, durationMs);
+        const remaining = remindersModule.formatRemaining(durationMs);
+        await this.sendWithButtons(chatId,
+          `✅ Recordatorio creado\n\n📝 _${reminderText}_\n⏰ En *${remaining}*`,
+          [[{ text: '❌ Cancelar', callback_data: `reminder_cancel:${reminder.id}` },
+            { text: '📋 Ver todos', callback_data: 'reminders_list' }]]
+        );
+        break;
+      }
+
+      case 'recordatorios':
+      case 'reminders':
+      case 'alarmas': {
+        const list = remindersModule.listForChat(chatId);
+        if (!list.length) {
+          await this.sendText(chatId, '📭 No tenés recordatorios pendientes.');
+          break;
+        }
+        const lines = list.map((r, i) => {
+          const remaining = remindersModule.formatRemaining(r.triggerAt - Date.now());
+          return `${i + 1}. 📝 _${r.text}_\n   ⏰ En *${remaining}* — \`${r.id}\``;
+        }).join('\n\n');
+        const buttons = list.map(r => [{ text: `❌ ${r.text.slice(0, 20)}`, callback_data: `reminder_cancel:${r.id}` }]);
+        await this.sendWithButtons(chatId,
+          `⏰ *Recordatorios pendientes* (${list.length})\n\n${lines}`,
+          buttons
+        );
         break;
       }
 
@@ -1964,7 +2095,8 @@ class TelegramBot {
     const msgId  = cbq.message?.message_id;
 
     // Whitelist check
-    if (!this._isAllowed(chatId)) {
+    const chatType = cbq.message?.chat?.type;
+    if (!this._isAllowed(chatId, chatType)) {
       await this._answerCallback(cbq.id, '⛔ Sin acceso');
       return;
     }
@@ -2073,6 +2205,29 @@ class TelegramBot {
       return;
     }
 
+    // Callbacks de recordatorios
+    if (data.startsWith('reminder_cancel:')) {
+      const reminderId = data.slice(16);
+      const ok = remindersModule.remove(reminderId);
+      await this.sendText(chatId, ok ? '✅ Recordatorio cancelado.' : '❌ Recordatorio no encontrado.');
+      return;
+    }
+
+    if (data === 'reminders_list') {
+      const list = remindersModule.listForChat(chatId);
+      if (!list.length) {
+        await this.sendText(chatId, '📭 No tenés recordatorios pendientes.');
+      } else {
+        const lines = list.map((r, i) => {
+          const remaining = remindersModule.formatRemaining(r.triggerAt - Date.now());
+          return `${i + 1}. 📝 _${r.text}_\n   ⏰ En *${remaining}*`;
+        }).join('\n\n');
+        const buttons = list.map(r => [{ text: `❌ ${r.text.slice(0, 20)}`, callback_data: `reminder_cancel:${r.id}` }]);
+        await this.sendWithButtons(chatId, `⏰ *Recordatorios pendientes* (${list.length})\n\n${lines}`, buttons);
+      }
+      return;
+    }
+
     switch (data) {
       case 'status_vps': {
         try {
@@ -2170,6 +2325,9 @@ class TelegramBot {
           `/buscar-skill — buscar e instalar skills de ClawHub\n` +
           `/mcps — ver MCPs configurados\n` +
           `/buscar-mcp [query] — buscar e instalar MCPs de Smithery\n\n` +
+          `*Recordatorios:*\n` +
+          `/recordar <tiempo> <msg> — crear alarma\n` +
+          `/recordatorios — ver pendientes\n\n` +
           `*Monitor:*\n` +
           `/consola — modo consola bash (toggle)\n` +
           `/status-vps — CPU, RAM y disco\n\n` +
@@ -2204,14 +2362,19 @@ class TelegramBot {
     }
   }
 
-  async sendText(chatId, text) {
+  async sendText(chatId, text, replyToMessageId) {
     const chunks = chunkText(stripAnsi(text), 4096);
     for (const chunk of chunks) {
       if (!chunk.trim()) continue;
+      const body = { chat_id: chatId, text: chunk, parse_mode: 'Markdown' };
+      if (replyToMessageId) body.reply_to_message_id = replyToMessageId;
       try {
-        await this._apiCall('sendMessage', { chat_id: chatId, text: chunk, parse_mode: 'Markdown' });
+        await this._apiCall('sendMessage', body);
       } catch {
-        try { await this._apiCall('sendMessage', { chat_id: chatId, text: chunk }); } catch (e2) {
+        try {
+          delete body.parse_mode;
+          await this._apiCall('sendMessage', body);
+        } catch (e2) {
           console.error(`[Telegram:${this.key}] No se pudo enviar a ${chatId}:`, e2.message);
         }
       }
@@ -2225,6 +2388,7 @@ class TelegramBot {
       botInfo: this.botInfo,
       defaultAgent: this.defaultAgent,
       whitelist: this.whitelist,
+      groupWhitelist: this.groupWhitelist,
       rateLimit: this.rateLimit,
       rateLimitKeyword: this.rateLimitKeyword,
       chats: [...this.chats.values()],
@@ -2244,13 +2408,19 @@ class BotManager {
   async loadAndStart() {
     const saved = this._readFile();
     for (const saved_entry of saved) {
-      const { key, token, defaultAgent, whitelist, rateLimit, rateLimitKeyword, offset } = saved_entry;
+      const { key, token, defaultAgent, whitelist, groupWhitelist, rateLimit, rateLimitKeyword, offset } = saved_entry;
       const bot = new TelegramBot(key, token, {
         initialOffset: offset || 0,
         onOffsetSave: () => this._saveFile(),
       });
       if (defaultAgent) bot.defaultAgent = defaultAgent;
-      if (whitelist) bot.whitelist = whitelist;
+      // Whitelist siempre desde .env (BOT_WHITELIST), no desde bots.json
+      const envWhitelist = (process.env.BOT_WHITELIST || '')
+        .split(',').map(s => s.trim()).filter(Boolean).map(Number);
+      bot.whitelist = envWhitelist.length ? envWhitelist : (whitelist || []);
+      const envGroupWhitelist = (process.env.BOT_GROUP_WHITELIST || '')
+        .split(',').map(s => s.trim()).filter(Boolean).map(Number);
+      bot.groupWhitelist = envGroupWhitelist.length ? envGroupWhitelist : (groupWhitelist || []);
       if (rateLimit !== undefined) bot.rateLimit = rateLimit;
       if (rateLimitKeyword !== undefined) bot.rateLimitKeyword = rateLimitKeyword;
       this.bots.set(key, bot);
@@ -2258,6 +2428,25 @@ class BotManager {
         await bot.start();
       } catch (err) {
         console.error(`[Telegram] No se pudo iniciar bot "${key}":`, err.message);
+      }
+    }
+
+    // Checker de recordatorios cada 30s
+    this._reminderInterval = setInterval(() => this._checkReminders(), 30_000);
+  }
+
+  async _checkReminders() {
+    const triggered = remindersModule.popTriggered();
+    for (const r of triggered) {
+      const bot = this.bots.get(r.botKey);
+      if (!bot || !bot.running) continue;
+      try {
+        await bot.sendWithButtons(r.chatId,
+          `🔔 *¡Recordatorio!*\n\n📝 ${r.text}`,
+          [[{ text: '✅ OK', callback_data: 'reminder_ack' }]]
+        );
+      } catch (err) {
+        console.error(`[Reminders] No se pudo enviar a ${r.chatId}:`, err.message);
       }
     }
   }
@@ -2334,12 +2523,15 @@ class BotManager {
 
       const whitelist = (process.env.BOT_WHITELIST || '')
         .split(',').map(s => s.trim()).filter(Boolean).map(Number);
+      const groupWhitelist = (process.env.BOT_GROUP_WHITELIST || '')
+        .split(',').map(s => s.trim()).filter(Boolean).map(Number);
 
       const entry = {
         key:               process.env.BOT_KEY               || 'dev',
         token,
         defaultAgent:      process.env.BOT_DEFAULT_AGENT      || 'claude',
         whitelist,
+        groupWhitelist,
         rateLimit:         parseInt(process.env.BOT_RATE_LIMIT) || 30,
         rateLimitKeyword:  process.env.BOT_RATE_LIMIT_KEYWORD  || '',
         offset:            0,
@@ -2365,6 +2557,7 @@ class BotManager {
       token: bot.token,
       defaultAgent: bot.defaultAgent,
       whitelist: bot.whitelist,
+      groupWhitelist: bot.groupWhitelist,
       rateLimit: bot.rateLimit,
       rateLimitKeyword: bot.rateLimitKeyword,
       offset: bot.offset,
