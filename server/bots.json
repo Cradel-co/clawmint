@@ -4,10 +4,12 @@
     "token": "8793100760:AAEo4lsXRtmx-pq0-A6RX8OErnwremWvsgw",
     "defaultAgent": "claude",
     "whitelist": [
-      7874537448
+      7874537448,
+      6264994612
     ],
+    "groupWhitelist": [],
     "rateLimit": 60,
     "rateLimitKeyword": "bbbot",
-    "offset": 101121849
+    "offset": 101121965
   }
 ]

@@ -105,6 +105,7 @@ function ChatRow({ botKey, chat, onOpenSession, onRefresh }) {
 
 function AccessConfig({ bot, onRefresh }) {
   const [ids, setIds] = useState((bot.whitelist || []).join(', '));
+  const [groupIds, setGroupIds] = useState((bot.groupWhitelist || []).join(', '));
   const [limit, setLimit] = useState(bot.rateLimit ?? 30);
   const [keyword, setKeyword] = useState(bot.rateLimitKeyword || '');
   const [saving, setSaving] = useState(false);
@@ -113,10 +114,11 @@ function AccessConfig({ bot, onRefresh }) {
   const save = async () => {
     setSaving(true);
     const whitelist = ids.split(',').map(s => Number(s.trim())).filter(Boolean);
+    const groupWhitelist = groupIds.split(',').map(s => Number(s.trim())).filter(Boolean);
     await fetch(`${API}/bots/${bot.key}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ whitelist, rateLimit: Number(limit), rateLimitKeyword: keyword }),
+      body: JSON.stringify({ whitelist, groupWhitelist, rateLimit: Number(limit), rateLimitKeyword: keyword }),
     });
     setSaving(false);
     setSaved(true);
@@ -127,11 +129,17 @@ function AccessConfig({ bot, onRefresh }) {
   return (
     <div className="access-config">
       <h4>🔒 Control de acceso</h4>
-      <label>IDs de Telegram permitidos <span>(separados por coma — vacío = todos)</span></label>
+      <label>IDs de usuarios permitidos <span>(separados por coma — vacío = todos)</span></label>
       <input
         value={ids}
         onChange={e => setIds(e.target.value)}
         placeholder="123456789, 987654321"
+      />
+      <label>IDs de grupos permitidos <span>(separados por coma — vacío = todos)</span></label>
+      <input
+        value={groupIds}
+        onChange={e => setGroupIds(e.target.value)}
+        placeholder="-1001234567890, -1009876543210"
       />
       <label>Límite de mensajes por hora <span>(0 = sin límite)</span></label>
       <input
