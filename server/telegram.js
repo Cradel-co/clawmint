@@ -373,6 +373,7 @@ class TelegramBot {
     this.whitelist = [];          // array de chatIds permitidos (vacío = todos)
     this.rateLimit = 30;          // mensajes por hora (0 = sin límite)
     this.rateLimitKeyword = '';   // palabra clave para resetear rate limit ('' = deshabilitado)
+    this.startGreeting = true;    // enviar saludo al arrancar
     this.rateCounts = new Map();  // chatId → { count, windowStart }
     /** @type {Map<number, object>} */
     this.chats = new Map();
@@ -437,6 +438,21 @@ class TelegramBot {
     this.running = true;
     this._poll();
     console.log(`[Telegram] Bot "${this.key}" iniciado: @${me.username}`);
+
+    // Saludar a los usuarios de la whitelist al arrancar
+    if (this.startGreeting && this.whitelist.length > 0) {
+      const greetings = [
+        '👋 Hola, estaba arreglando unas cosas. ¡Ya podemos conversar!',
+        '🔧 Estuve haciendo unos ajustes. ¡Ya estoy de vuelta!',
+        '⚡ De vuelta en línea. ¡Listo para conversar!',
+        '🛠️ Terminé con las actualizaciones. ¡Aquí estoy!',
+      ];
+      const msg = greetings[Math.floor(Math.random() * greetings.length)];
+      for (const chatId of this.whitelist) {
+        this.sendText(chatId, msg).catch(() => {});
+      }
+    }
+
     return { username: me.username };
   }
 
@@ -871,8 +887,8 @@ class TelegramBot {
           `/compact — compactar contexto\n` +
           `/bash — nueva sesión bash\n\n` +
           `*Claude Code:*\n` +
+          `/modo [ask|auto|plan] — ver/cambiar modo de permisos\n` +
           `/modelo [nombre] — ver/cambiar modelo\n` +
-          `/permisos [modo] — ver/cambiar modo (auto/ask/plan)\n` +
           `/costo — costo de la sesión\n` +
           `/estado — estado detallado\n` +
           `/memoria — ver archivos de memoria\n` +
@@ -893,6 +909,7 @@ class TelegramBot {
           `🎙️ Enviá un audio de voz y se transcribe automáticamente\n\n` +
           `*Bot:*\n` +
           `/agente [key] — ver/cambiar agente\n` +
+          `/provider [nombre] — ver/cambiar provider de IA\n` +
           `/ayuda — esta ayuda`
         );
         break;
@@ -1090,7 +1107,38 @@ class TelegramBot {
 
       // ── Modo / Provider ───────────────────────────────────────────────────
       case 'modo':
-      case 'mode':
+      case 'mode': {
+        if (!this._isClaudeBased(chat.provider)) {
+          await this.sendText(chatId, '❌ Solo disponible con Claude Code.');
+          break;
+        }
+        if (args.length === 0) {
+          const current = chat.claudeMode || 'ask';
+          await this.sendWithButtons(chatId,
+            `🔐 *Modo de permisos actual*: \`${current}\`\n\n` +
+            `• \`ask\` — describe herramientas sin ejecutarlas (por defecto)\n` +
+            `• \`auto\` — ejecuta todo sin pedir (rápido, puede ser peligroso)\n` +
+            `• \`plan\` — solo planifica, no ejecuta nada`,
+            [[
+              { text: current === 'ask'  ? '✅ ask'  : 'ask',   callback_data: 'claudemode:ask'  },
+              { text: current === 'auto' ? '✅ auto' : 'auto',  callback_data: 'claudemode:auto' },
+              { text: current === 'plan' ? '✅ plan' : 'plan',  callback_data: 'claudemode:plan' },
+            ],
+            [{ text: '🤖 Menú', callback_data: 'menu' }]]
+          );
+        } else {
+          const modo = args[0].toLowerCase();
+          if (!['ask', 'auto', 'plan'].includes(modo)) {
+            await this.sendText(chatId, `❌ Modo inválido. Usá: \`ask\`, \`auto\` o \`plan\``);
+            break;
+          }
+          chat.claudeMode = modo;
+          if (chat.claudeSession) chat.claudeSession.permissionMode = modo;
+          await this.sendText(chatId, `✅ Modo de permisos cambiado a \`${modo}\``);
+        }
+        break;
+      }
+
       case 'provider': {
         if (!providersModule) {
           await this.sendText(chatId, '❌ Módulo de providers no disponible.');
@@ -1186,6 +1234,24 @@ class TelegramBot {
   async _handlePendingAction(msg, text, chat) {
     const chatId = msg.chat.id;
     const action = chat.pendingAction;
+
+    // Whitelist: agregar ID
+    if (action.type === 'whitelist-add') {
+      const newId = parseInt(text.trim(), 10);
+      if (isNaN(newId)) {
+        await this.sendText(chatId, '❌ ID inválido. Tiene que ser un número. Usá /cancelar para cancelar.');
+        return;
+      }
+      chat.pendingAction = null;
+      if (!this.whitelist.includes(newId)) {
+        this.whitelist.push(newId);
+        this._onOffsetSave();
+        await this.sendText(chatId, `✅ \`${newId}\` agregado a la lista blanca.`);
+      } else {
+        await this.sendText(chatId, `ℹ️ \`${newId}\` ya estaba en la lista blanca.`);
+      }
+      return;
+    }
 
     // Paso 1: usuario describió su necesidad → buscar en ClawHub
     if (action.type === 'skill-search') {
@@ -1726,14 +1792,21 @@ class TelegramBot {
       // ── Raíz ──────────────────────────────────────────────────────────────
       'menu': {
         text: '🤖 *Menú principal*\n\nElegí una sección:',
-        buttons: () => [
-          [{ text: '💬 Sesión',   id: 'menu:sesion'  },
-           { text: '🔌 MCPs',     id: 'menu:mcps'    }],
-          [{ text: '🔧 Skills',   id: 'menu:skills'  },
-           { text: '🎭 Agentes',  id: 'menu:agentes' }],
-          [{ text: '🖥️ Monitor',  id: 'menu:monitor' },
-           { text: '⚙️ Config',   id: 'menu:config'  }],
-        ],
+        buttons: (chat) => {
+          const isClaudeCode = !chat?.provider || chat.provider === 'claude-code';
+          const rows = [
+            [{ text: '💬 Sesión',   id: 'menu:sesion'  },
+             { text: '🔌 MCPs',     id: 'menu:mcps'    }],
+            [{ text: '🔧 Skills',   id: 'menu:skills'  },
+             { text: '🎭 Agentes',  id: 'menu:agentes' }],
+            [{ text: '🖥️ Monitor',  id: 'menu:monitor' },
+             { text: '⚙️ Config',   id: 'menu:config'  }],
+          ];
+          if (isClaudeCode) {
+            rows.push([{ text: '🔐 Permisos', id: 'menu:config:permisos' }]);
+          }
+          return rows;
+        },
       },
 
       // ── Sesión ────────────────────────────────────────────────────────────
@@ -1892,15 +1965,14 @@ class TelegramBot {
       'menu:config': {
         text: (chat) => {
           const provider = chat?.provider || 'claude-code';
-          const mode = chat?.claudeMode || 'ask';
           const model = chat?.claudeSession?.model || 'default';
-          return `⚙️ *Configuración*\nProvider: \`${provider}\` | Permisos: \`${mode}\` | Modelo: \`${model}\``;
+          return `⚙️ *Configuración*\nProvider: \`${provider}\` | Modelo: \`${model}\``;
         },
         buttons: () => [
-          [{ text: '🤖 Provider',  id: 'menu:config:provider'  },
-           { text: '🔐 Permisos',  id: 'menu:config:permisos'  }],
-          [{ text: '🧠 Modelo',    id: 'menu:config:modelo'    },
-           { text: '← Menú',       id: 'menu'                  }],
+          [{ text: '🤖 Provider',  id: 'menu:config:provider'   },
+           { text: '🧠 Modelo',    id: 'menu:config:modelo'     }],
+          [{ text: '👥 Whitelist', id: 'menu:config:whitelist'  }],
+          [{ text: '← Menú',       id: 'menu'                   }],
         ],
       },
       'menu:config:provider': {
@@ -1948,15 +2020,40 @@ class TelegramBot {
         },
       },
 
+      // ── Whitelist ──────────────────────────────────────────────────────────
+      'menu:config:whitelist': {
+        action: async ({ chatId, msgId, bot }) => {
+          const list = bot.whitelist;
+          let text = `👥 *Lista blanca* (${list.length === 0 ? 'abierta a todos' : list.length + ' ID(s)'})\n\n`;
+          if (list.length > 0) {
+            text += list.map(id => `• \`${id}\``).join('\n') + '\n\n';
+          }
+          text += '_ID vacía = cualquiera puede usar el bot_';
+          const buttons = [];
+          if (list.length > 0) {
+            list.forEach(id => buttons.push([{
+              text: `❌ Eliminar ${id}`,
+              callback_data: `whitelist:remove:${id}`,
+            }]));
+          }
+          buttons.push([
+            { text: '➕ Agregar ID', callback_data: 'whitelist:add' },
+            { text: '← Config',     callback_data: 'menu:config'   },
+          ]);
+          await bot.sendWithButtons(chatId, text, buttons, msgId);
+        },
+      },
+
     }; // fin del objeto defs
 
     return defs[id] || null;
   }
 
   async _sendMenu(chatId, editMsgId = null) {
+    const chat = this.chats.get(chatId) || null;
     const def = this._getMenuDef('menu');
-    const text    = typeof def.text    === 'function' ? def.text(null) : def.text;
-    const rawRows = typeof def.buttons === 'function' ? def.buttons(null) : def.buttons;
+    const text    = typeof def.text    === 'function' ? def.text(chat) : def.text;
+    const rawRows = typeof def.buttons === 'function' ? def.buttons(chat) : def.buttons;
     await this.sendWithButtons(chatId, text, this._resolveButtons(rawRows, def.back), editMsgId);
   }
 
@@ -1999,6 +2096,27 @@ class TelegramBot {
     await this._answerCallback(cbq.id);
 
     const data = cbq.data || '';
+
+    // Whitelist: agregar / eliminar
+    if (data === 'whitelist:add') {
+      chat.pendingAction = { type: 'whitelist-add' };
+      await this.sendText(chatId,
+        '➕ *Agregar a la lista blanca*\n\n' +
+        'Enviá el chat ID (número) del usuario o grupo a autorizar.\n' +
+        '_Tip: pedile que te mande /id en el bot._\n\n' +
+        'Usá /cancelar para cancelar.'
+      );
+      return;
+    }
+
+    if (data.startsWith('whitelist:remove:')) {
+      const idToRemove = parseInt(data.slice(17), 10);
+      this.whitelist = this.whitelist.filter(id => id !== idToRemove);
+      this._onOffsetSave();
+      const def = this._getMenuDef('menu:config:whitelist');
+      await def.action({ chatId, msgId, chat, bot: this });
+      return;
+    }
 
     // Callbacks de consola
     if (data.startsWith('console:')) {
@@ -2246,7 +2364,7 @@ class BotManager {
   async loadAndStart() {
     const saved = this._readFile();
     for (const saved_entry of saved) {
-      const { key, token, defaultAgent, whitelist, rateLimit, rateLimitKeyword, offset } = saved_entry;
+      const { key, token, defaultAgent, whitelist, rateLimit, rateLimitKeyword, offset, startGreeting } = saved_entry;
       const bot = new TelegramBot(key, token, {
         initialOffset: offset || 0,
         onOffsetSave: () => this._saveFile(),
@@ -2255,6 +2373,7 @@ class BotManager {
       if (whitelist) bot.whitelist = whitelist;
       if (rateLimit !== undefined) bot.rateLimit = rateLimit;
       if (rateLimitKeyword !== undefined) bot.rateLimitKeyword = rateLimitKeyword;
+      if (startGreeting !== undefined) bot.startGreeting = startGreeting;
       this.bots.set(key, bot);
       try {
         await bot.start();
@@ -2369,6 +2488,7 @@ class BotManager {
       whitelist: bot.whitelist,
       rateLimit: bot.rateLimit,
       rateLimitKeyword: bot.rateLimitKeyword,
+      startGreeting: bot.startGreeting,
       offset: bot.offset,
     }));
     try {
