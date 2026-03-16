@@ -1,16 +1,119 @@
 # Clawmint
 
-Terminal en tiempo real accesible desde el navegador y desde Telegram. Combina sesiones PTY, streaming via WebSocket, una REST API completa y un bot de Telegram que actúa como frontend alternativo para Claude Code y otros agentes.
+Terminal en tiempo real accesible desde el navegador y desde Telegram. Combina sesiones PTY, streaming via WebSocket, una REST API completa y un bot de Telegram que actúa como frontend alternativo para Claude Code y otros agentes de IA.
+
+---
+
+## Índice
+
+- [Inicio rápido — desarrollo](#inicio-rápido--desarrollo)
+- [Inicio en producción](#inicio-en-producción)
+- [Documentación detallada](#documentación-detallada)
+- [Características](#características)
+- [Stack](#stack)
+- [Archivos excluidos del repo](#archivos-excluidos-del-repo)
+
+---
+
+## Inicio rápido — desarrollo
+
+### 1. Requisitos
+
+- Node.js 22+
+- [Claude Code CLI](https://claude.ai/download) instalado y autenticado (`claude`)
+- Token de bot de Telegram (opcional, para el módulo Telegram)
+
+### 2. Clonar e instalar
+
+```bash
+git clone git@github.com:Cradel-co/clawmint.git
+cd clawmint
+
+# Servidor
+cd server && npm install && cd ..
+
+# Cliente
+cd client && npm install && cd ..
+```
+
+### 3. Configurar el bot de Telegram (opcional)
+
+```bash
+cp server/.env.example server/.env
+# Editar server/.env con el token del bot de desarrollo
+```
+
+```env
+BOT_TOKEN=1234567890:AABBccDDeeFFggHH...
+BOT_KEY=dev
+BOT_DEFAULT_AGENT=claude
+BOT_WHITELIST=123456789
+BOT_RATE_LIMIT=30
+```
+
+Al primer arranque el servidor detecta que no existe `bots.json` y lo crea automáticamente desde las variables de entorno. En los arranques siguientes lo lee del archivo.
+
+### 4. Levantar
+
+```bash
+# Terminal 1 — servidor
+cd server && npm run dev
+
+# Terminal 2 — cliente (Vite con HMR)
+cd client && npm run dev
+```
+
+| Servicio | URL |
+|---|---|
+| Cliente | http://localhost:5173 |
+| API / WS | http://localhost:3001 |
+
+---
+
+## Inicio en producción
+
+### 1. Build del cliente
+
+```bash
+cd client && npm run build
+```
+
+Genera `client/dist/`. Servir con nginx, caddy o cualquier servidor estático apuntando a esa carpeta.
+
+### 2. Servidor con PM2
+
+```bash
+cd server
+pm2 start index.js --name clawmint-server
+pm2 save
+pm2 startup   # para que arranque con el sistema
+```
+
+> En producción `bots.json` se crea desde el panel web o la API REST. No se necesita `.env` si el archivo ya existe.
+
+---
+
+## Documentación detallada
+
+| Documento | Contenido |
+|---|---|
+| [documentacion/servidor.md](documentacion/servidor.md) | Módulos del servidor, API REST completa, providers, agentes, skills, memoria, Telegram |
+| [documentacion/cliente.md](documentacion/cliente.md) | Componentes React, WebSocket, paneles, build |
+
+---
 
 ## Características
 
-- **Terminal en el navegador** — xterm.js conectado por WebSocket a PTY real (`node-pty`)
-- **Bot de Telegram** — controla sesiones de Claude Code directamente desde Telegram con streaming progresivo
-- **Agentes de rol** — perfiles con prompt, modelo y archivos de memoria configurables
-- **Skills** — inyección de capacidades desde [ClawHub](https://clawhub.ai) con un comando
-- **Memoria por agente** — archivos de contexto persistente que se inyectan automáticamente
-- **Panel web** — gestión de bots, agentes, skills y memoria desde la UI
-- **REST API** — control completo de sesiones, agentes, bots y logs via HTTP
+- **Terminal en el navegador** — xterm.js conectado por WebSocket a PTY real (`node-pty`), con reconexión automática y backoff exponencial
+- **Bot de Telegram** — controla sesiones de Claude Code desde Telegram con streaming progresivo y comandos jerárquicos
+- **Múltiples providers de IA** — Anthropic, Gemini, OpenAI y Claude Code CLI, configurables por agente
+- **Agentes de rol** — perfiles con prompt, provider, modelo y archivos de memoria configurables
+- **Skills** — inyección de capacidades desde [ClawHub](https://clawhub.ai)
+- **Memoria por agente** — archivos de contexto persistente inyectados automáticamente
+- **Panel web** — gestión de bots, agentes, skills, providers y memoria desde la UI
+- **REST API** — control completo via HTTP
+
+---
 
 ## Stack
 
@@ -19,123 +122,23 @@ Terminal en tiempo real accesible desde el navegador y desde Telegram. Combina s
 | Runtime | Node.js 22+ |
 | HTTP / WS | Express 4 + `ws` |
 | Terminal | `node-pty` |
-| IA | `claude -p` (Claude Code CLI) + Anthropic SDK |
+| IA | Claude Code CLI + Anthropic/Gemini/OpenAI SDK |
 | Cliente | React 18 + Vite + xterm.js |
 | Mensajería | Telegram Bot API (long polling) |
-| Persistencia | JSON planos (`agents.json`, `bots.json`) |
+| Persistencia | JSON planos en `server/` |
 
-## Estructura
-
-```
-clawmint/
-├── server/
-│   ├── index.js          # HTTP, WebSocket, rutas REST
-│   ├── sessionManager.js # PtySession + pool de sesiones
-│   ├── telegram.js       # TelegramBot + ClaudePrintSession
-│   ├── agents.js         # CRUD de agentes
-│   ├── skills.js         # Skills locales + búsqueda ClawHub
-│   ├── memory.js         # Memoria persistente por agente
-│   └── events.js         # EventEmitter global
-└── client/
-    └── src/
-        ├── App.jsx
-        └── components/
-            ├── TerminalPanel.jsx
-            ├── TabBar.jsx
-            ├── AgentsPanel.jsx
-            └── TelegramPanel.jsx
-```
-
-## Instalación
-
-### Requisitos
-
-- Node.js 20+
-- [Claude Code CLI](https://claude.ai/download) instalado y autenticado (`claude`)
-- Token de bot de Telegram (opcional)
-
-### Servidor
-
-```bash
-cd server
-npm install
-npm start
-```
-
-El servidor escucha en `http://localhost:3001`.
-
-### Cliente
-
-```bash
-cd client
-npm install
-npm run dev
-```
-
-El cliente queda en `http://localhost:5173` por defecto.
-
-### PM2 (producción)
-
-```bash
-pm2 start server/index.js --name terminal-server
-pm2 save
-```
-
-## Configuración del bot de Telegram
-
-1. Creá un bot con [@BotFather](https://t.me/BotFather) y copiá el token
-2. Desde el panel web (pestaña Telegram) agregá el token
-3. Opcionalmente configurá whitelist de chat IDs y rate limit
-
-### Comandos del bot
-
-| Comando | Descripción |
-|---|---|
-| `/start` | Saludo e inicio |
-| `/nueva` | Nueva conversación |
-| `/modelo [nombre]` | Ver o cambiar modelo de Claude |
-| `/agentes` | Listar agentes de rol disponibles |
-| `/<key>` | Activar agente de rol |
-| `/basta` | Desactivar agente de rol |
-| `/skills` | Ver skills instalados |
-| `/buscar-skill` | Buscar e instalar skills de ClawHub |
-| `/estado` | Estado de la sesión actual |
-| `/costo` | Costo acumulado de la sesión |
-| `/memoria` | Ver archivos de memoria |
-| `/status-vps` | CPU, RAM y disco del servidor |
-| `/ls [path]` | Navegar el sistema de archivos |
-| `/id` | Ver tu chat ID |
-
-## API REST
-
-```
-GET    /api/sessions              Listar sesiones activas
-POST   /api/sessions              Crear sesión
-DELETE /api/sessions/:id          Cerrar sesión
-POST   /api/sessions/:id/message  Enviar mensaje y esperar respuesta
-
-GET    /api/agents                Listar agentes
-POST   /api/agents                Crear agente
-PATCH  /api/agents/:key           Actualizar agente
-DELETE /api/agents/:key           Eliminar agente
-
-GET    /api/memory/:agentKey      Listar archivos de memoria
-PUT    /api/memory/:agentKey/:file Escribir archivo de memoria
-
-GET    /api/telegram/bots         Listar bots
-POST   /api/telegram/bots         Agregar bot
-PATCH  /api/telegram/bots/:key    Configurar bot (whitelist, rateLimit)
-
-GET    /api/skills                Listar skills instalados
-POST   /api/skills/install        Instalar skill desde ClawHub
-```
+---
 
 ## Archivos excluidos del repo
 
-Los siguientes archivos se generan en runtime y no se versionan:
+Generados en runtime, no versionados:
 
-- `server/bots.json` — tokens de Telegram
-- `server/agents.json` — configuración de agentes locales
-- `server/logs.json` / `server/server.log` — logs
-- `server/memory/` — datos de memoria de agentes
-- `server/skills/` — skills instalados
+| Archivo | Descripción |
+|---|---|
+| `server/.env` | Variables de entorno locales |
+| `server/bots.json` | Tokens y estado de bots de Telegram |
+| `server/agents.json` | Agentes creados desde la UI |
+| `server/provider-config.json` | API keys de providers |
+| `server/logs.json` / `server/server.log` | Logs |
+| `server/memory/` | Datos de memoria por agente |
+| `server/skills/` | Skills instalados desde ClawHub |
