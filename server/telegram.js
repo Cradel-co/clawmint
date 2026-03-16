@@ -2324,8 +2324,30 @@ class BotManager {
 
   _readFile() {
     try {
-      if (!fs.existsSync(BOTS_FILE)) return [];
-      return JSON.parse(fs.readFileSync(BOTS_FILE, 'utf8')) || [];
+      if (fs.existsSync(BOTS_FILE)) {
+        return JSON.parse(fs.readFileSync(BOTS_FILE, 'utf8')) || [];
+      }
+
+      // Primera ejecución: inicializar desde variables de entorno
+      const token = process.env.BOT_TOKEN;
+      if (!token) return [];
+
+      const whitelist = (process.env.BOT_WHITELIST || '')
+        .split(',').map(s => s.trim()).filter(Boolean).map(Number);
+
+      const entry = {
+        key:               process.env.BOT_KEY               || 'dev',
+        token,
+        defaultAgent:      process.env.BOT_DEFAULT_AGENT      || 'claude',
+        whitelist,
+        rateLimit:         parseInt(process.env.BOT_RATE_LIMIT) || 30,
+        rateLimitKeyword:  process.env.BOT_RATE_LIMIT_KEYWORD  || '',
+        offset:            0,
+      };
+
+      fs.writeFileSync(BOTS_FILE, JSON.stringify([entry], null, 2), 'utf8');
+      console.log(`[Telegram] bots.json creado desde variables de entorno (key: ${entry.key})`);
+      return [entry];
     } catch { return []; }
   }
 
