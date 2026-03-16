@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('crypto');
 const express = require('express');
 const http = require('http');
 const { WebSocketServer } = require('ws');
@@ -195,12 +196,12 @@ app.get('/api/agents', (_req, res) => {
 });
 
 // POST /api/agents — crear agente
-// Body: { key, command?, description?, prompt? }
+// Body: { key, command?, description?, prompt?, provider? }
 app.post('/api/agents', (req, res) => {
-  const { key, command, description, prompt } = req.body || {};
+  const { key, command, description, prompt, provider } = req.body || {};
   if (!key) return res.status(400).json({ error: 'key requerida' });
   try {
-    const agent = agents.add(key, command, description, prompt);
+    const agent = agents.add(key, command, description, prompt, provider);
     res.status(201).json(agent);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -551,10 +552,30 @@ function attachWsToSession(ws, session) {
 
 // ─── AI session (acoplada al WS) — soporta múltiples providers ───────────────
 
+// Historial de sesiones AI persistente entre reconexiones WS
+// sessionId → { history: [], ts: number }
+const aiSessionHistories = new Map();
+
+// Limpiar entradas de más de 24h cada hora
+setInterval(() => {
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  for (const [id, entry] of aiSessionHistories) {
+    if (entry.ts < cutoff) aiSessionHistories.delete(id);
+  }
+}, 60 * 60 * 1000).unref();
+
 function startAISession(ws, opts) {
   const providerName = opts.provider || 'anthropic';
   const provider = providersModule.get(providerName);
-  const history = [];
+
+  // Asignar sessionId propio y enviar al cliente para reconexiones futuras
+  const sessionId = crypto.randomUUID();
+  ws.send(JSON.stringify({ type: 'session_id', id: sessionId }));
+
+  // Recuperar historial previo si el cliente reconectó con un sessionId anterior
+  const prevEntry = opts.sessionId ? aiSessionHistories.get(opts.sessionId) : null;
+  const history = prevEntry ? prevEntry.history : [];
+  aiSessionHistories.set(sessionId, { history, ts: Date.now() });
   let inputBuffer = '';
   let processing = false;
 

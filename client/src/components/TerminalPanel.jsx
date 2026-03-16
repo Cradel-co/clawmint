@@ -10,6 +10,9 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
   const wsRef = useRef(null);
   const fitAddonRef = useRef(null);
   const sessionIdRef = useRef(null);
+  const reconnectAttemptsRef = useRef(0);
+  const reconnectTimerRef = useRef(null);
+  const manualCloseRef = useRef(false);
   const [inputValue, setInputValue] = useState('');
   const inputRef = useRef(null);
 
@@ -52,45 +55,61 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
     xtermRef.current = term;
     fitAddonRef.current = fitAddon;
 
-    // Conectar WebSocket
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
+    function connect() {
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
 
-    ws.onopen = () => {
-      ws.send(JSON.stringify({
-        type: 'init',
-        sessionType: session.type || 'pty',
-        command: session.command || null,
-        systemPrompt: session.command || null, // para /ai con system prompt
-        sessionId: session.httpSessionId || null, // adjuntarse a sesión HTTP existente
-        provider: session.provider || null,    // provider de IA seleccionado
-        cols: term.cols,
-        rows: term.rows,
-      }));
-    };
+      ws.onopen = () => {
+        reconnectAttemptsRef.current = 0;
+        ws.send(JSON.stringify({
+          type: 'init',
+          sessionType: session.type || 'pty',
+          command: session.command || null,
+          systemPrompt: session.command || null, // para /ai con system prompt
+          // Al reconectar usar sessionId guardado; primera vez usar httpSessionId si lo hay
+          sessionId: sessionIdRef.current || session.httpSessionId || null,
+          provider: session.provider || null,    // provider de IA seleccionado
+          cols: term.cols,
+          rows: term.rows,
+        }));
+      };
 
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.type === 'session_id') {
-        sessionIdRef.current = msg.id;
-        if (onSessionId) onSessionId(msg.id);
-      } else if (msg.type === 'output') {
-        term.write(msg.data);
-      } else if (msg.type === 'exit') {
-        term.writeln('\r\n\x1b[33m[proceso terminado]\x1b[0m');
-      }
-    };
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'session_id') {
+          sessionIdRef.current = msg.id;
+          if (onSessionId) onSessionId(msg.id);
+        } else if (msg.type === 'output') {
+          term.write(msg.data);
+        } else if (msg.type === 'exit') {
+          term.writeln('\r\n\x1b[33m[proceso terminado]\x1b[0m');
+        }
+      };
 
-    ws.onclose = () => {
-      term.writeln('\r\n\x1b[33m[conexión cerrada]\x1b[0m');
-    };
+      ws.onclose = () => {
+        if (manualCloseRef.current) return;
+        const MAX_ATTEMPTS = 5;
+        const attempt = reconnectAttemptsRef.current;
+        if (attempt >= MAX_ATTEMPTS) {
+          term.writeln('\r\n\x1b[31m[no se pudo reconectar — recargá la página]\x1b[0m');
+          return;
+        }
+        const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s, 8s, 16s
+        reconnectAttemptsRef.current = attempt + 1;
+        term.writeln(`\r\n\x1b[33m[reconectando en ${delay / 1000}s...]\x1b[0m`);
+        reconnectTimerRef.current = setTimeout(connect, delay);
+      };
 
-    ws.onerror = () => {
-      term.writeln('\r\n\x1b[31m[error de conexión — ¿está el servidor corriendo?]\x1b[0m');
-    };
+      ws.onerror = () => {
+        // onclose se dispara automáticamente después de onerror
+      };
+    }
+
+    connect();
 
     term.onData((data) => {
-      if (ws.readyState === WebSocket.OPEN) {
+      const ws = wsRef.current;
+      if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'input', data }));
       }
     });
@@ -98,7 +117,8 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
     const handleResize = () => {
       if (!active) return;
       fitAddon.fit();
-      if (ws.readyState === WebSocket.OPEN) {
+      const ws = wsRef.current;
+      if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
       }
     };
@@ -107,7 +127,9 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
 
     return () => {
       window.removeEventListener('resize', handleResize);
-      ws.close();
+      clearTimeout(reconnectTimerRef.current);
+      manualCloseRef.current = true;
+      wsRef.current?.close();
       term.dispose();
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

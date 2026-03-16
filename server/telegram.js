@@ -1319,7 +1319,7 @@ class TelegramBot {
     chat.busy = true;
     try {
       // Providers API (Anthropic/Gemini/OpenAI con agentic loop)
-      const chatProvider = chat.provider || 'claude-code';
+      const chatProvider = chat.provider || chat.activeAgent?.provider || 'claude-code';
       if (chatProvider !== 'claude-code' && providersModule) {
         await this._sendToApiProvider(chatId, text, chat, chatProvider);
         return;
@@ -1349,16 +1349,35 @@ class TelegramBot {
         }
 
         // Enviar placeholder inmediato → obtener message_id para editar progresivamente
+        const mode = chat.claudeMode || 'ask';
+        let dotCount = 1;
         let sentMsg = null;
         try {
-          sentMsg = await this._apiCall('sendMessage', { chat_id: chatId, text: '⏳' });
+          sentMsg = await this._apiCall('sendMessage', { chat_id: chatId, text: `${mode}.` });
         } catch { /* continuar sin edición progresiva si falla */ }
+
+        let animStopped = false;
+        let dotDir = 1;
+        const animInterval = setInterval(async () => {
+          if (animStopped || !sentMsg) return;
+          dotCount += dotDir;
+          if (dotCount >= 3) { dotCount = 3; dotDir = -1; }
+          else if (dotCount <= 1) { dotCount = 1; dotDir = 1; }
+          try {
+            await this._apiCall('editMessageText', {
+              chat_id: chatId,
+              message_id: sentMsg.message_id,
+              text: `${mode}${'.'.repeat(dotCount)}`,
+            });
+          } catch {}
+        }, 1000);
 
         let lastEditAt = 0;
         const THROTTLE_MS = 1500; // Telegram permite ~1 edit/s por chat
 
         const onChunk = async (partial) => {
           if (!partial.trim() || !sentMsg) return;
+          if (!animStopped) { animStopped = true; clearInterval(animInterval); }
           const now = Date.now();
           if (now - lastEditAt < THROTTLE_MS) return;
           lastEditAt = now;
@@ -1376,6 +1395,7 @@ class TelegramBot {
 
         try {
           const rawResponse = await chat.claudeSession.sendMessage(messageText, onChunk);
+          animStopped = true; clearInterval(animInterval);
 
           // Extraer y aplicar operaciones de memoria
           let response = rawResponse;
@@ -1419,6 +1439,7 @@ class TelegramBot {
             }
           }
         } catch (err) {
+          animStopped = true; clearInterval(animInterval);
           console.error(`[Telegram:${this.key}] Error en sesión para chat ${chatId}:`, err.message);
           const errMsg = `⚠️ Error: ${err.message}`;
           try {
@@ -1474,9 +1495,26 @@ class TelegramBot {
     if (!chat.aiHistory) chat.aiHistory = [];
     chat.aiHistory.push({ role: 'user', content: text });
 
-    // Enviar placeholder
+    // Enviar placeholder animado
+    let dotCount = 1;
     let sentMsg = null;
-    try { sentMsg = await this._apiCall('sendMessage', { chat_id: chatId, text: '⏳' }); } catch {}
+    try { sentMsg = await this._apiCall('sendMessage', { chat_id: chatId, text: '.' }); } catch {}
+
+    let animStopped = false;
+    let dotDir = 1;
+    const animInterval = setInterval(async () => {
+      if (animStopped || !sentMsg) return;
+      dotCount += dotDir;
+      if (dotCount >= 3) { dotCount = 3; dotDir = -1; }
+      else if (dotCount <= 1) { dotCount = 1; dotDir = 1; }
+      try {
+        await this._apiCall('editMessageText', {
+          chat_id: chatId,
+          message_id: sentMsg.message_id,
+          text: '.'.repeat(dotCount),
+        });
+      } catch {}
+    }, 1000);
 
     let lastEditAt = 0;
     const THROTTLE_MS = 1500;
@@ -1488,6 +1526,7 @@ class TelegramBot {
       for await (const event of gen) {
         if (event.type === 'text') {
           accumulated += event.text;
+          if (!animStopped) { animStopped = true; clearInterval(animInterval); }
           const now = Date.now();
           if (sentMsg && now - lastEditAt >= THROTTLE_MS) {
             lastEditAt = now;
@@ -1495,7 +1534,7 @@ class TelegramBot {
               await this._apiCall('editMessageText', {
                 chat_id: chatId,
                 message_id: sentMsg.message_id,
-                text: accumulated.slice(0, 4000) || '⏳',
+                text: accumulated.slice(0, 4000) || '...',
               });
             } catch {}
           }
@@ -1541,6 +1580,7 @@ class TelegramBot {
         await this.sendText(chatId, finalText);
       }
     } catch (err) {
+      animStopped = true; clearInterval(animInterval);
       console.error(`[Telegram:${this.key}:${providerName}] Error:`, err.message);
       const errMsg = `⚠️ Error ${provider.label}: ${err.message}`;
       try {
