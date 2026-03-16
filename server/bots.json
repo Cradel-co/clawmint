@@ -1,11 +1,13 @@
 [
   {
-    "key": "claude_bb",
-    "token": "8285283666:AAHX37W5_0cV9m2kv5m6ujvtWU-BH-NHcgs",
-    "defaultAgent": "cc",
-    "whitelist": [],
-    "rateLimit": 30,
-    "rateLimitKeyword": "",
-    "offset": 45892436
+    "key": "chibi2026_bot",
+    "token": "8793100760:AAEo4lsXRtmx-pq0-A6RX8OErnwremWvsgw",
+    "defaultAgent": "claude",
+    "whitelist": [
+      7874537448
+    ],
+    "rateLimit": 60,
+    "rateLimitKeyword": "bbbot",
+    "offset": 101121849
   }
 ]
