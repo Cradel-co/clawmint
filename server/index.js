@@ -61,13 +61,15 @@ logger.info('PATH:', process.env.PATH);
 logger.info('HOME:', process.env.HOME);
 
 logger.info('Cargando módulos...');
-let sessionManager, telegram, agents, skills, events, memory;
-try { sessionManager = require('./sessionManager'); logger.info('sessionManager OK'); } catch(e) { logger.error('sessionManager FAIL:', e.message); process.exit(1); }
-try { agents        = require('./agents');         logger.info('agents OK'); }        catch(e) { logger.error('agents FAIL:', e.message); process.exit(1); }
-try { skills        = require('./skills');         logger.info('skills OK'); }        catch(e) { logger.error('skills FAIL:', e.message); process.exit(1); }
-try { events        = require('./events');         logger.info('events OK'); }        catch(e) { logger.error('events FAIL:', e.message); process.exit(1); }
-try { memory        = require('./memory');         logger.info('memory OK'); }        catch(e) { logger.error('memory FAIL:', e.message); process.exit(1); }
-try { telegram      = require('./telegram');       logger.info('telegram OK'); }      catch(e) { logger.error('telegram FAIL:', e.message); process.exit(1); }
+let sessionManager, telegram, agents, skills, events, memory, providerConfig, providersModule;
+try { sessionManager  = require('./sessionManager');  logger.info('sessionManager OK'); }  catch(e) { logger.error('sessionManager FAIL:', e.message); process.exit(1); }
+try { agents          = require('./agents');           logger.info('agents OK'); }          catch(e) { logger.error('agents FAIL:', e.message); process.exit(1); }
+try { skills          = require('./skills');           logger.info('skills OK'); }          catch(e) { logger.error('skills FAIL:', e.message); process.exit(1); }
+try { events          = require('./events');           logger.info('events OK'); }          catch(e) { logger.error('events FAIL:', e.message); process.exit(1); }
+try { memory          = require('./memory');           logger.info('memory OK'); }          catch(e) { logger.error('memory FAIL:', e.message); process.exit(1); }
+try { providerConfig  = require('./provider-config'); logger.info('provider-config OK'); } catch(e) { logger.error('provider-config FAIL:', e.message); process.exit(1); }
+try { providersModule = require('./providers');        logger.info('providers OK'); }       catch(e) { logger.error('providers FAIL:', e.message); process.exit(1); }
+try { telegram        = require('./telegram');         logger.info('telegram OK'); }        catch(e) { logger.error('telegram FAIL:', e.message); process.exit(1); }
 logger.info('Todos los módulos cargados.');
 
 const app = express();
@@ -480,9 +482,9 @@ wss.on('connection', (ws) => {
           return;
         }
 
-        if (msg.sessionType === 'claude') {
-          // Sesión Claude API (sin PTY, acoplada al WS)
-          startClaudeSession(ws, msg);
+        if (msg.sessionType === 'claude' || msg.sessionType === 'ai') {
+          // Sesión AI (sin PTY, acoplada al WS)
+          startAISession(ws, msg);
           return;
         }
 
@@ -547,10 +549,11 @@ function attachWsToSession(ws, session) {
   ws.on('close', unsub);
 }
 
-// ─── Claude API session (acoplada al WS) ─────────────────────────────────────
+// ─── AI session (acoplada al WS) — soporta múltiples providers ───────────────
 
-function startClaudeSession(ws, opts) {
-  const client = new Anthropic();
+function startAISession(ws, opts) {
+  const providerName = opts.provider || 'anthropic';
+  const provider = providersModule.get(providerName);
   const history = [];
   let inputBuffer = '';
   let processing = false;
@@ -566,11 +569,13 @@ function startClaudeSession(ws, opts) {
 
   const memoryCtx = agentKey ? memory.buildMemoryContext(agentKey, memoryFiles) : '';
   const toolInstructions = memoryFiles.length > 0 ? memory.TOOL_INSTRUCTIONS : '';
+  const systemPrompt = [basePrompt, memoryCtx, toolInstructions].filter(Boolean).join('\n\n');
 
-  const systemPrompt = [basePrompt, memoryCtx, toolInstructions]
-    .filter(Boolean).join('\n\n');
+  const apiKey  = providerConfig.getApiKey(providerName);
+  const model   = opts.model || providerConfig.getConfig().providers[providerName]?.model || provider.defaultModel;
 
-  send('\x1b[1;32m╔══ Claude API ══╗\x1b[0m\r\n');
+  const providerLabel = provider.label || providerName;
+  send(`\x1b[1;32m╔══ ${providerLabel} ══╗\x1b[0m\r\n`);
   send('\x1b[90mEscribí tu mensaje y presioná Enter. Ctrl+C para cancelar línea.\x1b[0m\r\n\r\n');
   prompt();
 
@@ -585,7 +590,7 @@ function startClaudeSession(ws, opts) {
           const line = inputBuffer.trim();
           inputBuffer = '';
           send('\r\n');
-          if (line) await askClaude(line);
+          if (line) await askAI(line);
           else prompt();
         } else if (char === '\x7f' || char === '\x08') {
           if (inputBuffer.length > 0) {
@@ -604,34 +609,33 @@ function startClaudeSession(ws, opts) {
     } catch { /* ignorar */ }
   });
 
-  async function askClaude(userMessage) {
+  async function askAI(userMessage) {
     processing = true;
     history.push({ role: 'user', content: userMessage });
-    send('\x1b[36mClaude:\x1b[0m ');
+    send(`\x1b[36m${providerLabel}:\x1b[0m `);
 
     try {
-      const stream = client.messages.stream({
-        model: 'claude-opus-4-6',
-        max_tokens: 4096,
-        thinking: { type: 'adaptive' },
-        system: systemPrompt,
-        messages: history,
-      });
-
       let fullText = '';
-      for await (const event of stream) {
-        if (
-          event.type === 'content_block_delta' &&
-          event.delta.type === 'text_delta'
-        ) {
-          const chunk = event.delta.text.replace(/\n/g, '\r\n');
+      const gen = provider.chat({ systemPrompt, history, apiKey, model });
+
+      for await (const event of gen) {
+        if (event.type === 'text') {
+          const chunk = event.text.replace(/\n/g, '\r\n');
           send(chunk);
-          fullText += event.delta.text;
+          fullText = event.text; // se acumula en 'done'
+        } else if (event.type === 'tool_call') {
+          send(`\r\n\x1b[90m🔧 ${event.name}(${JSON.stringify(event.args)})\x1b[0m\r\n`);
+        } else if (event.type === 'tool_result') {
+          const preview = String(event.result).slice(0, 200);
+          send(`\x1b[90m→ ${preview}${event.result?.length > 200 ? '…' : ''}\x1b[0m\r\n`);
+          send(`\x1b[36m${providerLabel}:\x1b[0m `);
+        } else if (event.type === 'done') {
+          fullText = event.fullText;
         }
       }
 
       // Extraer y aplicar operaciones de memoria
-      if (agentKey && memoryFiles.length > 0) {
+      if (agentKey && memoryFiles.length > 0 && fullText) {
         const { clean, ops } = memory.extractMemoryOps(fullText);
         if (ops.length > 0) {
           const saved = memory.applyOps(agentKey, ops);
@@ -657,6 +661,44 @@ function startClaudeSession(ws, opts) {
       ws.send(JSON.stringify({ type: 'output', data: text }));
   }
 }
+
+// ─── Providers API ────────────────────────────────────────────────────────────
+
+// GET /api/providers — lista providers con label, models, si está configurado
+app.get('/api/providers', (_req, res) => {
+  const cfg = providerConfig.getConfig();
+  const list = providersModule.list().map(p => ({
+    ...p,
+    configured: p.name === 'claude-code' ? true : !!(providerConfig.getApiKey(p.name)),
+    currentModel: cfg.providers?.[p.name]?.model || p.defaultModel,
+  }));
+  res.json({ providers: list, default: cfg.default });
+});
+
+// GET /api/providers/config — config completa (sin mostrar keys completas)
+app.get('/api/providers/config', (_req, res) => {
+  const cfg = providerConfig.getConfig();
+  const sanitized = JSON.parse(JSON.stringify(cfg));
+  for (const [name, p] of Object.entries(sanitized.providers || {})) {
+    if (p.apiKey) p.apiKey = p.apiKey.slice(0, 8) + '…';
+  }
+  res.json(sanitized);
+});
+
+// PUT /api/providers/default — { provider }
+app.put('/api/providers/default', (req, res) => {
+  const { provider } = req.body || {};
+  if (!provider) return res.status(400).json({ error: 'provider requerido' });
+  providerConfig.setDefault(provider);
+  res.json({ ok: true, default: provider });
+});
+
+// PUT /api/providers/:name — { apiKey?, model? }
+app.put('/api/providers/:name', (req, res) => {
+  const { apiKey, model } = req.body || {};
+  providerConfig.setProvider(req.params.name, { apiKey, model });
+  res.json({ ok: true });
+});
 
 // ─── Servidor ─────────────────────────────────────────────────────────────────
 

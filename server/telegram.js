@@ -12,6 +12,11 @@ const skillsModule = require('./skills');
 const memoryModule = require('./memory');
 const events = require('./events');
 
+// Cargar providers y config (pueden no estar disponibles en versiones viejas)
+let providersModule, providerConfig;
+try { providersModule = require('./providers'); } catch {}
+try { providerConfig  = require('./provider-config'); } catch {}
+
 const BOTS_FILE = path.join(__dirname, 'bots.json');
 const TELEGRAM_HOST = 'api.telegram.org';
 const POLL_TIMEOUT = 25; // segundos
@@ -122,42 +127,6 @@ function getSystemStats() {
   };
 }
 
-function buildLsText(dirPath) {
-  const entries = fs.readdirSync(dirPath);
-  const items = [];
-  for (const name of entries) {
-    try {
-      const s = fs.statSync(path.join(dirPath, name));
-      items.push({ name, isDir: s.isDirectory() });
-    } catch {
-      items.push({ name, isDir: false });
-    }
-  }
-  items.sort((a, b) => (b.isDir ? 1 : 0) - (a.isDir ? 1 : 0) || a.name.localeCompare(b.name));
-
-  const dirs  = items.filter(i => i.isDir);
-  const files = items.filter(i => !i.isDir);
-
-  const lines = [`📂 ${dirPath}`];
-  if (dirPath !== '/') lines.push('/ls ..');
-
-  if (dirs.length) {
-    lines.push(`📁 Carpetas (${dirs.length}):`);
-    for (const d of dirs.slice(0, 25)) lines.push(`/ls ${d.name}`);
-    if (dirs.length > 25) lines.push(`...y ${dirs.length - 25} más`);
-  }
-
-  if (files.length) {
-    lines.push(`📄 Archivos (${files.length}):`);
-    for (const f of files.slice(0, 25)) lines.push(`/cat ${f.name}`);
-    if (files.length > 25) lines.push(`...y ${files.length - 25} más`);
-  }
-
-  if (!dirs.length && !files.length) lines.push('(directorio vacío)');
-
-  return lines.join('\n');
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 
 function httpsPost(urlPath, body, timeoutMs = 35000) {
@@ -193,13 +162,14 @@ function httpsPost(urlPath, body, timeoutMs = 35000) {
 // ─── ClaudePrintSession (modo no-interactivo via `claude -p`) ─────────────────
 
 class ClaudePrintSession {
-  constructor({ model = null } = {}) {
+  constructor({ model = null, permissionMode = 'ask' } = {}) {
     this.id = crypto.randomUUID();
     this.createdAt = Date.now();
     this.active = true;
     this.messageCount = 0;
     this.title = 'claude';
-    this.model = model;           // modelo explícito (null = default)
+    this.model = model;                    // modelo explícito (null = default)
+    this.permissionMode = permissionMode;  // 'auto' | 'ask' | 'plan'
     this.totalCostUsd = 0;        // costo acumulado de la sesión
     this.lastCostUsd = 0;         // costo del último mensaje
     this.claudeSessionId = null;  // session_id interno de claude
@@ -207,12 +177,17 @@ class ClaudePrintSession {
 
   async sendMessage(text, onChunk = null) {
     const claudeArgs = [
-      '--dangerously-skip-permissions',
       '-p', text,
       '--output-format', 'stream-json',
       '--include-partial-messages',
       '--verbose',
     ];
+    if (this.permissionMode === 'auto') {
+      claudeArgs.unshift('--dangerously-skip-permissions');
+    } else {
+      const modeMap = { ask: 'default', plan: 'plan' };
+      claudeArgs.unshift('--permission-mode', modeMap[this.permissionMode] || 'default');
+    }
     if (this.model) claudeArgs.push('--model', this.model);
     if (this.messageCount > 0) claudeArgs.push('--continue');
 
@@ -457,6 +432,10 @@ class TelegramBot {
         rateLimitedUntil: 0,
         monitorCwd: process.env.HOME,
         busy: false,
+        provider: 'claude-code', // provider activo
+        aiHistory: [],           // historial para providers no-claude-code
+        claudeMode: 'ask',       // 'auto' | 'ask' | 'plan' — default: 'ask'
+        consoleMode: false,      // modo consola: mensajes van directo a bash
       };
       this.chats.set(chatId, chat);
     }
@@ -500,6 +479,11 @@ class TelegramBot {
     chat.lastMessageAt = Date.now();
     chat.lastPreview = text.slice(0, 60);
 
+    // Modo consola: mensajes de texto plano van directo a bash
+    if (chat.consoleMode && !text.startsWith('/')) {
+      return await this._handleConsoleInput(chatId, text, chat);
+    }
+
     // Si hay acción pendiente y el mensaje no es un comando → manejar el flujo
     if (chat.pendingAction && !text.startsWith('/')) {
       return await this._handlePendingAction(msg, text, chat);
@@ -521,18 +505,10 @@ class TelegramBot {
 
       // ── Sesión ────────────────────────────────────────────────────────────
       case 'start': {
-        const agentKey = this.defaultAgent;
         const name = chat.firstName || 'usuario';
         if (!this._isClaudeBased()) await this.getOrCreateSession(chatId, chat);
-        await this.sendWithButtons(chatId,
-          `Hola ${name}! 👋\n\nSoy @${this.botInfo?.username}. Agente activo: *${agentKey}*.\n\n` +
-          `Escribí cualquier cosa y lo enviaré a tu sesión.`,
-          [
-            [{ text: '📊 Estado VPS', callback_data: 'status_vps' }, { text: '💬 Nueva conv.', callback_data: 'nueva' }],
-            [{ text: '🎭 Agentes', callback_data: 'agentes' },        { text: '🔧 Skills',     callback_data: 'skills' }],
-            [{ text: '🤖 Menú', callback_data: 'menu' }],
-          ]
-        );
+        await this.sendText(chatId, `Hola ${name}! 👋 Soy @${this.botInfo?.username}.`);
+        await this._sendMenu(chatId);
         break;
       }
 
@@ -541,7 +517,7 @@ class TelegramBot {
       case 'clear': {
         if (this._isClaudeBased()) {
           const model = chat.claudeSession?.model || null;
-          chat.claudeSession = new ClaudePrintSession({ model });
+          chat.claudeSession = new ClaudePrintSession({ model, permissionMode: chat.claudeMode || 'ask' });
           await this.sendWithButtons(chatId,
             `✅ Nueva conversación *${this.defaultAgent}* iniciada (\`${chat.claudeSession.id.slice(0,8)}…\`)`,
             [[{ text: '🤖 Menú', callback_data: 'menu' }]]
@@ -591,7 +567,7 @@ class TelegramBot {
           );
         } else {
           const nuevoModelo = args[0];
-          chat.claudeSession = new ClaudePrintSession({ model: nuevoModelo });
+          chat.claudeSession = new ClaudePrintSession({ model: nuevoModelo, permissionMode: chat.claudeMode || 'ask' });
           await this.sendText(chatId, `✅ Modelo cambiado a \`${nuevoModelo}\`\nNueva sesión iniciada (\`${chat.claudeSession.id.slice(0,8)}…\`).`);
         }
         break;
@@ -633,6 +609,7 @@ class TelegramBot {
             `Agente: ${this.defaultAgent}\n` +
             `Agente activo: ${chat.activeAgent?.key || 'ninguno'}\n` +
             `Modelo: \`${cs.model || 'default'}\`\n` +
+            `Modo permisos: \`${chat.claudeMode || 'ask'}\`\n` +
             `Mensajes: ${cs.messageCount}\n` +
             `Uptime: ${Math.floor(uptime/60)}m ${uptime%60}s\n` +
             `Costo total: $${cs.totalCostUsd.toFixed(4)} USD\n` +
@@ -676,15 +653,6 @@ class TelegramBot {
         break;
       }
 
-      // ── Directorio ────────────────────────────────────────────────────────
-      case 'dir':
-      case 'cwd':
-      case 'directorio': {
-        const cwd = chat.monitorCwd || process.env.HOME;
-        await this.sendText(chatId, `📁 Directorio actual: \`${cwd}\``);
-        break;
-      }
-
       // ── Agentes con prompt (roles) ────────────────────────────────────────
       case 'agentes': {
         const roleAgents = agentsModule.list().filter(a => a.prompt);
@@ -712,7 +680,7 @@ class TelegramBot {
       case 'basta': {
         const prevKey = chat.activeAgent?.key;
         chat.activeAgent = null;
-        chat.claudeSession = new ClaudePrintSession();
+        chat.claudeSession = new ClaudePrintSession({ permissionMode: chat.claudeMode || 'ask' });
         await this.sendText(chatId, prevKey
           ? `✅ Agente *${prevKey}* desactivado. Claude normal restaurado.`
           : 'No había agente activo.');
@@ -753,22 +721,21 @@ class TelegramBot {
           `/bash — nueva sesión bash\n\n` +
           `*Claude Code:*\n` +
           `/modelo [nombre] — ver/cambiar modelo\n` +
+          `/permisos [modo] — ver/cambiar modo (auto/ask/plan)\n` +
           `/costo — costo de la sesión\n` +
           `/estado — estado detallado\n` +
-          `/memoria — ver archivos de memoria\n` +
-          `/dir — directorio de trabajo\n\n` +
+          `/memoria — ver archivos de memoria\n\n` +
           `*Agentes de rol:*\n` +
           `/agentes — listar agentes con prompt\n` +
           `/<key> — activar agente de rol\n` +
           `/basta — desactivar agente de rol\n\n` +
           `*Skills:*\n` +
           `/skills — ver skills instalados\n` +
-          `/buscar-skill — buscar e instalar skills de ClawHub\n\n` +
+          `/buscar-skill — buscar e instalar skills de ClawHub\n` +
+          `/mcps — ver MCPs configurados\n` +
+          `/buscar-mcp [query] — buscar e instalar MCPs de Smithery\n\n` +
           `*Monitor:*\n` +
-          `/monitor — panel de navegación\n` +
-          `/ls [path] — listar directorio\n` +
-          `/cat archivo — ver archivo\n` +
-          `/mkdir nombre — crear carpeta\n` +
+          `/consola — modo consola bash (toggle)\n` +
           `/status-vps — CPU, RAM y disco\n\n` +
           `*Bot:*\n` +
           `/agente [key] — ver/cambiar agente\n` +
@@ -784,6 +751,73 @@ class TelegramBot {
           '_Ejemplos: "crear PDFs", "buscar en Google", "enviar emails"_\n\n' +
           'Usá /cancelar para cancelar.'
         );
+        break;
+      }
+
+      // ── MCPs ──────────────────────────────────────────────────────────────
+      case 'mcps': {
+        let mcpsModule;
+        try { mcpsModule = require('./mcps'); } catch { await this.sendText(chatId, '❌ Módulo MCPs no disponible.'); break; }
+        const mcpList = mcpsModule.list();
+        if (!mcpList.length) {
+          await this.sendText(chatId, '🔌 *MCPs configurados*\n\nNo hay MCPs configurados.\nUsá /buscar-mcp para buscar en el registry.');
+          break;
+        }
+        const mcpLines = mcpList.map(m =>
+          `• \`${m.name}\` — ${m.type === 'http' ? '🌐' : '📦'} ${m.description ? m.description.slice(0, 60) : m.command || m.url || ''} ${m.enabled ? '✅' : '⏸'}`
+        ).join('\n');
+        await this.sendText(chatId, `🔌 *MCPs configurados* (${mcpList.length})\n\n${mcpLines}`);
+        break;
+      }
+
+      case 'buscar-mcp': {
+        let mcpsModule;
+        try { mcpsModule = require('./mcps'); } catch { await this.sendText(chatId, '❌ Módulo MCPs no disponible.'); break; }
+        if (args.length > 0) {
+          // Búsqueda directa con argumento: /buscar-mcp github
+          const query = args.join(' ');
+          await this.sendText(chatId, `🔍 Buscando MCPs para "${query}"...`);
+          try {
+            const results = await mcpsModule.searchSmithery(query);
+            if (!results.length) {
+              await this.sendText(chatId, `😕 No encontré MCPs para "${query}".\n\nProbá con otras palabras o visitá smithery.ai`);
+              break;
+            }
+            const lines = results.map((r, i) =>
+              `${i + 1}. \`${r.qualifiedName}\` — *${r.displayName}*\n   _${r.description.slice(0, 80)}_\n   ${r.remote ? '🌐 HTTP' : '📦 local'}`
+            ).join('\n\n');
+            await this.sendText(chatId,
+              `🔍 *Encontré ${results.length} MCP(s) para "${query}":*\n\n${lines}\n\n` +
+              `Respondé con el *número* para instalar, o /cancelar.`
+            );
+            chat.pendingAction = { type: 'mcp-select', results };
+          } catch (err) {
+            await this.sendText(chatId, `⚠️ Error buscando en Smithery: ${err.message}`);
+          }
+        } else {
+          chat.pendingAction = { type: 'mcp-search' };
+          await this.sendText(chatId,
+            '🔌 *Buscar MCP en Smithery Registry*\n\n' +
+            '¿Qué tipo de MCP necesitás? Describí la integración en pocas palabras.\n' +
+            '_Ejemplos: "github", "base de datos postgres", "búsqueda web", "memoria"_\n\n' +
+            'Usá /cancelar para cancelar.'
+          );
+        }
+        break;
+      }
+
+      case 'consola': {
+        if (chat.consoleMode) {
+          chat.consoleMode = false;
+          await this.sendWithButtons(chatId, '🖥️ Modo consola *desactivado*.',
+            [[{ text: '🖥️ Monitor', callback_data: 'menu:monitor' },
+              { text: '🤖 Menú',    callback_data: 'menu' }]]);
+        } else {
+          chat.consoleMode = true;
+          await this._sendConsolePrompt(chatId,
+            `🖥️ *Modo consola activado*\n\nEscribí comandos directamente.\n\`exit\` o /consola para salir.`,
+            chat);
+        }
         break;
       }
 
@@ -808,81 +842,6 @@ class TelegramBot {
         break;
       }
 
-      // ── Monitor ───────────────────────────────────────────────────────────
-      case 'monitor': {
-        const cwd = chat.monitorCwd || process.env.HOME;
-        await this.sendText(chatId,
-          `🖥️ *Monitor VPS*\n\n` +
-          `Directorio: \`${cwd}\`\n\n` +
-          `*Navegación:*\n` +
-          `/ls — listar directorio actual\n` +
-          `/dir — ver ruta actual\n` +
-          `/cat archivo — ver contenido\n` +
-          `/mkdir nombre — crear carpeta\n\n` +
-          `*Sistema:*\n` +
-          `/status-vps — CPU, RAM y disco`
-        );
-        break;
-      }
-
-      case 'ls': {
-        let dir = chat.monitorCwd || process.env.HOME;
-        if (args.length > 0) dir = path.resolve(dir, args.join(' '));
-        try {
-          const stat = fs.statSync(dir);
-          if (!stat.isDirectory()) {
-            let content;
-            try { content = fs.readFileSync(dir, 'utf8'); }
-            catch { await this.sendText(chatId, `⚠️ Archivo binario o sin permisos: ${path.basename(dir)}`); break; }
-            const note = content.length > 3500 ? `\n[...truncado, ${content.length} chars total]` : '';
-            await this.sendText(chatId, `📄 ${path.basename(dir)}\n\n${content.slice(0, 3500)}${note}`);
-          } else {
-            chat.monitorCwd = dir;
-            await this.sendText(chatId, buildLsText(dir));
-          }
-        } catch (err) {
-          await this.sendText(chatId, `❌ Error: ${err.message}`);
-        }
-        break;
-      }
-
-      case 'cat': {
-        const filename = args.join(' ');
-        if (!filename) { await this.sendText(chatId, '❌ Usá /cat <nombre-archivo>'); break; }
-        const base     = chat.monitorCwd || process.env.HOME;
-        const filePath = path.resolve(base, filename);
-        try {
-          const stat = fs.statSync(filePath);
-          if (stat.isDirectory()) {
-            chat.monitorCwd = filePath;
-            await this.sendText(chatId, buildLsText(filePath));
-          } else {
-            let content;
-            try { content = fs.readFileSync(filePath, 'utf8'); }
-            catch { await this.sendText(chatId, `⚠️ Archivo binario o sin permisos: ${filename}`); break; }
-            const note = content.length > 3500 ? `\n[...truncado, ${content.length} chars total]` : '';
-            await this.sendText(chatId, `📄 ${filename}\n\n${content.slice(0, 3500)}${note}`);
-          }
-        } catch (err) {
-          await this.sendText(chatId, `❌ Error: ${err.message}`);
-        }
-        break;
-      }
-
-      case 'mkdir': {
-        const dirname = args.join(' ');
-        if (!dirname) { await this.sendText(chatId, '❌ Usá /mkdir <nombre>'); break; }
-        const base    = chat.monitorCwd || process.env.HOME;
-        const newPath = path.resolve(base, dirname);
-        try {
-          fs.mkdirSync(newPath, { recursive: true });
-          await this.sendText(chatId, `✅ Carpeta creada: \`${newPath}\``);
-        } catch (err) {
-          await this.sendText(chatId, `❌ Error: ${err.message}`);
-        }
-        break;
-      }
-
       case 'status-vps': {
         try {
           const s = getSystemStats();
@@ -900,11 +859,89 @@ class TelegramBot {
         break;
       }
 
+      // ── Modo / Provider ───────────────────────────────────────────────────
+      case 'modo':
+      case 'mode':
+      case 'provider': {
+        if (!providersModule) {
+          await this.sendText(chatId, '❌ Módulo de providers no disponible.');
+          break;
+        }
+        if (args.length === 0) {
+          const current = chat.provider || 'claude-code';
+          const list = providersModule.list();
+          const buttons = list.map(p => [{
+            text: `${current === p.name ? '✅ ' : ''}${p.label}`,
+            callback_data: `provider:${p.name}`,
+          }]);
+          await this.sendWithButtons(chatId,
+            `🤖 *Provider actual*: \`${current}\`\n\nElegí un provider:`,
+            buttons
+          );
+        } else {
+          const newProvider = args[0].toLowerCase();
+          const available = providersModule.list().map(p => p.name);
+          if (!available.includes(newProvider)) {
+            await this.sendText(chatId,
+              `❌ Provider desconocido: \`${newProvider}\`\n\nDisponibles: ${available.join(', ')}`
+            );
+            break;
+          }
+          chat.provider = newProvider;
+          if (newProvider === 'claude-code') {
+            chat.claudeSession = null;
+          } else {
+            chat.aiHistory = [];
+          }
+          const label = providersModule.get(newProvider).label;
+          await this.sendText(chatId, `✅ Provider cambiado a *${label}*`);
+        }
+        break;
+      }
+
+      // ── Permisos Claude ───────────────────────────────────────────────────
+      case 'permisos':
+      case 'modo-permisos': {
+        if (!this._isClaudeBased(chat.provider)) {
+          await this.sendText(chatId, '❌ Solo disponible con Claude Code.');
+          break;
+        }
+        if (args.length === 0) {
+          const current = chat.claudeMode || 'ask';
+          await this.sendWithButtons(chatId,
+            `🔐 *Modo de permisos actual*: \`${current}\`\n\n` +
+            `• \`ask\` — describe herramientas sin ejecutarlas (por defecto)\n` +
+            `• \`auto\` — ejecuta todo sin pedir (rápido, puede ser peligroso)\n` +
+            `• \`plan\` — solo planifica, no ejecuta nada`,
+            [[
+              { text: current === 'ask'  ? '✅ ask'  : 'ask',   callback_data: 'claudemode:ask'  },
+              { text: current === 'auto' ? '✅ auto' : 'auto',  callback_data: 'claudemode:auto' },
+              { text: current === 'plan' ? '✅ plan' : 'plan',  callback_data: 'claudemode:plan' },
+            ]]
+          );
+        } else {
+          const newMode = args[0].toLowerCase();
+          if (!['auto', 'ask', 'plan'].includes(newMode)) {
+            await this.sendText(chatId, '❌ Modo inválido. Opciones: `ask`, `auto`, `plan`');
+            break;
+          }
+          chat.claudeMode = newMode;
+          // Actualizar sesión existente SIN nullificarla → preserva contexto/--continue
+          if (chat.claudeSession) chat.claudeSession.permissionMode = newMode;
+          const labels = { auto: '⚡ auto-accept', ask: '❓ ask', plan: '📋 plan' };
+          await this.sendText(chatId,
+            `✅ Modo cambiado a *${labels[newMode]}*\n` +
+            `_El contexto de conversación se mantiene._`
+          );
+        }
+        break;
+      }
+
       default: {
         // Detectar /{key} de agente con prompt de rol
         const agentDef = agentsModule.get(cmd);
         if (agentDef?.prompt) {
-          chat.claudeSession = new ClaudePrintSession();
+          chat.claudeSession = new ClaudePrintSession({ permissionMode: chat.claudeMode || 'ask' });
           chat.activeAgent = { key: agentDef.key, prompt: agentDef.prompt };
           // Primer mensaje establece el rol en la sesión, incluyendo todos los skills
           const fullPrompt = skillsModule.buildAgentPrompt(agentDef);
@@ -979,16 +1016,94 @@ class TelegramBot {
       }
       return;
     }
+
+    // ── MCP: paso 1 → buscar en smithery
+    if (action.type === 'mcp-search') {
+      chat.pendingAction = null;
+      await this.sendText(chatId, `🔍 Buscando MCPs para "${text}"...`);
+      let mcpsModule;
+      try { mcpsModule = require('./mcps'); } catch {
+        await this.sendText(chatId, '❌ Módulo MCPs no disponible.'); return;
+      }
+      try {
+        const results = await mcpsModule.searchSmithery(text);
+        if (!results.length) {
+          await this.sendText(chatId,
+            `😕 No encontré MCPs para "${text}".\n\nProbá con otras palabras o visitá smithery.ai`
+          );
+          return;
+        }
+        const lines = results.map((r, i) =>
+          `${i + 1}. \`${r.qualifiedName}\` — *${r.displayName}*\n   _${r.description.slice(0, 90)}_\n   ${r.remote ? '🌐 HTTP/remoto' : '📦 local (stdio)'}`
+        ).join('\n\n');
+        await this.sendText(chatId,
+          `🔌 *Encontré ${results.length} MCP(s) para "${text}":*\n\n${lines}\n\n` +
+          `Respondé con el *número* para instalar, o /cancelar.`
+        );
+        chat.pendingAction = { type: 'mcp-select', results };
+      } catch (err) {
+        await this.sendText(chatId, `⚠️ Error buscando en Smithery: ${err.message}`);
+      }
+      return;
+    }
+
+    // ── MCP: paso 2 → instalar el elegido
+    if (action.type === 'mcp-select') {
+      const n = parseInt(text.trim(), 10);
+      const results = action.results || [];
+      if (isNaN(n) || n < 1 || n > results.length) {
+        await this.sendText(chatId,
+          `❌ Número inválido. Respondé entre 1 y ${results.length}, o usá /cancelar.`
+        );
+        return; // mantener pendingAction para reintentar
+      }
+      const chosen = results[n - 1];
+      chat.pendingAction = null;
+      await this.sendText(chatId, `🔌 Instalando *${chosen.displayName}* (\`${chosen.qualifiedName}\`)...`);
+      let mcpsModule;
+      try { mcpsModule = require('./mcps'); } catch {
+        await this.sendText(chatId, '❌ Módulo MCPs no disponible.'); return;
+      }
+      try {
+        const { mcp, envVarsRequired } = await mcpsModule.installFromRegistry(chosen.qualifiedName);
+        let msg = `✅ *${chosen.displayName}* instalado y activado.\n` +
+          `Nombre: \`${mcp.name}\`\n` +
+          `Tipo: \`${mcp.type}\`\n`;
+        if (mcp.url) msg += `URL: \`${mcp.url.slice(0, 60)}\`\n`;
+        if (envVarsRequired.length) {
+          msg += `\n⚠️ *Variables de entorno necesarias:*\n` +
+            envVarsRequired.map(v => `• \`${v}\``).join('\n') +
+            `\n\nConfiguralas en el MCP desde el panel web.`;
+        }
+        msg += `\n\nUsá /mcps para ver los MCPs instalados.`;
+        await this.sendText(chatId, msg);
+      } catch (err) {
+        await this.sendText(chatId, `⚠️ Error instalando \`${chosen.qualifiedName}\`: ${err.message}`);
+      }
+      return;
+    }
   }
 
   async _sendToSession(chatId, text, chat) {
-    if (chat.busy) return; // ignorar si ya hay un mensaje en proceso
+    if (chat.busy) {
+      try { await this._apiCall('sendMessage', { chat_id: chatId, text: '⏳ Procesando tu mensaje anterior, aguardá un momento...' }); } catch {}
+      return;
+    }
     chat.busy = true;
     try {
+      // Providers API (Anthropic/Gemini/OpenAI con agentic loop)
+      const chatProvider = chat.provider || 'claude-code';
+      if (chatProvider !== 'claude-code' && providersModule) {
+        await this._sendToApiProvider(chatId, text, chat, chatProvider);
+        return;
+      }
+
       // Agentes claude-based → ClaudePrintSession (modo no-interactivo con streaming)
       if (this._isClaudeBased()) {
         if (!chat.claudeSession) {
-          chat.claudeSession = new ClaudePrintSession();
+          chat.claudeSession = new ClaudePrintSession({
+            permissionMode: chat.claudeMode || 'ask',
+          });
         }
 
         // Resolver agente activo para memoria
@@ -1097,6 +1212,110 @@ class TelegramBot {
     }
   }
 
+  async _sendToApiProvider(chatId, text, chat, providerName) {
+    const provider = providersModule.get(providerName);
+    const apiKey   = providerConfig ? providerConfig.getApiKey(providerName) : '';
+    const cfg      = providerConfig ? providerConfig.getConfig() : {};
+    const model    = cfg.providers?.[providerName]?.model || provider.defaultModel;
+
+    // Resolver agente activo para memoria
+    const agentKey    = chat.activeAgent?.key || this.defaultAgent;
+    const agentDef    = agentsModule.get(agentKey);
+    const memoryFiles = agentDef?.memoryFiles || [];
+
+    // Construir system prompt
+    const basePrompt  = 'Sos un asistente útil. Respondé de forma concisa y clara.';
+    const memoryCtx   = memoryModule.buildMemoryContext(agentKey, memoryFiles);
+    const toolInstr   = memoryFiles.length > 0 ? memoryModule.TOOL_INSTRUCTIONS : '';
+    const systemPrompt = [basePrompt, memoryCtx, toolInstr].filter(Boolean).join('\n\n');
+
+    // Agregar mensaje del usuario al historial
+    if (!chat.aiHistory) chat.aiHistory = [];
+    chat.aiHistory.push({ role: 'user', content: text });
+
+    // Enviar placeholder
+    let sentMsg = null;
+    try { sentMsg = await this._apiCall('sendMessage', { chat_id: chatId, text: '⏳' }); } catch {}
+
+    let lastEditAt = 0;
+    const THROTTLE_MS = 1500;
+    let accumulated = '';
+
+    try {
+      const gen = provider.chat({ systemPrompt, history: chat.aiHistory, apiKey, model });
+
+      for await (const event of gen) {
+        if (event.type === 'text') {
+          accumulated += event.text;
+          const now = Date.now();
+          if (sentMsg && now - lastEditAt >= THROTTLE_MS) {
+            lastEditAt = now;
+            try {
+              await this._apiCall('editMessageText', {
+                chat_id: chatId,
+                message_id: sentMsg.message_id,
+                text: accumulated.slice(0, 4000) || '⏳',
+              });
+            } catch {}
+          }
+        } else if (event.type === 'tool_call') {
+          const preview = `🔧 ${event.name}(${JSON.stringify(event.args).slice(0, 100)})`;
+          if (sentMsg) {
+            try {
+              await this._apiCall('editMessageText', {
+                chat_id: chatId, message_id: sentMsg.message_id, text: preview,
+              });
+            } catch {}
+          }
+        } else if (event.type === 'done') {
+          accumulated = event.fullText || accumulated;
+        }
+      }
+
+      // Extraer y aplicar operaciones de memoria
+      let finalText = accumulated;
+      if (memoryFiles.length > 0 && finalText) {
+        const { clean, ops } = memoryModule.extractMemoryOps(finalText);
+        if (ops.length > 0) {
+          const saved = memoryModule.applyOps(agentKey, ops);
+          finalText = clean || finalText;
+          console.log(`[Memory:Telegram:${providerName}] ${agentKey} → guardado en: ${saved.join(', ')}`);
+        }
+      }
+
+      chat.aiHistory.push({ role: 'assistant', content: finalText });
+
+      // Edición final
+      if (sentMsg && finalText) {
+        try {
+          await this._apiCall('editMessageText', {
+            chat_id: chatId,
+            message_id: sentMsg.message_id,
+            text: finalText.slice(0, 4096),
+          });
+        } catch {
+          await this.sendText(chatId, finalText);
+        }
+      } else if (!sentMsg && finalText) {
+        await this.sendText(chatId, finalText);
+      }
+    } catch (err) {
+      console.error(`[Telegram:${this.key}:${providerName}] Error:`, err.message);
+      const errMsg = `⚠️ Error ${provider.label}: ${err.message}`;
+      try {
+        if (sentMsg) {
+          await this._apiCall('editMessageText', {
+            chat_id: chatId, message_id: sentMsg.message_id, text: errMsg,
+          });
+        } else {
+          await this.sendText(chatId, errMsg);
+        }
+      } catch {}
+    } finally {
+      chat.busy = false;
+    }
+  }
+
   async getOrCreateSession(chatId, chat, forceNew = false, agentKeyOverride = null) {
     if (!forceNew && chat.sessionId) {
       const existing = sessionManager.get(chat.sessionId);
@@ -1129,12 +1348,333 @@ class TelegramBot {
     catch { body.parse_mode = undefined; return this._apiCall('sendMessage', body); }
   }
 
+  // ── Modo consola ───────────────────────────────────────────────────────────
+
+  _runShellCommand(command, cwd, timeoutMs = 30000) {
+    return new Promise((resolve, reject) => {
+      const child = spawn('bash', ['-c', command], {
+        cwd,
+        env: { ...process.env },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      let stdout = '';
+      let stderr = '';
+      const timer = setTimeout(() => {
+        try { child.kill('SIGTERM'); } catch {}
+        resolve({ stdout, stderr: stderr + '\n[timeout]', code: 124 });
+      }, timeoutMs);
+      child.stdout.on('data', d => { stdout += d.toString(); });
+      child.stderr.on('data', d => { stderr += d.toString(); });
+      child.on('close', code => { clearTimeout(timer); resolve({ stdout, stderr, code }); });
+      child.on('error', err => { clearTimeout(timer); reject(err); });
+    });
+  }
+
+  async _sendConsolePrompt(chatId, output, chat) {
+    const cwd = chat.monitorCwd || process.env.HOME;
+    const cwdShort = cwd.replace(process.env.HOME, '~');
+    const text = `${output ? output + '\n\n' : ''}📁 \`${cwdShort}\``;
+    const buttons = [
+      [{ text: '📋 ls',     callback_data: 'console:ls'          },
+       { text: '📋 ls -la', callback_data: 'console:ls -la'      },
+       { text: '⬆️ cd ..',   callback_data: 'console:cd ..'       }],
+      [{ text: '📊 df -h',  callback_data: 'console:df -h'       },
+       { text: '⚙️ ps',     callback_data: 'console:ps aux|head -20' },
+       { text: '🚪 Salir',  callback_data: 'console:exit'        }],
+    ];
+    await this.sendWithButtons(chatId, text.slice(0, 4090), buttons);
+  }
+
+  async _handleConsoleInput(chatId, command, chat) {
+    const trimmed = command.trim();
+    if (!trimmed) return;
+
+    // Salir del modo consola
+    if (trimmed === 'exit' || trimmed === 'salir' || trimmed === 'quit') {
+      chat.consoleMode = false;
+      await this.sendWithButtons(chatId, '🖥️ Modo consola *desactivado*.',
+        [[{ text: '🖥️ Monitor', callback_data: 'menu:monitor' },
+          { text: '🤖 Menú',    callback_data: 'menu' }]]);
+      return;
+    }
+
+    // cd especial (no se puede con exec)
+    if (/^cd(\s|$)/.test(trimmed)) {
+      const target = trimmed.slice(2).trim() || process.env.HOME;
+      const resolved = target === '~' ? process.env.HOME
+        : target.startsWith('/') ? target
+        : path.resolve(chat.monitorCwd || process.env.HOME, target);
+      try {
+        const stat = fs.statSync(resolved);
+        if (!stat.isDirectory()) throw new Error('no es un directorio');
+        chat.monitorCwd = resolved;
+        await this._sendConsolePrompt(chatId, '', chat);
+      } catch (err) {
+        await this._sendConsolePrompt(chatId, `❌ cd: ${err.message}`, chat);
+      }
+      return;
+    }
+
+    const cwd = chat.monitorCwd || process.env.HOME;
+    try {
+      const { stdout, stderr, code } = await this._runShellCommand(trimmed, cwd);
+      const combined = [stdout.trimEnd(), stderr.trimEnd()].filter(Boolean).join('\n').trim();
+      const cleaned = stripAnsi(combined) || '(sin salida)';
+      const prefix = code !== 0 ? `⚠️ [exit ${code}]\n` : '';
+      let out = `\`$ ${trimmed}\`\n${prefix}${cleaned}`;
+      if (out.length > 3800) out = out.slice(0, 3800) + `\n…[+${combined.length - 3800} chars]`;
+      await this._sendConsolePrompt(chatId, out, chat);
+    } catch (err) {
+      await this._sendConsolePrompt(chatId, `❌ Error: ${err.message}`, chat);
+    }
+  }
+
+  _resolveButtons(rawRows, back = null) {
+    const rows = (rawRows || []).map(row =>
+      row.map(btn => ({ text: btn.text, callback_data: btn.id }))
+    );
+    if (back) rows.push([{ text: '← Atrás', callback_data: back }]);
+    return rows;
+  }
+
+  _getMenuDef(id) {
+    const defs = {
+
+      // ── Raíz ──────────────────────────────────────────────────────────────
+      'menu': {
+        text: '🤖 *Menú principal*\n\nElegí una sección:',
+        buttons: () => [
+          [{ text: '💬 Sesión',   id: 'menu:sesion'  },
+           { text: '🔌 MCPs',     id: 'menu:mcps'    }],
+          [{ text: '🔧 Skills',   id: 'menu:skills'  },
+           { text: '🎭 Agentes',  id: 'menu:agentes' }],
+          [{ text: '🖥️ Monitor',  id: 'menu:monitor' },
+           { text: '⚙️ Config',   id: 'menu:config'  }],
+        ],
+      },
+
+      // ── Sesión ────────────────────────────────────────────────────────────
+      'menu:sesion': {
+        text: (chat) => {
+          const cs = chat?.claudeSession;
+          return `💬 *Sesión*\nAgente: \`${this.defaultAgent}\` | Modo: \`${chat?.claudeMode||'ask'}\`` +
+            (cs ? `\nMensajes: ${cs.messageCount} | Costo: $${cs.totalCostUsd.toFixed(4)}` : '');
+        },
+        buttons: () => [
+          [{ text: '💬 Nueva conv.',  id: 'nueva'               },
+           { text: '📊 Estado',       id: 'menu:sesion:estado'  }],
+          [{ text: '💰 Costo',        id: 'menu:sesion:costo'   },
+           { text: '🔁 Compact',      id: 'compact_action'      }],
+          [{ text: '← Menú',          id: 'menu'                }],
+        ],
+      },
+      'menu:sesion:estado': {
+        action: async ({ chatId, msgId, chat, bot }) => {
+          const cs = chat.claudeSession;
+          const uptime = cs ? Math.round((Date.now() - cs.createdAt) / 1000) : 0;
+          const text = cs
+            ? `📊 *Estado de sesión*\n\nID: \`${cs.id.slice(0,8)}…\`\n` +
+              `Agente: ${bot.defaultAgent}\nModelo: \`${cs.model||'default'}\`\n` +
+              `Modo permisos: \`${chat.claudeMode||'ask'}\`\nMensajes: ${cs.messageCount}\n` +
+              `Uptime: ${Math.floor(uptime/60)}m ${uptime%60}s\n` +
+              `Costo: $${cs.totalCostUsd.toFixed(4)} USD`
+            : '📊 Sin sesión activa.';
+          await bot.sendWithButtons(chatId, text,
+            [[{ text: '← Sesión', callback_data: 'menu:sesion' }]], msgId);
+        },
+      },
+      'menu:sesion:costo': {
+        action: async ({ chatId, msgId, chat, bot }) => {
+          const cs = chat.claudeSession;
+          const text = cs
+            ? `💰 *Costo de sesión*\n\nÚltimo: $${cs.lastCostUsd.toFixed(4)} USD\n` +
+              `Total: $${cs.totalCostUsd.toFixed(4)} USD\nMensajes: ${cs.messageCount}`
+            : '💰 Sin sesión activa.';
+          await bot.sendWithButtons(chatId, text,
+            [[{ text: '← Sesión', callback_data: 'menu:sesion' }]], msgId);
+        },
+      },
+
+      // ── MCPs ──────────────────────────────────────────────────────────────
+      'menu:mcps': {
+        text: () => {
+          let count = 0;
+          try { count = require('./mcps').list().length; } catch {}
+          return `🔌 *MCPs* — ${count} configurado${count !== 1 ? 's' : ''}`;
+        },
+        buttons: () => [
+          [{ text: '📋 Listar',  id: 'menu:mcps:list'   },
+           { text: '🔍 Buscar',  id: 'menu:mcps:buscar' }],
+          [{ text: '← Menú',     id: 'menu'             }],
+        ],
+      },
+      'menu:mcps:list': {
+        action: async ({ chatId, msgId, bot }) => {
+          let list = [];
+          try { list = require('./mcps').list(); } catch {}
+          const text = list.length
+            ? `🔌 *MCPs (${list.length})*\n\n` + list.map(m =>
+                `${m.enabled ? '✅' : '⏸'} \`${m.name}\` ${m.type==='http'?'🌐':'📦'}\n` +
+                `  _${(m.description||m.url||m.command||'').slice(0,50)}_`
+              ).join('\n')
+            : '🔌 No hay MCPs configurados.';
+          await bot.sendWithButtons(chatId, text,
+            [[{ text: '🔍 Buscar', callback_data: 'menu:mcps:buscar' },
+              { text: '← MCPs',   callback_data: 'menu:mcps' }]], msgId);
+        },
+      },
+      'menu:mcps:buscar': {
+        action: async ({ chatId, chat, bot }) => {
+          chat.pendingAction = { type: 'mcp-search' };
+          await bot.sendText(chatId,
+            '🔌 *Buscar MCP en Smithery*\n\n¿Qué tipo de MCP necesitás?\n' +
+            '_Ejemplos: "github", "postgres", "búsqueda web"_\n\nUsá /cancelar para cancelar.'
+          );
+        },
+      },
+
+      // ── Skills ────────────────────────────────────────────────────────────
+      'menu:skills': {
+        text: () => {
+          const count = require('./skills').listSkills().length;
+          return `🔧 *Skills* — ${count} instalado${count !== 1 ? 's' : ''}`;
+        },
+        buttons: () => [
+          [{ text: '📋 Listar',  id: 'menu:skills:list'   },
+           { text: '🔍 Buscar',  id: 'menu:skills:buscar' }],
+          [{ text: '← Menú',     id: 'menu'               }],
+        ],
+      },
+      'menu:skills:list': {
+        action: async ({ chatId, msgId, bot }) => {
+          const list = require('./skills').listSkills();
+          const text = list.length
+            ? `🔧 *Skills (${list.length})*\n\n` + list.map(s =>
+                `• \`${s.slug}\` — ${s.name}\n  _${(s.description||'').slice(0,60)}_`
+              ).join('\n')
+            : '🔧 No hay skills instalados.';
+          await bot.sendWithButtons(chatId, text,
+            [[{ text: '🔍 Buscar', callback_data: 'menu:skills:buscar' },
+              { text: '← Skills',  callback_data: 'menu:skills' }]], msgId);
+        },
+      },
+      'menu:skills:buscar': {
+        action: async ({ chatId, chat, bot }) => {
+          chat.pendingAction = { type: 'skill-search' };
+          await bot.sendText(chatId,
+            '🔍 *Buscar skill en ClawHub*\n\n¿Para qué necesitás el skill?\n' +
+            '_Ejemplos: "crear PDFs", "enviar emails"_\n\nUsá /cancelar para cancelar.'
+          );
+        },
+      },
+
+      // ── Agentes ───────────────────────────────────────────────────────────
+      'menu:agentes': {
+        text: (chat) => `🎭 *Agentes de rol*${chat?.activeAgent ? `\nActivo: \`${chat.activeAgent.key}\`` : ''}`,
+        buttons: (chat) => {
+          const roleAgents = agentsModule.list().filter(a => a.prompt);
+          if (!roleAgents.length) return [[{ text: '← Menú', id: 'menu' }]];
+          const agentRows = roleAgents.map(a => [{
+            text: (chat?.activeAgent?.key === a.key ? '✅ ' : '') + a.key,
+            id: `agent:${a.key}`,
+          }]);
+          const navRow = [];
+          if (chat?.activeAgent) navRow.push({ text: '🚫 Basta', id: 'basta_action' });
+          navRow.push({ text: '← Menú', id: 'menu' });
+          return [...agentRows, navRow];
+        },
+      },
+
+      // ── Monitor ───────────────────────────────────────────────────────────
+      'menu:monitor': {
+        text: (chat) => `🖥️ *Monitor*\nDirectorio: \`${chat?.monitorCwd || process.env.HOME}\``,
+        buttons: () => [
+          [{ text: '📁 ls',          id: 'menu:monitor:ls'      },
+           { text: '🖥️ Consola',      id: 'menu:monitor:consola' }],
+          [{ text: '📊 Status VPS',   id: 'status_vps'           },
+           { text: '← Menú',          id: 'menu'                 }],
+        ],
+      },
+      'menu:monitor:consola': {
+        action: async ({ chatId, chat, bot }) => {
+          chat.consoleMode = true;
+          const cwd = chat.monitorCwd || process.env.HOME;
+          const cwdShort = cwd.replace(process.env.HOME, '~');
+          await bot._sendConsolePrompt(chatId,
+            `🖥️ *Modo consola activado*\n📁 \`${cwdShort}\`\n\nEscribí comandos directamente.\n\`exit\` o /consola para salir.`,
+            chat);
+        },
+      },
+      // ── Configuración ─────────────────────────────────────────────────────
+      'menu:config': {
+        text: (chat) => {
+          const provider = chat?.provider || 'claude-code';
+          const mode = chat?.claudeMode || 'ask';
+          const model = chat?.claudeSession?.model || 'default';
+          return `⚙️ *Configuración*\nProvider: \`${provider}\` | Permisos: \`${mode}\` | Modelo: \`${model}\``;
+        },
+        buttons: () => [
+          [{ text: '🤖 Provider',  id: 'menu:config:provider'  },
+           { text: '🔐 Permisos',  id: 'menu:config:permisos'  }],
+          [{ text: '🧠 Modelo',    id: 'menu:config:modelo'    },
+           { text: '← Menú',       id: 'menu'                  }],
+        ],
+      },
+      'menu:config:provider': {
+        action: async ({ chatId, msgId, chat, bot }) => {
+          if (!providersModule) {
+            await bot.sendText(chatId, '❌ Módulo providers no disponible.'); return;
+          }
+          const current = chat.provider || 'claude-code';
+          const providerButtons = providersModule.list().map(p => [{
+            text: `${current === p.name ? '✅ ' : ''}${p.label}`,
+            callback_data: `provider:${p.name}`,
+          }]);
+          providerButtons.push([{ text: '← Config', callback_data: 'menu:config' }]);
+          await bot.sendWithButtons(chatId,
+            `🤖 *Provider actual*: \`${current}\`\nElegí uno:`,
+            providerButtons, msgId);
+        },
+      },
+      'menu:config:permisos': {
+        action: async ({ chatId, msgId, chat, bot }) => {
+          const current = chat.claudeMode || 'ask';
+          await bot.sendWithButtons(chatId,
+            `🔐 *Modo de permisos*: \`${current}\`\n\n• \`ask\` — describe sin ejecutar\n• \`auto\` — ejecuta todo\n• \`plan\` — solo planifica`,
+            [[
+              { text: current==='ask'  ? '✅ ask'  : 'ask',   callback_data: 'claudemode:ask'  },
+              { text: current==='auto' ? '✅ auto' : 'auto',  callback_data: 'claudemode:auto' },
+              { text: current==='plan' ? '✅ plan' : 'plan',  callback_data: 'claudemode:plan' },
+            ],
+            [{ text: '← Config', callback_data: 'menu:config' }]],
+            msgId);
+        },
+      },
+      'menu:config:modelo': {
+        action: async ({ chatId, msgId, chat, bot }) => {
+          const current = chat.claudeSession?.model || 'default';
+          await bot.sendWithButtons(chatId,
+            `🧠 *Modelo actual*: \`${current}\`\nElegí uno:`,
+            [
+              [{ text: current==='claude-opus-4-6'           ? '✅ opus-4-6'   : 'opus-4-6',   callback_data: 'setmodel:claude-opus-4-6' },
+               { text: current==='claude-sonnet-4-6'         ? '✅ sonnet-4-6' : 'sonnet-4-6', callback_data: 'setmodel:claude-sonnet-4-6' }],
+              [{ text: current==='claude-haiku-4-5-20251001' ? '✅ haiku-4-5'  : 'haiku-4-5',  callback_data: 'setmodel:claude-haiku-4-5-20251001' },
+               { text: current==='default'                   ? '✅ default'    : 'default',     callback_data: 'setmodel:default' }],
+              [{ text: '← Config', callback_data: 'menu:config' }],
+            ], msgId);
+        },
+      },
+
+    }; // fin del objeto defs
+
+    return defs[id] || null;
+  }
+
   async _sendMenu(chatId, editMsgId = null) {
-    await this.sendWithButtons(chatId, '🤖 *Menú principal*\n\nElegí una opción:', [
-      [{ text: '📊 Estado VPS', callback_data: 'status_vps' }, { text: '💬 Nueva conv.', callback_data: 'nueva' }],
-      [{ text: '🔄 Resetear',   callback_data: 'reset' },      { text: '🎭 Agentes',     callback_data: 'agentes' }],
-      [{ text: '🔧 Skills',     callback_data: 'skills' },     { text: '❓ Ayuda',        callback_data: 'ayuda' }],
-    ], editMsgId);
+    const def = this._getMenuDef('menu');
+    const text    = typeof def.text    === 'function' ? def.text(null) : def.text;
+    const rawRows = typeof def.buttons === 'function' ? def.buttons(null) : def.buttons;
+    await this.sendWithButtons(chatId, text, this._resolveButtons(rawRows, def.back), editMsgId);
   }
 
   async _handleCallbackQuery(cbq) {
@@ -1165,6 +1705,10 @@ class TelegramBot {
         rateLimitedUntil: 0,
         monitorCwd: process.env.HOME,
         busy: false,
+        provider: 'claude-code',
+        aiHistory: [],
+        claudeMode: 'ask',       // 'auto' | 'ask' | 'plan' — default: 'ask'
+        consoleMode: false,
       };
       this.chats.set(chatId, chat);
     }
@@ -1173,11 +1717,72 @@ class TelegramBot {
 
     const data = cbq.data || '';
 
+    // Callbacks de consola
+    if (data.startsWith('console:')) {
+      const command = data.slice(8);
+      chat.consoleMode = true;
+      await this._handleConsoleInput(chatId, command, chat);
+      return;
+    }
+
+    // Motor de menús declarativo
+    if (data.startsWith('menu:')) {
+      const def = this._getMenuDef(data);
+      if (!def) return;
+      if (def.action) {
+        await def.action({ chatId, msgId, chat, bot: this });
+      } else {
+        const text    = typeof def.text    === 'function' ? def.text(chat)    : def.text;
+        const rawRows = typeof def.buttons === 'function' ? def.buttons(chat) : def.buttons;
+        const buttons = this._resolveButtons(rawRows, def.back);
+        await this.sendWithButtons(chatId, text, buttons, msgId);
+      }
+      return;
+    }
+
+    if (data.startsWith('setmodel:')) {
+      const newModel = data.slice(9);
+      const model = newModel === 'default' ? null : newModel;
+      chat.claudeSession = new ClaudePrintSession({ model, permissionMode: chat.claudeMode || 'ask' });
+      await this.sendText(chatId, `✅ Modelo: \`${newModel}\`\n_Nueva sesión iniciada._`);
+      return;
+    }
+
+    if (data.startsWith('claudemode:')) {
+      const newMode = data.slice(11); // 'auto' | 'ask' | 'plan'
+      if (['auto', 'ask', 'plan'].includes(newMode)) {
+        chat.claudeMode = newMode;
+        // Actualizar sesión existente sin resetearla → preserva contexto
+        if (chat.claudeSession) chat.claudeSession.permissionMode = newMode;
+        const labels = { auto: '⚡ auto-accept', ask: '❓ ask', plan: '📋 plan' };
+        await this.sendText(chatId,
+          `✅ Modo cambiado a *${labels[newMode]}*\n_Contexto preservado._`
+        );
+      }
+      return;
+    }
+
+    if (data.startsWith('provider:') && providersModule) {
+      const newProvider = data.slice(9);
+      const available = providersModule.list().map(p => p.name);
+      if (available.includes(newProvider)) {
+        chat.provider = newProvider;
+        if (newProvider === 'claude-code') {
+          chat.claudeSession = null;
+        } else {
+          chat.aiHistory = [];
+        }
+        const label = providersModule.get(newProvider).label;
+        await this.sendText(chatId, `✅ Provider cambiado a *${label}*`);
+      }
+      return;
+    }
+
     if (data.startsWith('agent:')) {
       const agentKey = data.slice(6);
       const agentDef = agentsModule.get(agentKey);
       if (agentDef?.prompt) {
-        chat.claudeSession = new ClaudePrintSession();
+        chat.claudeSession = new ClaudePrintSession({ permissionMode: chat.claudeMode || 'ask' });
         chat.activeAgent = { key: agentDef.key, prompt: agentDef.prompt };
         const fullPrompt = skillsModule.buildAgentPrompt(agentDef);
         await this._sendToSession(chatId, fullPrompt, chat);
@@ -1211,7 +1816,7 @@ class TelegramBot {
       case 'reset': {
         if (this._isClaudeBased()) {
           const model = chat.claudeSession?.model || null;
-          chat.claudeSession = new ClaudePrintSession({ model });
+          chat.claudeSession = new ClaudePrintSession({ model, permissionMode: chat.claudeMode || 'ask' });
           await this.sendWithButtons(chatId,
             `✅ Nueva conversación *${this.defaultAgent}* iniciada (\`${chat.claudeSession.id.slice(0,8)}…\`)`,
             [[{ text: '🤖 Menú', callback_data: 'menu' }]]
@@ -1270,22 +1875,21 @@ class TelegramBot {
           `/bash — nueva sesión bash\n\n` +
           `*Claude Code:*\n` +
           `/modelo [nombre] — ver/cambiar modelo\n` +
+          `/permisos [modo] — ver/cambiar modo (auto/ask/plan)\n` +
           `/costo — costo de la sesión\n` +
           `/estado — estado detallado\n` +
-          `/memoria — ver archivos de memoria\n` +
-          `/dir — directorio de trabajo\n\n` +
+          `/memoria — ver archivos de memoria\n\n` +
           `*Agentes de rol:*\n` +
           `/agentes — listar agentes con prompt\n` +
           `/<key> — activar agente de rol\n` +
           `/basta — desactivar agente de rol\n\n` +
           `*Skills:*\n` +
           `/skills — ver skills instalados\n` +
-          `/buscar-skill — buscar e instalar skills de ClawHub\n\n` +
+          `/buscar-skill — buscar e instalar skills de ClawHub\n` +
+          `/mcps — ver MCPs configurados\n` +
+          `/buscar-mcp [query] — buscar e instalar MCPs de Smithery\n\n` +
           `*Monitor:*\n` +
-          `/monitor — panel de navegación\n` +
-          `/ls [path] — listar directorio\n` +
-          `/cat archivo — ver archivo\n` +
-          `/mkdir nombre — crear carpeta\n` +
+          `/consola — modo consola bash (toggle)\n` +
           `/status-vps — CPU, RAM y disco\n\n` +
           `*Bot:*\n` +
           `/agente [key] — ver/cambiar agente\n` +
@@ -1295,7 +1899,22 @@ class TelegramBot {
       }
 
       case 'menu': {
-        await this._sendMenu(chatId);
+        await this._sendMenu(chatId, msgId);
+        break;
+      }
+
+      case 'basta_action': {
+        chat.activeAgent = null;
+        chat.claudeSession = new ClaudePrintSession({ permissionMode: chat.claudeMode || 'ask' });
+        const def = this._getMenuDef('menu:agentes');
+        const text    = typeof def.text    === 'function' ? def.text(chat)    : def.text;
+        const rawRows = typeof def.buttons === 'function' ? def.buttons(chat) : def.buttons;
+        await this.sendWithButtons(chatId, text, this._resolveButtons(rawRows, def.back), msgId);
+        break;
+      }
+
+      case 'compact_action': {
+        if (chat.claudeSession) await this._sendToSession(chatId, '/compact', chat);
         break;
       }
     }

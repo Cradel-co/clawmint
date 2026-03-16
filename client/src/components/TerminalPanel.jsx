@@ -63,6 +63,7 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
         command: session.command || null,
         systemPrompt: session.command || null, // para /ai con system prompt
         sessionId: session.httpSessionId || null, // adjuntarse a sesión HTTP existente
+        provider: session.provider || null,    // provider de IA seleccionado
         cols: term.cols,
         rows: term.rows,
       }));

@@ -2,6 +2,10 @@
   {
     "key": "claude_bb",
     "token": "8285283666:AAHX37W5_0cV9m2kv5m6ujvtWU-BH-NHcgs",
-    "defaultAgent": "cc"
+    "defaultAgent": "cc",
+    "whitelist": [],
+    "rateLimit": 30,
+    "rateLimitKeyword": "",
+    "offset": 45892436
   }
 ]

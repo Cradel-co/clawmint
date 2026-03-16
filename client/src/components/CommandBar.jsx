@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import './CommandBar.css';
 
-export default function CommandBar({ onCommand, onClaude }) {
+export default function CommandBar({ onCommand, onClaude, onAI }) {
   const [value, setValue] = useState('');
   const [error, setError] = useState('');
   const inputRef = useRef(null);
@@ -30,10 +30,34 @@ export default function CommandBar({ onCommand, onClaude }) {
       return;
     }
 
-    // /ai [system prompt opcional]
+    // /ai [system prompt opcional] → Anthropic API
     if (raw === '/ai' || raw.startsWith('/ai ')) {
       const sys = raw.slice(3).trim();
       onClaude(sys || null);
+      setValue('');
+      return;
+    }
+
+    // /gemini [system] → Gemini
+    if (raw === '/gemini' || raw.startsWith('/gemini ')) {
+      const sys = raw.slice(7).trim();
+      if (onAI) onAI('gemini', sys || null);
+      setValue('');
+      return;
+    }
+
+    // /openai [system] → OpenAI
+    if (raw === '/openai' || raw.startsWith('/openai ')) {
+      const sys = raw.slice(7).trim();
+      if (onAI) onAI('openai', sys || null);
+      setValue('');
+      return;
+    }
+
+    // /anthropic [system] → Anthropic API
+    if (raw === '/anthropic' || raw.startsWith('/anthropic ')) {
+      const sys = raw.slice(10).trim();
+      if (onAI) onAI('anthropic', sys || null);
       setValue('');
       return;
     }
@@ -45,7 +69,7 @@ export default function CommandBar({ onCommand, onClaude }) {
       return;
     }
 
-    setError('Comandos: /new  /cmd <cmd>  /ai [system]  /cc');
+    setError('Comandos: /new  /cmd <cmd>  /ai  /gemini  /openai  /cc');
   };
 
   return (
@@ -56,7 +80,7 @@ export default function CommandBar({ onCommand, onClaude }) {
         className="command-input"
         value={value.startsWith('/') ? value.slice(1) : value}
         onChange={(e) => setValue('/' + e.target.value)}
-        placeholder="new  |  cmd npm start  |  ai [system]  |  cc"
+        placeholder="new  |  cmd npm start  |  ai  |  gemini  |  openai  |  cc"
         spellCheck={false}
         autoComplete="off"
       />
