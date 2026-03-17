@@ -268,6 +268,13 @@ class ClaudePrintSession {
         for (const line of lines) processLine(line);
       });
 
+      child.on('error', (err) => {
+        if (exited) return;
+        exited = true;
+        clearTimeout(killTimer);
+        reject(new Error(`No se pudo ejecutar claude: ${err.message}`));
+      });
+
       child.on('close', (exitCode) => {
         if (exited) return;
         exited = true;
