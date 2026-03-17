@@ -1,0 +1,16 @@
+services:
+  clawmint:
+    build: .
+    container_name: clawmint
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      - server-memory:/app/server/memory
+      - server-skills:/app/server/skills
+    env_file:
+      - ./server/.env
+
+volumes:
+  server-memory:
+  server-skills:
