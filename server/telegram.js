@@ -420,6 +420,27 @@ class TelegramBot {
     const me = await this._apiCall('getMe');
     this.botInfo = { id: me.id, username: me.username, firstName: me.first_name };
     this.running = true;
+
+    // Registrar menú de comandos en Telegram
+    try {
+      await this._apiCall('setMyCommands', {
+        commands: [
+          { command: 'nueva', description: 'Nueva conversación' },
+          { command: 'modelo', description: 'Ver o cambiar modelo' },
+          { command: 'permisos', description: 'Modo: auto/ask/plan' },
+          { command: 'costo', description: 'Costo de la sesión' },
+          { command: 'estado', description: 'Estado detallado' },
+          { command: 'agentes', description: 'Listar agentes' },
+          { command: 'skills', description: 'Skills instalados' },
+          { command: 'consola', description: 'Modo consola bash' },
+          { command: 'recordar', description: 'Crear recordatorio' },
+          { command: 'ayuda', description: 'Todos los comandos' },
+        ],
+      });
+    } catch (e) {
+      console.error(`[Telegram] setMyCommands falló: ${e.message}`);
+    }
+
     this._poll();
     console.log(`[Telegram] Bot "${this.key}" iniciado: @${me.username}`);
     return { username: me.username };
@@ -571,6 +592,7 @@ class TelegramBot {
         aiHistory: [],           // historial para providers no-claude-code
         claudeMode: 'ask',       // 'auto' | 'ask' | 'plan' — default: 'ask'
         consoleMode: false,      // modo consola: mensajes van directo a bash
+        lastButtonsMsgId: null,  // message_id del último mensaje con botones
       };
       this.chats.set(chatId, chat);
     }
@@ -1483,25 +1505,45 @@ class TelegramBot {
               chunks.push(finalText.slice(i, i + 4096));
             }
 
+            // Botones post-respuesta en el último chunk
+            const postButtons = [
+              [
+                { text: '▶ Seguir', callback_data: 'postreply:continue' },
+                { text: '🔄 Nueva conv', callback_data: 'postreply:new' },
+              ],
+              [
+                { text: '💾 Guardar en memoria', callback_data: 'postreply:save' },
+              ],
+            ];
+            const lastIdx = chunks.length - 1;
+
             if (sentMsg) {
-              // Primer bloque: editar el placeholder
-              try {
-                await this._apiCall('editMessageText', {
-                  chat_id: chatId,
-                  message_id: sentMsg.message_id,
-                  text: chunks[0],
-                });
-              } catch {
-                await this.sendText(chatId, chunks[0]);
-              }
-              // Bloques restantes: mensajes nuevos
-              for (let i = 1; i < chunks.length; i++) {
-                await this.sendText(chatId, chunks[i]);
+              if (chunks.length === 1) {
+                // Único bloque: editar placeholder con botones
+                await this.sendWithButtons(chatId, chunks[0], postButtons, sentMsg.message_id);
+              } else {
+                // Primer bloque: editar placeholder sin botones
+                try {
+                  await this._apiCall('editMessageText', {
+                    chat_id: chatId,
+                    message_id: sentMsg.message_id,
+                    text: chunks[0],
+                  });
+                } catch {
+                  await this.sendText(chatId, chunks[0]);
+                }
+                // Bloques intermedios
+                for (let i = 1; i < lastIdx; i++) {
+                  await this.sendText(chatId, chunks[i]);
+                }
+                // Último bloque con botones
+                await this.sendWithButtons(chatId, chunks[lastIdx], postButtons);
               }
             } else {
-              for (const chunk of chunks) {
-                await this.sendText(chatId, chunk);
+              for (let i = 0; i < lastIdx; i++) {
+                await this.sendText(chatId, chunks[i]);
               }
+              await this.sendWithButtons(chatId, chunks[lastIdx], postButtons);
             }
           }
         } catch (err) {
@@ -1631,19 +1673,20 @@ class TelegramBot {
 
       chat.aiHistory.push({ role: 'assistant', content: finalText });
 
-      // Edición final
+      // Edición final con botones post-respuesta
+      const postButtons = [
+        [
+          { text: '▶ Seguir', callback_data: 'postreply:continue' },
+          { text: '🔄 Nueva conv', callback_data: 'postreply:new' },
+        ],
+        [
+          { text: '💾 Guardar en memoria', callback_data: 'postreply:save' },
+        ],
+      ];
       if (sentMsg && finalText) {
-        try {
-          await this._apiCall('editMessageText', {
-            chat_id: chatId,
-            message_id: sentMsg.message_id,
-            text: finalText.slice(0, 4096),
-          });
-        } catch {
-          await this.sendText(chatId, finalText);
-        }
+        await this.sendWithButtons(chatId, finalText.slice(0, 4096), postButtons, sentMsg.message_id);
       } else if (!sentMsg && finalText) {
-        await this.sendText(chatId, finalText);
+        await this.sendWithButtons(chatId, finalText.slice(0, 4096), postButtons);
       }
     } catch (err) {
       animStopped = true; clearInterval(animInterval);
@@ -1686,13 +1729,45 @@ class TelegramBot {
   async sendWithButtons(chatId, text, buttons, editMsgId = null) {
     const body = { chat_id: chatId, text: text.slice(0, 4096), parse_mode: 'Markdown',
                    reply_markup: { inline_keyboard: buttons } };
+
+    // Remover botones del mensaje anterior si existe
+    const chat = this.chats.get(chatId);
+    if (chat && chat.lastButtonsMsgId && !editMsgId) {
+      try {
+        await this._apiCall('editMessageText', {
+          chat_id: chatId,
+          message_id: chat.lastButtonsMsgId,
+          text: '...',  // Mantener algo de texto para no dejar el mensaje vacío
+          reply_markup: { inline_keyboard: [] }
+        });
+      } catch {}
+    }
+
     if (editMsgId) {
-      try { return await this._apiCall('editMessageText', { ...body, message_id: editMsgId }); }
+      try {
+        const result = await this._apiCall('editMessageText', { ...body, message_id: editMsgId });
+        if (chat) chat.lastButtonsMsgId = editMsgId;
+        return result;
+      }
       catch (e) { if (!e.message?.includes('not modified')) throw e; }
       return;
     }
-    try { return await this._apiCall('sendMessage', body); }
-    catch { body.parse_mode = undefined; return this._apiCall('sendMessage', body); }
+
+    try {
+      const result = await this._apiCall('sendMessage', body);
+      if (chat && result?.message_id) {
+        chat.lastButtonsMsgId = result.message_id;
+      }
+      return result;
+    }
+    catch {
+      body.parse_mode = undefined;
+      const result = await this._apiCall('sendMessage', body);
+      if (chat && result?.message_id) {
+        chat.lastButtonsMsgId = result.message_id;
+      }
+      return result;
+    }
   }
 
   // ── Modo consola ───────────────────────────────────────────────────────────
@@ -2064,6 +2139,35 @@ class TelegramBot {
     await this._answerCallback(cbq.id);
 
     const data = cbq.data || '';
+
+    // Botones post-respuesta
+    if (data.startsWith('postreply:')) {
+      const action = data.slice(10);
+      if (action === 'continue') {
+        await this._sendToSession(chatId, 'continúa', chat);
+      } else if (action === 'new') {
+        if (this._isClaudeBased()) {
+          const model = chat.claudeSession?.model || null;
+          chat.claudeSession = new ClaudePrintSession({ model, permissionMode: chat.claudeMode || 'ask' });
+          await this.sendText(chatId, '✅ Nueva conversación iniciada.');
+        } else {
+          chat.aiHistory = [];
+          await this.sendText(chatId, '✅ Historial limpiado.');
+        }
+      } else if (action === 'save') {
+        // Guardar la última respuesta en memoria del agente activo
+        const lastReply = cbq.message?.text;
+        if (lastReply) {
+          const agentKey = chat.activeAgent?.key || this.defaultAgent;
+          const filename = `telegram_${Date.now()}.md`;
+          memoryModule.write(agentKey, filename, lastReply);
+          await this.sendText(chatId, `💾 Guardado en memoria de *${agentKey}* → \`${filename}\``);
+        } else {
+          await this.sendText(chatId, '❌ No hay texto para guardar.');
+        }
+      }
+      return;
+    }
 
     // Callbacks de consola
     if (data.startsWith('console:')) {
