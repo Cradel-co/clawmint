@@ -1,0 +1,16 @@
+node_modules
+client/node_modules
+server/node_modules
+client/dist
+.git
+.gitignore
+*.md
+!README.md
+server/.env
+server/bots.json
+server/agents.json
+server/provider-config.json
+server/logs.json
+server/server.log
+server/memory
+server/skills

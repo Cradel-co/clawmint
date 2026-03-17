@@ -14,7 +14,7 @@
 **Clawmint** es una terminal en tiempo real que corrés en tu propio servidor.
 Accedés desde el navegador o desde Telegram. Soporta sesiones PTY reales, streaming via WebSocket, múltiples agentes de IA con providers configurables (Claude Code CLI, Anthropic, Gemini, OpenAI), skills, memoria persistente y un bot de Telegram que actúa como frontend completo.
 
-[Inicio rápido](#inicio-rápido--desarrollo) · [Producción](#inicio-en-producción) · [Docs servidor](documentacion/servidor.md) · [Docs cliente](documentacion/cliente.md) · [API REST](documentacion/servidor.md#api-rest) · [Comandos Telegram](documentacion/servidor.md#comandos-del-bot-de-telegram)
+[Inicio rápido](#inicio-rápido--desarrollo) · [Producción](#inicio-en-producción) · [Docs servidor](docs/servidor.md) · [Docs cliente](docs/cliente.md) · [API REST](docs/servidor.md#api-rest) · [Comandos Telegram](docs/servidor.md#comandos-del-bot-de-telegram) · [Changelog](CHANGELOG.md)
 
 ---
 
@@ -164,8 +164,11 @@ Telegram / Navegador
 
 | Documento | Contenido |
 |---|---|
-| [documentacion/servidor.md](documentacion/servidor.md) | Módulos, variables de entorno, API REST completa, WebSocket, providers, agentes, skills, memoria, comandos Telegram |
-| [documentacion/cliente.md](documentacion/cliente.md) | Componentes React, reconexión WS, paneles, build, nginx |
+| [docs/servidor.md](docs/servidor.md) | Módulos, variables de entorno, API REST completa, WebSocket, providers, agentes, skills, memoria, comandos Telegram |
+| [docs/cliente.md](docs/cliente.md) | Componentes React, reconexión WS, paneles, build, nginx |
+| [docs/docker.md](docs/docker.md) | Despliegue con Docker, montaje de Claude CLI |
+| [docs/mejoras.md](docs/mejoras.md) | Ideas y mejoras propuestas |
+| [CHANGELOG.md](CHANGELOG.md) | Historial de cambios por versión |
 
 ---
 

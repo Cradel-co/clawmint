@@ -398,13 +398,14 @@ app.post('/api/telegram/bots/:key/start', async (req, res) => {
 });
 
 // PATCH /api/telegram/bots/:key — actualizar config del bot
-// Body: { defaultAgent?, whitelist?, rateLimit? }
+// Body: { defaultAgent?, whitelist?, groupWhitelist?, rateLimit?, rateLimitKeyword? }
 app.patch('/api/telegram/bots/:key', (req, res) => {
   const bot = telegram.getBot(req.params.key);
   if (!bot) return res.status(404).json({ error: 'Bot no encontrado' });
-  const { defaultAgent, whitelist, rateLimit, rateLimitKeyword } = req.body || {};
+  const { defaultAgent, whitelist, groupWhitelist, rateLimit, rateLimitKeyword } = req.body || {};
   if (defaultAgent !== undefined) bot.setDefaultAgent(defaultAgent);
   if (whitelist !== undefined) bot.setWhitelist(whitelist);
+  if (groupWhitelist !== undefined) bot.setGroupWhitelist(groupWhitelist);
   if (rateLimit !== undefined) bot.setRateLimit(rateLimit);
   if (rateLimitKeyword !== undefined) bot.setRateLimitKeyword(rateLimitKeyword);
   telegram.saveBots();
@@ -720,6 +721,17 @@ app.put('/api/providers/:name', (req, res) => {
   providerConfig.setProvider(req.params.name, { apiKey, model });
   res.json({ ok: true });
 });
+
+// ─── Client estático (producción / Docker) ───────────────────────────────────
+
+const clientDist = path.join(__dirname, '..', 'client', 'dist');
+if (fs.existsSync(clientDist)) {
+  app.use(express.static(clientDist));
+  app.get(/^\/(?!api|ws).*/, (_req, res) => {
+    res.sendFile(path.join(clientDist, 'index.html'));
+  });
+  logger.info(`Sirviendo client build desde ${clientDist}`);
+}
 
 // ─── Servidor ─────────────────────────────────────────────────────────────────
 
