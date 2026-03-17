@@ -41,11 +41,16 @@ module.exports = {
     while (true) {
       let response;
       try {
-        response = await ai.models.generateContent({
-          model: usedModel,
-          contents: currentContents,
-          config,
-        });
+        response = await Promise.race([
+          ai.models.generateContent({
+            model: usedModel,
+            contents: currentContents,
+            config,
+          }),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Timeout: Gemini no respondió en 60s')), 60000)
+          ),
+        ]);
       } catch (err) {
         yield { type: 'done', fullText: `Error Gemini: ${err.message}` };
         return;
