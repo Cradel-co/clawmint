@@ -62,7 +62,7 @@ logger.info('PATH:', process.env.PATH);
 logger.info('HOME:', process.env.HOME);
 
 logger.info('Cargando módulos...');
-let sessionManager, telegram, agents, skills, events, memory, providerConfig, providersModule;
+let sessionManager, telegram, agents, skills, events, memory, providerConfig, providersModule, consolidator;
 try { sessionManager  = require('./sessionManager');  logger.info('sessionManager OK'); }  catch(e) { logger.error('sessionManager FAIL:', e.message); process.exit(1); }
 try { agents          = require('./agents');           logger.info('agents OK'); }          catch(e) { logger.error('agents FAIL:', e.message); process.exit(1); }
 try { skills          = require('./skills');           logger.info('skills OK'); }          catch(e) { logger.error('skills FAIL:', e.message); process.exit(1); }
@@ -71,6 +71,12 @@ try { memory          = require('./memory');           logger.info('memory OK');
 try { providerConfig  = require('./provider-config'); logger.info('provider-config OK'); } catch(e) { logger.error('provider-config FAIL:', e.message); process.exit(1); }
 try { providersModule = require('./providers');        logger.info('providers OK'); }       catch(e) { logger.error('providers FAIL:', e.message); process.exit(1); }
 try { telegram        = require('./telegram');         logger.info('telegram OK'); }        catch(e) { logger.error('telegram FAIL:', e.message); process.exit(1); }
+// Consolidador de memoria: se inicializa después de memory.js (necesita la DB)
+try {
+  consolidator = require('./memory-consolidator');
+  consolidator.init(memory.getDB());
+  logger.info('memory-consolidator OK');
+} catch(e) { logger.warn('memory-consolidator no disponible:', e.message); }
 logger.info('Todos los módulos cargados.');
 
 const app = express();
@@ -270,6 +276,89 @@ app.delete('/api/skills/:slug', (req, res) => {
 });
 
 // ─── Memory API ───────────────────────────────────────────────────────────────
+
+// GET /api/memory/debug?agentKey=xxx — análisis completo del estado de memoria
+app.get('/api/memory/debug', (req, res) => {
+  const agentKey = req.query.agentKey || null;
+
+  // Stats desde SQLite
+  const graph  = memory.buildGraph(agentKey);
+  const notes  = graph.nodes;
+  const links  = graph.links;
+
+  // Distribución de importancia
+  const byImportance = {};
+  for (const n of notes) {
+    byImportance[n.importance] = (byImportance[n.importance] || 0) + 1;
+  }
+
+  // Top 10 notas más accedidas
+  const topAccessed = [...notes]
+    .sort((a, b) => b.accessCount - a.accessCount)
+    .slice(0, 10)
+    .map(n => ({ id: n.id, title: n.title, tags: n.tags, accessCount: n.accessCount, importance: n.importance }));
+
+  // Links learned vs explicit
+  const learnedLinks   = links.filter(l => l.type === 'learned');
+  const explicitLinks  = links.filter(l => l.type === 'explicit');
+
+  // Top conexiones más fuertes
+  const topLinks = [...links]
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, 10)
+    .map(l => {
+      const src = notes.find(n => n.id === l.source);
+      const tgt = notes.find(n => n.id === l.target);
+      return {
+        from: src?.title || l.source,
+        to:   tgt?.title || l.target,
+        weight: l.weight,
+        type: l.type,
+      };
+    });
+
+  // Todos los tags únicos
+  const allTags = [...new Set(notes.flatMap(n => n.tags))].sort();
+
+  res.json({
+    stats: {
+      totalNotes:     notes.length,
+      totalLinks:     links.length,
+      learnedLinks:   learnedLinks.length,
+      explicitLinks:  explicitLinks.length,
+      uniqueTags:     allTags.length,
+      byImportance,
+    },
+    topAccessed,
+    topLinks,
+    allTags,
+    agentKey: agentKey || '(todos)',
+  });
+});
+
+// GET /api/memory/graph?agentKey=xxx — grafo para visualización futura
+app.get('/api/memory/graph', (req, res) => {
+  const agentKey = req.query.agentKey || null;
+  res.json(memory.buildGraph(agentKey));
+});
+
+// GET /api/memory/:agentKey/search?tags=auth,jwt&q=texto — búsqueda semántica
+app.get('/api/memory/:agentKey/search', (req, res) => {
+  const { agentKey } = req.params;
+  const tags    = req.query.tags ? req.query.tags.split(',').map(t => t.trim()) : [];
+  const words   = req.query.q   ? memory.extractKeywords(req.query.q)           : [];
+  const keywords = [...new Set([...tags, ...words])];
+  const results  = memory.spreadingActivation(agentKey, keywords);
+  res.json(results.map(r => ({
+    filename:    r.filename,
+    title:       r.title,
+    tags:        r.tags,
+    importance:  r.importance,
+    accessCount: r.accessCount,
+    preview:     r.content.slice(0, 200),
+    score:       r.score,
+  })));
+});
 
 // GET /api/memory/:agentKey — listar archivos de memoria del agente
 app.get('/api/memory/:agentKey', (req, res) => {
@@ -589,9 +678,10 @@ function startAISession(ws, opts) {
     'Sos un asistente útil. Respondé de forma concisa y clara. ' +
     'Usá texto plano sin markdown ya que tu respuesta se mostrará en una terminal.';
 
-  const memoryCtx = agentKey ? memory.buildMemoryContext(agentKey, memoryFiles) : '';
-  const toolInstructions = memoryFiles.length > 0 ? memory.TOOL_INSTRUCTIONS : '';
-  const systemPrompt = [basePrompt, memoryCtx, toolInstructions].filter(Boolean).join('\n\n');
+  const toolInstructions = agentKey ? memory.TOOL_INSTRUCTIONS : '';
+  // systemPrompt se actualiza en el primer mensaje con la memoria relevante
+  let systemPrompt = [basePrompt, toolInstructions].filter(Boolean).join('\n\n');
+  let memoryInjected = false;
 
   const apiKey  = providerConfig.getApiKey(providerName);
   const model   = opts.model || providerConfig.getConfig().providers[providerName]?.model || provider.defaultModel;
@@ -633,6 +723,14 @@ function startAISession(ws, opts) {
 
   async function askAI(userMessage) {
     processing = true;
+    // Inyectar memoria en el primer mensaje con el texto real del usuario
+    if (agentKey && !memoryInjected) {
+      memoryInjected = true;
+      const memCtx = memory.buildMemoryContext(agentKey, userMessage);
+      if (memCtx) {
+        systemPrompt = [basePrompt, memCtx, toolInstructions].filter(Boolean).join('\n\n');
+      }
+    }
     history.push({ role: 'user', content: userMessage });
     send(`\x1b[36m${providerLabel}:\x1b[0m `);
 
@@ -657,7 +755,7 @@ function startAISession(ws, opts) {
       }
 
       // Extraer y aplicar operaciones de memoria
-      if (agentKey && memoryFiles.length > 0 && fullText) {
+      if (agentKey && fullText) {
         const { clean, ops } = memory.extractMemoryOps(fullText);
         if (ops.length > 0) {
           const saved = memory.applyOps(agentKey, ops);

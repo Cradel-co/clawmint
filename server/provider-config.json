@@ -6,7 +6,7 @@
       "model": "claude-opus-4-6"
     },
     "gemini": {
-      "apiKey": "",
+      "apiKey": "AIzaSyCtYhxJ8U07kWqe5Wbd_lds3RLRQcOLDgo",
       "model": "gemini-2.0-flash"
     },
     "openai": {
