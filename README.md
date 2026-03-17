@@ -167,6 +167,7 @@ Telegram / Navegador
 | [docs/servidor.md](docs/servidor.md) | Módulos, variables de entorno, API REST completa, WebSocket, providers, agentes, skills, memoria, comandos Telegram |
 | [docs/cliente.md](docs/cliente.md) | Componentes React, reconexión WS, paneles, build, nginx |
 | [docs/docker.md](docs/docker.md) | Despliegue con Docker, montaje de Claude CLI |
+| [docs/ia-local.md](docs/ia-local.md) | Modelos locales, pool de nodos, módulos habilitados |
 | [docs/mejoras.md](docs/mejoras.md) | Ideas y mejoras propuestas |
 | [CHANGELOG.md](CHANGELOG.md) | Historial de cambios por versión |
 

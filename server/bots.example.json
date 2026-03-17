@@ -1,0 +1,12 @@
+[
+  {
+    "key": "mi_bot",
+    "token": "1234567890:AABBccDDeeFFggHHiiJJkkLLmmNN",
+    "defaultAgent": "claude",
+    "whitelist": [],
+    "groupWhitelist": [],
+    "rateLimit": 30,
+    "rateLimitKeyword": "",
+    "offset": 0
+  }
+]
