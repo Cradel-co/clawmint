@@ -192,7 +192,12 @@ class ClaudePrintSession {
       claudeArgs.unshift('--permission-mode', modeMap[this.permissionMode] || 'default');
     }
     if (this.model) claudeArgs.push('--model', this.model);
-    if (this.messageCount > 0) claudeArgs.push('--continue');
+    // Reanudar sesión existente usando session_id explícito para no perder contexto
+    if (this.messageCount > 0 && this.claudeSessionId) {
+      claudeArgs.push('--resume', this.claudeSessionId);
+    } else if (this.messageCount > 0) {
+      claudeArgs.push('--continue');
+    }
 
     return new Promise((resolve, reject) => {
       const env = { ...process.env };
@@ -1156,7 +1161,7 @@ class TelegramBot {
       // ── Permisos Claude ───────────────────────────────────────────────────
       case 'permisos':
       case 'modo-permisos': {
-        if (!this._isClaudeBased(chat.provider)) {
+        if (!this._isClaudeBased() && !(chat.provider || '').includes('claude')) {
           await this.sendText(chatId, '❌ Solo disponible con Claude Code.');
           break;
         }
