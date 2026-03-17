@@ -695,12 +695,6 @@ class TelegramBot {
       case 'reset':
       case 'clear': {
         if (this._isClaudeBased()) {
-          // Encolar pending memories antes de limpiar la sesión
-          if (consolidator && chat._pendingMemory?.length) {
-            const agentKey = chat.activeAgent?.key || this.defaultAgent;
-            consolidator.enqueue(agentKey, chatId, chat._pendingMemory, 'session_end');
-            chat._pendingMemory = [];
-          }
           const model = chat.claudeSession?.model || null;
           chat.claudeSession = new ClaudePrintSession({ model, permissionMode: chat.claudeMode || 'ask' });
           await this.sendWithButtons(chatId,
@@ -745,14 +739,12 @@ class TelegramBot {
 
         // Sin argumento: mostrar stats de la cola + botón para forzar procesamiento
         const queueStats = consolidator ? consolidator.getStats(compactAgentKey) : null;
-        const pendingCount = chat._pendingMemory?.length || 0;
 
         const statsText = queueStats
           ? `\n📊 *Cola de consolidación* (\`${compactAgentKey}\`):\n` +
             `• Pendientes: ${queueStats.pending}\n` +
             `• Procesados: ${queueStats.done}\n` +
-            `• Errores: ${queueStats.error}\n` +
-            `• Señales sin guardar en esta sesión: ${pendingCount}`
+            `• Errores: ${queueStats.error}`
           : '';
 
         if (this._isClaudeBased() && chat.claudeSession) {
@@ -760,8 +752,8 @@ class TelegramBot {
             `🗜️ *Compact*${statsText}\n\n¿Qué querés hacer?`,
             [[
               { text: '🗜️ /compact Claude Code', callback_data: 'compact_action' },
-              ...(consolidator && (pendingCount > 0 || (queueStats?.pending || 0) > 0)
-                ? [{ text: `⚡ Procesar ${pendingCount || queueStats.pending} pending`, callback_data: 'consolidate_now' }]
+              ...(consolidator && (queueStats?.pending || 0) > 0
+                ? [{ text: `⚡ Procesar ${queueStats.pending} pending`, callback_data: 'consolidate_now' }]
                 : []),
             ]]
           );
@@ -770,8 +762,8 @@ class TelegramBot {
           await this.sendWithButtons(chatId,
             `📊 *Estado de memoria*${statsText}`,
             [[
-              ...(consolidator && pendingCount > 0
-                ? [{ text: `⚡ Procesar ${pendingCount} pending`, callback_data: 'consolidate_now' }]
+              ...(consolidator && (queueStats?.pending || 0) > 0
+                ? [{ text: `⚡ Procesar ${queueStats.pending} pending`, callback_data: 'consolidate_now' }]
                 : []),
               { text: '📝 Ver notas', callback_data: 'mem:notas' },
             ]]
@@ -960,7 +952,7 @@ class TelegramBot {
         // Default: panel de estadísticas
         const graph    = memoryModule.buildGraph(memAgentKey);
         const notes    = graph.nodes;
-        const pending  = (chat._pendingMemory || []).length;
+        const pending  = consolidator ? (consolidator.getStats(memAgentKey)?.pending || 0) : 0;
         const allTags  = [...new Set(notes.flatMap(n => n.tags))];
         const topNotes = [...notes]
           .sort((a, b) => b.accessCount - a.accessCount)
@@ -1739,9 +1731,10 @@ class TelegramBot {
                 if (!chat._savedInSession.includes(f)) chat._savedInSession.push(f);
               }
             } else if (shouldNudge) {
-              // LLM no guardó a pesar de la señal → registrar como pendiente
-              if (!chat._pendingMemory) chat._pendingMemory = [];
-              chat._pendingMemory.push({ text, types: signals.map(s => s.type), ts: Date.now() });
+              // LLM no guardó a pesar de la señal → encolar directo en SQLite
+              if (consolidator) {
+                consolidator.enqueue(agentKey, chatId, [{ text, types: signals.map(s => s.type), ts: Date.now() }], 'signal');
+              }
             }
           }
 
@@ -1907,8 +1900,10 @@ class TelegramBot {
           finalText = clean || finalText;
           console.log(`[Memory:Telegram:${providerName}] ${agentKey} → guardado en: ${saved.join(', ')}`);
         } else if (shouldNudge) {
-          if (!chat._pendingMemory) chat._pendingMemory = [];
-          chat._pendingMemory.push({ text, types: signals.map(s => s.type), ts: Date.now() });
+          // LLM no guardó a pesar de la señal → encolar directo en SQLite
+          if (consolidator) {
+            consolidator.enqueue(agentKey, chatId, [{ text, types: signals.map(s => s.type), ts: Date.now() }], 'signal');
+          }
         }
       }
 
@@ -2562,12 +2557,6 @@ class TelegramBot {
       case 'nueva':
       case 'reset': {
         if (this._isClaudeBased()) {
-          // Encolar pending memories antes de limpiar la sesión
-          if (consolidator && chat._pendingMemory?.length) {
-            const agentKey = chat.activeAgent?.key || this.defaultAgent;
-            consolidator.enqueue(agentKey, chatId, chat._pendingMemory, 'session_end');
-            chat._pendingMemory = [];
-          }
           const model = chat.claudeSession?.model || null;
           chat.claudeSession = new ClaudePrintSession({ model, permissionMode: chat.claudeMode || 'ask' });
           await this.sendWithButtons(chatId,
@@ -2681,12 +2670,6 @@ class TelegramBot {
         if (!consolidator) {
           await this.sendText(chatId, '❌ Consolidador no disponible.');
           break;
-        }
-        const cnAgentKey   = chat.activeAgent?.key || this.defaultAgent;
-        const pendingTurns = chat._pendingMemory || [];
-        if (pendingTurns.length) {
-          consolidator.enqueue(cnAgentKey, chatId, pendingTurns, 'manual');
-          chat._pendingMemory = [];
         }
         await this.sendText(chatId, `⚡ Procesando cola… Te aviso cuando termine.`);
         consolidator.processQueue().then(() => {
