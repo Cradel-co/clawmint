@@ -12,6 +12,7 @@ const skillsModule = require('./skills');
 const memoryModule = require('./memory');
 const remindersModule = require('./reminders');
 const events = require('./events');
+const { httpsDownload, transcribe } = require('./transcriber');
 
 // Cargar providers y config (pueden no estar disponibles en versiones viejas)
 let providersModule, providerConfig;
@@ -157,79 +158,6 @@ function httpsPost(urlPath, body, timeoutMs = 35000) {
     req.on('error', reject);
     req.write(data);
     req.end();
-  });
-}
-
-// ─── Audio: descarga + transcripción ─────────────────────────────────────────
-
-/**
- * Descarga un archivo binario por HTTPS y lo guarda en disco.
- * Retorna la ruta local del archivo descargado.
- */
-function httpsDownload(url, destPath) {
-  return new Promise((resolve, reject) => {
-    const parsed = new URL(url);
-    const options = {
-      hostname: parsed.hostname,
-      path: parsed.pathname + parsed.search,
-      method: 'GET',
-      family: 4,
-    };
-    const req = https.request(options, (res) => {
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        return httpsDownload(res.headers.location, destPath).then(resolve, reject);
-      }
-      if (res.statusCode !== 200) {
-        return reject(new Error(`Download failed: HTTP ${res.statusCode}`));
-      }
-      const ws = fs.createWriteStream(destPath);
-      res.pipe(ws);
-      ws.on('finish', () => { ws.close(); resolve(destPath); });
-      ws.on('error', reject);
-    });
-    req.setTimeout(30000, () => { req.destroy(new Error('Download timeout')); });
-    req.on('error', reject);
-    req.end();
-  });
-}
-
-/**
- * Transcribe un archivo de audio usando faster-whisper (CTranslate2).
- * @param {string} filePath - ruta al archivo OGG/MP3/WAV
- * @returns {Promise<string>} texto transcrito
- */
-function transcribeAudio(filePath) {
-  return new Promise((resolve, reject) => {
-    const pythonBin = path.join(process.env.HOME, '.venvs', 'whisper', 'bin', 'python3');
-    const script = `
-import sys
-from faster_whisper import WhisperModel
-model = WhisperModel("medium", device="cpu", compute_type="int8")
-segments, _ = model.transcribe(sys.argv[1], language="es", beam_size=5)
-print(" ".join(s.text.strip() for s in segments))
-`;
-    const child = spawn(pythonBin, ['-c', script, filePath], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: 300000,
-    });
-
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', chunk => { stdout += chunk; });
-    child.stderr.on('data', chunk => { stderr += chunk; });
-
-    child.on('close', (exitCode) => {
-      if (exitCode !== 0) {
-        return reject(new Error(`faster-whisper salió con código ${exitCode}: ${stderr.slice(0, 300)}`));
-      }
-      const text = stdout.trim();
-      if (!text) {
-        return reject(new Error('No se pudo extraer texto del audio'));
-      }
-      resolve(text);
-    });
-
-    child.on('error', reject);
   });
 }
 
@@ -569,7 +497,7 @@ class TelegramBot {
 
       // 3. Transcribir con Whisper local
       await this.sendText(chatId, '🎙️ Transcribiendo audio...');
-      const text = await transcribeAudio(tmpFile);
+      const text = await transcribe(tmpFile);
 
       // 4. Limpiar archivo temporal
       try { fs.unlinkSync(tmpFile); } catch {}
