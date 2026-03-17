@@ -722,6 +722,17 @@ app.put('/api/providers/:name', (req, res) => {
   res.json({ ok: true });
 });
 
+// ─── Client estático (producción / Docker) ───────────────────────────────────
+
+const clientDist = path.join(__dirname, '..', 'client', 'dist');
+if (fs.existsSync(clientDist)) {
+  app.use(express.static(clientDist));
+  app.get(/^\/(?!api|ws).*/, (_req, res) => {
+    res.sendFile(path.join(clientDist, 'index.html'));
+  });
+  logger.info(`Sirviendo client build desde ${clientDist}`);
+}
+
 // ─── Servidor ─────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3001;
