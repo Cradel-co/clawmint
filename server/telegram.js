@@ -17,6 +17,10 @@ let providersModule, providerConfig;
 try { providersModule = require('./providers'); } catch {}
 try { providerConfig  = require('./provider-config'); } catch {}
 
+// Consolidador de memoria en background (carga diferida para evitar problemas de inicio)
+let consolidator = null;
+try { consolidator = require('./memory-consolidator'); } catch {}
+
 const BOTS_FILE = path.join(__dirname, 'bots.json');
 const TELEGRAM_HOST = 'api.telegram.org';
 const POLL_TIMEOUT = 25; // segundos
@@ -374,6 +378,7 @@ class TelegramBot {
     this.rateLimit = 30;          // mensajes por hora (0 = sin límite)
     this.rateLimitKeyword = '';   // palabra clave para resetear rate limit ('' = deshabilitado)
     this.startGreeting = true;    // enviar saludo al arrancar
+    this.lastGreetingAt = 0;      // timestamp del último saludo (para cooldown)
     this.rateCounts = new Map();  // chatId → { count, windowStart }
     /** @type {Map<number, object>} */
     this.chats = new Map();
@@ -437,10 +442,31 @@ class TelegramBot {
     this.botInfo = { id: me.id, username: me.username, firstName: me.first_name };
     this.running = true;
     this._poll();
+
+    // Escuchar sugerencias de nuevos tópicos del consolidador
+    events.on('memory:topic-suggestion', ({ agentKey, chatId, topicName, sourceItemId }) => {
+      if (!chatId) return;
+      const displayName = topicName.replace(/_/g, ' ');
+      this.sendWithButtons(
+        parseInt(chatId, 10) || chatId,
+        `💡 *Nuevo tópico detectado*\n\n` +
+        `El consolidador encontró un tema recurrente: *${displayName}*\n\n` +
+        `¿Querés agregarlo a las preferencias de memoria de \`${agentKey}\`?\n` +
+        `_Si aceptás, futuras conversaciones sobre este tema se consolidarán automáticamente._`,
+        [[
+          { text: '✅ Sí, agregar', callback_data: `topic:add:${topicName}:${agentKey}` },
+          { text: '❌ No, ignorar', callback_data: `topic:skip:${topicName}` },
+        ]]
+      ).catch(() => {});
+    });
     console.log(`[Telegram] Bot "${this.key}" iniciado: @${me.username}`);
 
-    // Saludar a los usuarios de la whitelist al arrancar
-    if (this.startGreeting && this.whitelist.length > 0) {
+    // Saludar a los usuarios de la whitelist al arrancar (cooldown 5 min)
+    const GREETING_COOLDOWN = 5 * 60 * 1000;
+    if (this.startGreeting && this.whitelist.length > 0 &&
+        Date.now() - this.lastGreetingAt > GREETING_COOLDOWN) {
+      this.lastGreetingAt = Date.now();
+      this._onOffsetSave();
       const greetings = [
         '👋 Hola, estaba arreglando unas cosas. ¡Ya podemos conversar!',
         '🔧 Estuve haciendo unos ajustes. ¡Ya estoy de vuelta!',
@@ -667,6 +693,12 @@ class TelegramBot {
       case 'reset':
       case 'clear': {
         if (this._isClaudeBased()) {
+          // Encolar pending memories antes de limpiar la sesión
+          if (consolidator && chat._pendingMemory?.length) {
+            const agentKey = chat.activeAgent?.key || this.defaultAgent;
+            consolidator.enqueue(agentKey, chatId, chat._pendingMemory, 'session_end');
+            chat._pendingMemory = [];
+          }
           const model = chat.claudeSession?.model || null;
           chat.claudeSession = new ClaudePrintSession({ model, permissionMode: chat.claudeMode || 'ask' });
           await this.sendWithButtons(chatId,
@@ -684,12 +716,65 @@ class TelegramBot {
       }
 
       case 'compact': {
-        if (!this._isClaudeBased() || !chat.claudeSession) {
-          await this.sendText(chatId, '❌ Sin sesión Claude activa.');
-          return;
+        const compactAgentKey = chat.activeAgent?.key || this.defaultAgent;
+
+        // Si tiene argumento: /compact <topic> → agregar tópico y preguntar
+        if (args.length > 0) {
+          const topicRaw = args.join('_').toLowerCase().replace(/[^a-z0-9_]/g, '');
+          if (!topicRaw) { await this.sendText(chatId, '❌ Nombre de tópico inválido.'); break; }
+
+          const prefs   = memoryModule.getPreferences(compactAgentKey);
+          const exists  = (prefs.topics || []).some(t => t.name.toLowerCase() === topicRaw);
+
+          if (exists) {
+            await this.sendText(chatId, `ℹ️ El tópico *${topicRaw.replace(/_/g, ' ')}* ya está en las preferencias.`);
+          } else {
+            await this.sendWithButtons(chatId,
+              `💡 El tópico *${topicRaw.replace(/_/g, ' ')}* no está en las preferencias de \`${compactAgentKey}\`.\n\n¿Agregar y memorizar?`,
+              [[
+                { text: '✅ Sí, agregar y memorizar', callback_data: `topic:add:${topicRaw}:${compactAgentKey}` },
+                { text: '❌ Solo memorizar',          callback_data: 'compact_action' },
+                { text: '⏭️ Cancelar',               callback_data: 'noop' },
+              ]]
+            );
+          }
+          break;
         }
-        // Envía /compact como mensaje — Claude Code lo procesa en modo -p
-        await this._sendToSession(chatId, '/compact', chat);
+
+        // Sin argumento: mostrar stats de la cola + botón para forzar procesamiento
+        const queueStats = consolidator ? consolidator.getStats(compactAgentKey) : null;
+        const pendingCount = chat._pendingMemory?.length || 0;
+
+        const statsText = queueStats
+          ? `\n📊 *Cola de consolidación* (\`${compactAgentKey}\`):\n` +
+            `• Pendientes: ${queueStats.pending}\n` +
+            `• Procesados: ${queueStats.done}\n` +
+            `• Errores: ${queueStats.error}\n` +
+            `• Señales sin guardar en esta sesión: ${pendingCount}`
+          : '';
+
+        if (this._isClaudeBased() && chat.claudeSession) {
+          await this.sendWithButtons(chatId,
+            `🗜️ *Compact*${statsText}\n\n¿Qué querés hacer?`,
+            [[
+              { text: '🗜️ /compact Claude Code', callback_data: 'compact_action' },
+              ...(consolidator && (pendingCount > 0 || (queueStats?.pending || 0) > 0)
+                ? [{ text: `⚡ Procesar ${pendingCount || queueStats.pending} pending`, callback_data: 'consolidate_now' }]
+                : []),
+            ]]
+          );
+        } else {
+          if (!statsText) { await this.sendText(chatId, '❌ Sin sesión Claude activa.'); break; }
+          await this.sendWithButtons(chatId,
+            `📊 *Estado de memoria*${statsText}`,
+            [[
+              ...(consolidator && pendingCount > 0
+                ? [{ text: `⚡ Procesar ${pendingCount} pending`, callback_data: 'consolidate_now' }]
+                : []),
+              { text: '📝 Ver notas', callback_data: 'mem:notas' },
+            ]]
+          );
+        }
         break;
       }
 
@@ -787,20 +872,117 @@ class TelegramBot {
       }
 
       // ── Memoria ───────────────────────────────────────────────────────────
+      case 'mem':
       case 'memoria':
       case 'memory': {
-        const memFiles = [
-          path.join(process.env.HOME, '.claude', 'CLAUDE.md'),
-          path.join(process.env.HOME, '.claude', 'projects', '-home-kheiron', 'memory', 'MEMORY.md'),
-        ];
-        let memText = '';
-        for (const f of memFiles) {
-          try {
-            const content = fs.readFileSync(f, 'utf8').slice(0, 1500);
-            memText += `*${path.basename(path.dirname(f))}/${path.basename(f)}*:\n\`\`\`\n${content}\n\`\`\`\n\n`;
-          } catch { /* archivo no existe */ }
+        const memAgentKey = chat.activeAgent?.key || this.defaultAgent;
+        const sub = args[0]?.toLowerCase();
+
+        // /mem test <texto> — simular detección de señales
+        if (sub === 'test' && args.length > 1) {
+          const testText = args.slice(1).join(' ');
+          const { maxWeight, signals: sigs, shouldNudge: sn } = memoryModule.detectSignals(memAgentKey, testText);
+          if (!sigs.length) {
+            await this.sendText(chatId,
+              `🔍 *Test de señales*\n\nTexto: _"${testText}"_\n\n` +
+              `No se detectaron señales. El LLM decidirá por sí mismo si guardar.`
+            );
+          } else {
+            const lines = sigs.map(s =>
+              `• \`${s.type}\` (peso ${s.weight}/10) — _${s.description || '—'}_`
+            );
+            await this.sendText(chatId,
+              `🔍 *Test de señales*\n\nTexto: _"${testText}"_\n\n` +
+              `${lines.join('\n')}\n\n` +
+              `Peso máximo: ${maxWeight}/10\n` +
+              `Nudge automático: ${sn ? '✅ activo' : '❌ bajo umbral (< nudgeMinWeight)'}`
+            );
+          }
+          break;
         }
-        await this.sendText(chatId, memText || '📭 No hay archivos de memoria encontrados.');
+
+        // /mem ver — configuración activa del agente
+        if (sub === 'ver' || sub === 'config') {
+          const prefs   = memoryModule.getPreferences(memAgentKey);
+          const active  = prefs.signals.filter(s => s.enabled !== false);
+          const sigLines = active.map(s =>
+            `• \`${s.type}\` (${s.weight}/10): _${s.description || s.pattern.slice(0, 50)}_`
+          );
+          const hasAgentPrefs = fs.existsSync(
+            path.join(memoryModule.MEMORY_DIR, memAgentKey, 'preferences.json')
+          );
+          await this.sendText(chatId,
+            `⚙️ *Preferencias de memoria* — agente \`${memAgentKey}\`\n` +
+            `_${hasAgentPrefs ? 'Config personalizada' : 'Usando defaults globales'}_\n\n` +
+            `*Señales activas (${active.length}):*\n${sigLines.join('\n')}\n\n` +
+            `*Config:*\n` +
+            `• Nudge: ${prefs.settings.nudgeEnabled !== false ? '✅' : '❌'} ` +
+            `(umbral ≥${prefs.settings.nudgeMinWeight ?? 7}/10)\n` +
+            `• Token budget: ${prefs.settings.tokenBudget || 800}\n` +
+            `• Fallback top-N: ${prefs.settings.fallbackTopN || 3} notas\n\n` +
+            `_El agente puede actualizar con \`<save_memory file="preferences.json">\`_`
+          );
+          break;
+        }
+
+        // /mem reset — borrar preferencias personalizadas del agente
+        if (sub === 'reset') {
+          const ok = memoryModule.resetPreferences(memAgentKey);
+          await this.sendText(chatId,
+            ok
+              ? `✅ Preferencias de \`${memAgentKey}\` reiniciadas a valores globales.`
+              : `ℹ️ \`${memAgentKey}\` ya usa los valores globales.`
+          );
+          break;
+        }
+
+        // /mem notas — listar notas indexadas
+        if (sub === 'notas' || sub === 'ls') {
+          const graph = memoryModule.buildGraph(memAgentKey);
+          if (!graph.nodes.length) {
+            await this.sendText(chatId, `📭 Sin notas indexadas para \`${memAgentKey}\`.`);
+          } else {
+            const lines = graph.nodes
+              .sort((a, b) => b.accessCount - a.accessCount)
+              .map(n =>
+                `• \`${n.filename}\` — _${n.title}_ ` +
+                `[${n.tags.join(', ') || '—'}] imp:${n.importance} acc:${n.accessCount}`
+              );
+            await this.sendText(chatId,
+              `📝 *Notas* — \`${memAgentKey}\`\n\n${lines.join('\n')}`
+            );
+          }
+          break;
+        }
+
+        // Default: panel de estadísticas
+        const graph    = memoryModule.buildGraph(memAgentKey);
+        const notes    = graph.nodes;
+        const pending  = (chat._pendingMemory || []).length;
+        const allTags  = [...new Set(notes.flatMap(n => n.tags))];
+        const topNotes = [...notes]
+          .sort((a, b) => b.accessCount - a.accessCount)
+          .slice(0, 3)
+          .map(n => `• _"${n.title}"_ [${n.tags.slice(0,2).join(', ')||'—'}] acc:${n.accessCount}`)
+          .join('\n') || '_ninguna_';
+
+        await this.sendWithButtons(chatId,
+          `🧠 *Memoria* — agente \`${memAgentKey}\`\n\n` +
+          `📝 Notas indexadas: *${notes.length}*\n` +
+          `🔗 Conexiones: *${graph.links.length}* ` +
+          `(${graph.links.filter(l => l.type === 'learned').length} aprendidas)\n` +
+          `🏷️ Tags únicos: *${allTags.length}*\n` +
+          `⏳ Pendientes de guardar: *${pending}*\n\n` +
+          `*Top accedidas:*\n${topNotes}\n\n` +
+          `_/mem test <texto>_ · _/mem ver_ · _/mem notas_ · _/mem reset_`,
+          [[
+            { text: '🔍 Test señales', callback_data: 'mem:test' },
+            { text: '⚙️ Config',       callback_data: 'mem:ver'  },
+          ], [
+            { text: '📝 Notas',        callback_data: 'mem:notas' },
+            { text: '🔄 Reset config', callback_data: 'mem:reset' },
+          ]]
+        );
         break;
       }
 
@@ -1403,18 +1585,30 @@ class TelegramBot {
 
         // Resolver agente activo para memoria
         const agentKey = chat.activeAgent?.key || this.defaultAgent;
-        const agentDef = agentsModule.get(agentKey);
-        const memoryFiles = agentDef?.memoryFiles || [];
 
-        // En el primer mensaje de la sesión: inyectar contexto de memoria + instrucciones
+        // Detección de señales de importancia (se usa tanto para nudge como para TOOL_INSTRUCTIONS)
+        const { shouldNudge, signals } = memoryModule.detectSignals(agentKey, text);
+
+        // Inyectar contexto de memoria
         let messageText = text;
-        if (chat.claudeSession.messageCount === 0 && memoryFiles.length > 0) {
-          const memCtx = memoryModule.buildMemoryContext(agentKey, memoryFiles);
-          const parts = [memCtx, memoryModule.TOOL_INSTRUCTIONS].filter(Boolean);
-          if (parts.length > 0) {
-            messageText = `${parts.join('\n\n')}\n\n---\n\n${text}`;
+        if (agentKey) {
+          if (chat.claudeSession.messageCount === 0) {
+            // Primer mensaje: inyectar memoria relevante + instrucciones (solo si hay señal)
+            const memCtx = memoryModule.buildMemoryContext(agentKey, text);
+            const toolInstr = shouldNudge ? memoryModule.TOOL_INSTRUCTIONS : '';
+            const parts = [memCtx, toolInstr].filter(Boolean);
+            if (parts.length > 0) {
+              messageText = `${parts.join('\n\n')}\n\n---\n\n${text}`;
+            }
+          } else if (chat._savedInSession && chat._savedInSession.length > 0) {
+            // Turnos siguientes: recordatorio de notas guardadas en esta sesión
+            const reminder = `[Notas guardadas en esta conversación: ${chat._savedInSession.join(', ')}]\n\n`;
+            messageText = reminder + text;
           }
         }
+
+        // Nudge en todos los mensajes con señal
+        if (shouldNudge) messageText += memoryModule.buildNudge(signals);
 
         // Enviar placeholder inmediato → obtener message_id para editar progresivamente
         const mode = chat.claudeMode || 'ask';
@@ -1467,12 +1661,21 @@ class TelegramBot {
 
           // Extraer y aplicar operaciones de memoria
           let response = rawResponse;
-          if (memoryFiles.length > 0 && rawResponse) {
+          if (agentKey && rawResponse) {
             const { clean, ops } = memoryModule.extractMemoryOps(rawResponse);
             if (ops.length > 0) {
               const saved = memoryModule.applyOps(agentKey, ops);
               response = clean || rawResponse;
               console.log(`[Memory:Telegram] ${agentKey} → guardado en: ${saved.join(', ')}`);
+              // Registrar en la sesión para inyectar recordatorio en turno siguiente
+              if (!chat._savedInSession) chat._savedInSession = [];
+              for (const f of saved) {
+                if (!chat._savedInSession.includes(f)) chat._savedInSession.push(f);
+              }
+            } else if (shouldNudge) {
+              // LLM no guardó a pesar de la señal → registrar como pendiente
+              if (!chat._pendingMemory) chat._pendingMemory = [];
+              chat._pendingMemory.push({ text, types: signals.map(s => s.type), ts: Date.now() });
             }
           }
 
@@ -1549,19 +1752,28 @@ class TelegramBot {
     const model    = cfg.providers?.[providerName]?.model || provider.defaultModel;
 
     // Resolver agente activo para memoria
-    const agentKey    = chat.activeAgent?.key || this.defaultAgent;
-    const agentDef    = agentsModule.get(agentKey);
-    const memoryFiles = agentDef?.memoryFiles || [];
+    const agentKey = chat.activeAgent?.key || this.defaultAgent;
 
-    // Construir system prompt
+    // Construir system prompt con memoria semántica
+    // Para providers con embeddings (openai, gemini) buildMemoryContext devuelve Promise
     const basePrompt  = 'Sos un asistente útil. Respondé de forma concisa y clara.';
-    const memoryCtx   = memoryModule.buildMemoryContext(agentKey, memoryFiles);
-    const toolInstr   = memoryFiles.length > 0 ? memoryModule.TOOL_INSTRUCTIONS : '';
+    const memCtxRaw   = agentKey
+      ? memoryModule.buildMemoryContext(agentKey, text, { provider: providerName, apiKey })
+      : '';
+    // Resolver la promesa si es async (embeddings) o usar directo (spreading activation)
+    const memoryCtx   = (memCtxRaw && typeof memCtxRaw.then === 'function')
+      ? await memCtxRaw.catch(() => '')
+      : (memCtxRaw || '');
+    // Detección de señales → condiciona TOOL_INSTRUCTIONS y nudge
+    const { shouldNudge, signals } = memoryModule.detectSignals(agentKey, text);
+    const toolInstr   = (agentKey && shouldNudge) ? memoryModule.TOOL_INSTRUCTIONS : '';
     const systemPrompt = [basePrompt, memoryCtx, toolInstr].filter(Boolean).join('\n\n');
+
+    const userContent = shouldNudge ? text + memoryModule.buildNudge(signals) : text;
 
     // Agregar mensaje del usuario al historial
     if (!chat.aiHistory) chat.aiHistory = [];
-    chat.aiHistory.push({ role: 'user', content: text });
+    chat.aiHistory.push({ role: 'user', content: userContent });
 
     // Enviar placeholder animado
     let dotCount = 1;
@@ -1622,12 +1834,15 @@ class TelegramBot {
 
       // Extraer y aplicar operaciones de memoria
       let finalText = accumulated;
-      if (memoryFiles.length > 0 && finalText) {
+      if (agentKey && finalText) {
         const { clean, ops } = memoryModule.extractMemoryOps(finalText);
         if (ops.length > 0) {
           const saved = memoryModule.applyOps(agentKey, ops);
           finalText = clean || finalText;
           console.log(`[Memory:Telegram:${providerName}] ${agentKey} → guardado en: ${saved.join(', ')}`);
+        } else if (shouldNudge) {
+          if (!chat._pendingMemory) chat._pendingMemory = [];
+          chat._pendingMemory.push({ text, types: signals.map(s => s.type), ts: Date.now() });
         }
       }
 
@@ -2179,6 +2394,47 @@ class TelegramBot {
       return;
     }
 
+    if (data.startsWith('mem:')) {
+      const memSub     = data.slice(4);
+      const memAgentKey = chat.activeAgent?.key || this.defaultAgent;
+      if (memSub === 'test') {
+        await this.sendText(chatId,
+          `🔍 *Test de señales*\n\nUsá el comando:\n\`/mem test <texto de prueba>\``
+        );
+      } else if (memSub === 'ver' || memSub === 'config') {
+        await this._handleCommand({ chat: { id: chatId } }, 'mem', ['ver'], chat);
+      } else if (memSub === 'notas') {
+        await this._handleCommand({ chat: { id: chatId } }, 'mem', ['notas'], chat);
+      } else if (memSub === 'reset') {
+        const ok = memoryModule.resetPreferences(memAgentKey);
+        await this.sendText(chatId,
+          ok
+            ? `✅ Preferencias de \`${memAgentKey}\` reiniciadas.`
+            : `ℹ️ Ya usa los valores globales.`
+        );
+      }
+      return;
+    }
+
+    if (data.startsWith('topic:')) {
+      const parts2     = data.split(':');
+      const topicAction = parts2[1]; // 'add' | 'skip'
+      const topicName   = parts2[2] || '';
+      const topicAgent  = parts2[3] || (chat.activeAgent?.key || this.defaultAgent);
+
+      if (topicAction === 'add' && topicName && consolidator) {
+        const added = consolidator.addTopic(topicAgent, topicName);
+        await this.sendText(chatId,
+          added
+            ? `✅ Tópico *${topicName.replace(/_/g, ' ')}* agregado a las preferencias de \`${topicAgent}\`.`
+            : `ℹ️ El tópico *${topicName.replace(/_/g, ' ')}* ya estaba en las preferencias.`
+        );
+      } else if (topicAction === 'skip') {
+        await this.sendText(chatId, `⏭️ Tópico ignorado.`);
+      }
+      return;
+    }
+
     if (data.startsWith('agent:')) {
       const agentKey = data.slice(6);
       const agentDef = agentsModule.get(agentKey);
@@ -2216,6 +2472,12 @@ class TelegramBot {
       case 'nueva':
       case 'reset': {
         if (this._isClaudeBased()) {
+          // Encolar pending memories antes de limpiar la sesión
+          if (consolidator && chat._pendingMemory?.length) {
+            const agentKey = chat.activeAgent?.key || this.defaultAgent;
+            consolidator.enqueue(agentKey, chatId, chat._pendingMemory, 'session_end');
+            chat._pendingMemory = [];
+          }
           const model = chat.claudeSession?.model || null;
           chat.claudeSession = new ClaudePrintSession({ model, permissionMode: chat.claudeMode || 'ask' });
           await this.sendWithButtons(chatId,
@@ -2321,6 +2583,29 @@ class TelegramBot {
         if (chat.claudeSession) await this._sendToSession(chatId, '/compact', chat);
         break;
       }
+
+      case 'consolidate_now': {
+        if (!consolidator) {
+          await this.sendText(chatId, '❌ Consolidador no disponible.');
+          break;
+        }
+        const cnAgentKey   = chat.activeAgent?.key || this.defaultAgent;
+        const pendingTurns = chat._pendingMemory || [];
+        if (pendingTurns.length) {
+          consolidator.enqueue(cnAgentKey, chatId, pendingTurns, 'manual');
+          chat._pendingMemory = [];
+        }
+        await this.sendText(chatId, `⚡ Procesando cola… Te aviso cuando termine.`);
+        consolidator.processQueue().then(() => {
+          this.sendText(chatId, `✅ Cola de consolidación procesada.`).catch(() => {});
+        }).catch(err => {
+          this.sendText(chatId, `❌ Error en consolidación: ${err.message}`).catch(() => {});
+        });
+        break;
+      }
+
+      case 'noop':
+        break;
     }
   }
 
@@ -2364,7 +2649,7 @@ class BotManager {
   async loadAndStart() {
     const saved = this._readFile();
     for (const saved_entry of saved) {
-      const { key, token, defaultAgent, whitelist, rateLimit, rateLimitKeyword, offset, startGreeting } = saved_entry;
+      const { key, token, defaultAgent, whitelist, rateLimit, rateLimitKeyword, offset, startGreeting, lastGreetingAt } = saved_entry;
       const bot = new TelegramBot(key, token, {
         initialOffset: offset || 0,
         onOffsetSave: () => this._saveFile(),
@@ -2374,6 +2659,7 @@ class BotManager {
       if (rateLimit !== undefined) bot.rateLimit = rateLimit;
       if (rateLimitKeyword !== undefined) bot.rateLimitKeyword = rateLimitKeyword;
       if (startGreeting !== undefined) bot.startGreeting = startGreeting;
+      if (lastGreetingAt) bot.lastGreetingAt = lastGreetingAt;
       this.bots.set(key, bot);
       try {
         await bot.start();
@@ -2489,6 +2775,7 @@ class BotManager {
       rateLimit: bot.rateLimit,
       rateLimitKeyword: bot.rateLimitKeyword,
       startGreeting: bot.startGreeting,
+      lastGreetingAt: bot.lastGreetingAt,
       offset: bot.offset,
     }));
     try {
