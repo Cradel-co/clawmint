@@ -14,12 +14,16 @@
 const { spawn } = require('child_process');
 
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutos
+const IS_WIN = process.platform === 'win32';
 
 class ShellSession {
   constructor() {
-    this._proc = spawn('bash', ['--norc', '--noprofile'], {
+    const shell = IS_WIN ? 'cmd.exe' : 'bash';
+    const args  = IS_WIN ? ['/Q'] : ['--norc', '--noprofile'];
+    this._proc = spawn(shell, args, {
       env: { ...process.env },
       stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
     });
     this._queue   = Promise.resolve();
     this._cmdId   = 0;
@@ -105,8 +109,12 @@ class ShellSession {
       this._proc.stdout.on('data', onStdout);
       this._proc.stderr.on('data', onStderr);
 
-      // Escribir comando + centinela al stdin de bash
-      this._proc.stdin.write(`${command}\necho "${SENTINEL}:$?"\n`);
+      // Escribir comando + centinela al stdin del shell
+      if (IS_WIN) {
+        this._proc.stdin.write(`${command}\r\necho ${SENTINEL}:%errorlevel%\r\n`);
+      } else {
+        this._proc.stdin.write(`${command}\necho "${SENTINEL}:$?"\n`);
+      }
     });
   }
 

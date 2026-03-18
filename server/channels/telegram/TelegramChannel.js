@@ -731,10 +731,14 @@ class TelegramBot {
 
   _runShellCommand(command, cwd, timeoutMs = 30000) {
     return new Promise((resolve, reject) => {
-      const child = spawn('bash', ['-c', command], {
+      const isWin = process.platform === 'win32';
+      const shell = isWin ? 'cmd.exe' : 'bash';
+      const args  = isWin ? ['/c', command] : ['-c', command];
+      const child = spawn(shell, args, {
         cwd,
         env: { ...process.env },
         stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
       });
       let stdout = '', stderr = '';
       const timer = setTimeout(() => {

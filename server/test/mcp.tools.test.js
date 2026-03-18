@@ -45,9 +45,12 @@ describe('bash tool', () => {
 
   test('estado de shell persiste entre llamadas con el mismo id', async () => {
     const id = 'bash-persist-' + Date.now();
-    await bash.execute({ command: 'cd /tmp', session_id: id });
-    const r = await bash.execute({ command: 'pwd',   session_id: id });
-    expect(r.trim()).toContain('/tmp');
+    const isWin = process.platform === 'win32';
+    const tmpDir = isWin ? process.env.TEMP : '/tmp';
+    const cwdCmd = isWin ? 'cd' : 'pwd';
+    await bash.execute({ command: `cd ${tmpDir}`, session_id: id });
+    const r = await bash.execute({ command: cwdCmd, session_id: id });
+    expect(r.trim().toLowerCase()).toContain(tmpDir.toLowerCase().replace(/\//g, '\\'));
     destroyShell(id);
   });
 });

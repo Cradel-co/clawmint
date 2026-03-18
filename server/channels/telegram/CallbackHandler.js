@@ -57,9 +57,20 @@ class CallbackHandler {
     const mins  = Math.floor((uptimeSecs % 3600) / 60);
     let disk = 'N/A';
     try {
-      const df  = execSync('df -h /', { encoding: 'utf8', timeout: 3000 });
-      const row = df.trim().split('\n')[1]?.split(/\s+/);
-      if (row) disk = `${row[2]} / ${row[1]} (${row[4]})`;
+      if (process.platform === 'win32') {
+        const out = execSync('wmic logicaldisk where "DeviceID=\'C:\'" get Size,FreeSpace /format:csv', { encoding: 'utf8', timeout: 3000 });
+        const parts = out.trim().split('\n').pop()?.split(',');
+        if (parts && parts.length >= 3) {
+          const free = parseInt(parts[1], 10), total = parseInt(parts[2], 10);
+          const used = total - free;
+          const fmt = (b) => (b / (1024**3)).toFixed(1) + 'G';
+          disk = `${fmt(used)} / ${fmt(total)} (${Math.round((used/total)*100)}%)`;
+        }
+      } else {
+        const df  = execSync('df -h /', { encoding: 'utf8', timeout: 3000 });
+        const row = df.trim().split('\n')[1]?.split(/\s+/);
+        if (row) disk = `${row[2]} / ${row[1]} (${row[4]})`;
+      }
     } catch {}
     return {
       cpu:    `${cpuPct}% (load: ${l1.toFixed(1)}, ${l5.toFixed(1)}, ${l15.toFixed(1)})`,

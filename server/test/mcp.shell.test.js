@@ -4,6 +4,8 @@ const { ShellSession, get, destroy, destroyAll } = require('../mcp/ShellSession'
 
 afterAll(() => destroyAll());
 
+const IS_WIN = process.platform === 'win32';
+
 // ── ShellSession (instancias) ─────────────────────────────────────────────────
 
 describe('ShellSession — instancia directa', () => {
@@ -13,33 +15,41 @@ describe('ShellSession — instancia directa', () => {
   afterEach(() => { shell.destroy(); });
 
   test('run() retorna el output del comando', async () => {
-    const out = await shell.run('echo "hello shell"');
+    const out = await shell.run('echo hello shell');
     expect(out).toContain('hello shell');
   });
 
   test('cd persiste entre llamadas sucesivas', async () => {
-    await shell.run('cd /tmp');
-    const cwd = await shell.run('pwd');
-    expect(cwd.trim()).toContain('/tmp');
+    const tmpDir = IS_WIN ? process.env.TEMP : '/tmp';
+    await shell.run(`cd ${tmpDir}`);
+    const cwd = await shell.run(IS_WIN ? 'cd' : 'pwd');
+    expect(cwd.trim()).toContain(IS_WIN ? tmpDir.replace(/\//g, '\\') : '/tmp');
   });
 
   test('variables de entorno persisten entre llamadas', async () => {
-    await shell.run('TESTVAR_CLAW=persistido');
-    const val = await shell.run('echo $TESTVAR_CLAW');
-    expect(val).toContain('persistido');
+    if (IS_WIN) {
+      await shell.run('set TESTVAR_CLAW=persistido');
+      const val = await shell.run('echo %TESTVAR_CLAW%');
+      expect(val).toContain('persistido');
+    } else {
+      await shell.run('TESTVAR_CLAW=persistido');
+      const val = await shell.run('echo $TESTVAR_CLAW');
+      expect(val).toContain('persistido');
+    }
   });
 
-  test('exit code != 0 agrega prefijo [exit N]', async () => {
+  (IS_WIN ? test.skip : test)('exit code != 0 agrega prefijo [exit N]', async () => {
     const out = await shell.run('false');
     expect(out).toMatch(/^\[exit 1\]/);
   });
 
   test('stderr se incluye en el resultado', async () => {
-    const out = await shell.run('echo "error msg" >&2');
+    const cmd = IS_WIN ? 'echo error msg >&2' : 'echo "error msg" >&2';
+    const out = await shell.run(cmd);
     expect(out).toContain('error msg');
   });
 
-  test('comando sin output retorna "(sin output)"', async () => {
+  (IS_WIN ? test.skip : test)('comando sin output retorna "(sin output)"', async () => {
     const out = await shell.run('true');
     expect(out).toBe('(sin output)');
   });
