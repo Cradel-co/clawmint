@@ -65,14 +65,34 @@ const SEARCH_FILES = {
 
   execute({ pattern, dir } = {}) {
     if (!pattern) return 'Error: parámetro pattern requerido';
-    const { execSync } = require('child_process');
     try {
       const resolved = path.resolve(DEFAULT_CWD, dir || DEFAULT_CWD);
-      const cmd = `find "${resolved}" -name "${pattern.replace('**/', '').replace('**', '*')}" 2>/dev/null | head -50`;
-      const output = execSync(cmd, { encoding: 'utf8', timeout: 10000 });
-      return output.trim() || '(sin resultados)';
-    } catch {
-      return '(sin resultados)';
+      // Convertir glob simple a RegExp (cross-platform, sin depender de `find`)
+      const globStr = pattern.replace('**/', '').replace('**', '*');
+      const escaped = globStr.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
+      const re = new RegExp('^' + escaped + '$', 'i');
+
+      const results = [];
+      const MAX = 50;
+      function walk(dirPath) {
+        if (results.length >= MAX) return;
+        let entries;
+        try { entries = fs.readdirSync(dirPath, { withFileTypes: true }); } catch { return; }
+        for (const entry of entries) {
+          if (results.length >= MAX) return;
+          if (entry.name === 'node_modules' || entry.name === '.git') continue;
+          const full = path.join(dirPath, entry.name);
+          if (entry.isDirectory()) {
+            walk(full);
+          } else if (re.test(entry.name)) {
+            results.push(full);
+          }
+        }
+      }
+      walk(resolved);
+      return results.join('\n') || '(sin resultados)';
+    } catch (err) {
+      return `Error: ${err.message}`;
     }
   },
 };

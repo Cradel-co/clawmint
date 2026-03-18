@@ -15,7 +15,7 @@ Terminal en tiempo real accesible desde el navegador y Telegram. Combina PTY vir
 - **Server:** Express 4 + `ws` + `node-pty`
 - **Client:** React 18 + Vite + xterm.js
 - **IA:** Anthropic SDK + `claude -p` (CLI)
-- **Persistencia:** JSON planos (`agents.json`, `bots.json`)
+- **Persistencia:** SQLite via sql.js (WASM) + JSON planos (`agents.json`, `bots.json`)
 - **Mensajería:** Telegram Bot API (long polling)
 
 ## Estructura
@@ -57,6 +57,11 @@ cd client && npm install && npm run dev  # http://localhost:5173
 - El stack de node-pty se aumenta con `--stack-size=65536` para evitar crash en WSL2.
 - Se eliminan `CLAUDECODE` y `CLAUDE_CODE_ENTRYPOINT` del env al spawner PTYs.
 - Telegram edits tienen throttle de 1500ms (límite de la API).
+- **SQLite usa sql.js (WASM)**, no better-sqlite3 — no requiere compilación nativa (funciona en Windows y Linux sin Visual Studio Build Tools).
+  - El wrapper `storage/sqlite-wrapper.js` expone API compatible con better-sqlite3 (`prepare().run/get/all`, `pragma()`, `exec()`).
+  - La DB vive en memoria y se auto-persiste a disco con debounce de 500ms.
+  - La inicialización es async (`await Database.initialize()` en `memory.initDBAsync()`).
+- **spawn de `claude` CLI** usa `shell: true` en Windows (`process.platform === 'win32'`) para resolver `.cmd`.
 
 ## Arquitectura detallada
 

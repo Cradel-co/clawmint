@@ -4,9 +4,15 @@ const fs   = require('fs');
 const os   = require('os');
 const path = require('path');
 
+const Database               = require('../storage/sqlite-wrapper');
 const DatabaseProvider       = require('../storage/DatabaseProvider');
 const ChatSettingsRepository = require('../storage/ChatSettingsRepository');
 const BotsRepository         = require('../storage/BotsRepository');
+
+// Inicializar sql.js WASM antes de todos los tests
+beforeAll(async () => {
+  await Database.initialize();
+});
 
 // ── DatabaseProvider ──────────────────────────────────────────────────────────
 

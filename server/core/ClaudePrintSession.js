@@ -48,6 +48,7 @@ class ClaudePrintSession {
         cwd: process.env.HOME,
         env,
         stdio: ['ignore', 'pipe', 'ignore'],
+        shell: process.platform === 'win32',
       });
 
       let lineBuffer = '';

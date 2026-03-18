@@ -24,7 +24,10 @@ class DatabaseProvider {
   init(schema) {
     if (this._db) return this._db;
 
-    const Database = require('better-sqlite3');
+    const Database = require('./sqlite-wrapper');
+    if (!Database.isInitialized()) {
+      throw new Error('DatabaseProvider: sql.js no inicializado. Llamar await Database.initialize() primero.');
+    }
     fs.mkdirSync(path.dirname(this._dbPath), { recursive: true });
 
     this._db = new Database(this._dbPath);

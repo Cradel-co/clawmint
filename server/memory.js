@@ -574,7 +574,12 @@ const DB_SCHEMA = `
 
 function initDB() {
   try {
-    const Database = require('better-sqlite3');
+    const Database = require('./storage/sqlite-wrapper');
+    if (!Database.isInitialized()) {
+      // sql.js aún no inicializado — se llamará initDBAsync() después
+      console.log('[Memory] sql.js pendiente, initDB diferido');
+      return;
+    }
     fs.mkdirSync(MEMORY_DIR, { recursive: true });
     db = new Database(path.join(MEMORY_DIR, 'index.db'));
     db.pragma('journal_mode = WAL');
@@ -597,6 +602,15 @@ function initDB() {
     console.error('[Memory] No se pudo inicializar SQLite:', err.message);
     db = null;
   }
+}
+
+/**
+ * Inicializa sql.js WASM + SQLite. Llamar desde index.js antes de bootstrap.
+ */
+async function initDBAsync() {
+  const Database = require('./storage/sqlite-wrapper');
+  await Database.initialize();
+  initDB();
 }
 
 // ─── Frontmatter YAML-lite ────────────────────────────────────────────────────
@@ -1250,4 +1264,5 @@ module.exports = {
   buildGraph,
   getDB,
   setDB,
+  initDBAsync,
 };

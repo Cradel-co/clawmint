@@ -10,19 +10,19 @@
  */
 
 const fs       = require('fs');
-const Database = require('better-sqlite3');
+const Database = require('../storage/sqlite-wrapper');
 const memory   = require('../memory');
 
-// ── Setup: DB in-memory ───────────────────────────────────────────────────────
+// ── Setup: DB in-memory (sql.js requiere init async) ─────────────────────────
 
-const TEST_DB = new Database(':memory:');
-TEST_DB.pragma('journal_mode = WAL');
-TEST_DB.pragma('foreign_keys = ON');
-TEST_DB.exec(memory.DB_SCHEMA);
+let TEST_DB;
 
-// Reemplazar la DB de producción antes de que cualquier test corra
-// (initDB ya corrió al cargar el módulo, pero setDB la sobreescribe)
-beforeAll(() => {
+beforeAll(async () => {
+  await Database.initialize();
+  TEST_DB = new Database(':memory:');
+  TEST_DB.pragma('journal_mode = WAL');
+  TEST_DB.pragma('foreign_keys = ON');
+  TEST_DB.exec(memory.DB_SCHEMA);
   memory.setDB(TEST_DB);
 });
 

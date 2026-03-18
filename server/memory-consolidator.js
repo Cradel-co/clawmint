@@ -20,7 +20,7 @@
  * Debug: activar con DEBUG_MEMORY=1 (env) o "settings": { "debug": true } en defaults.json
  */
 
-const { spawn } = require('child_process');
+const childProcess = require('child_process');
 const fs        = require('fs');
 const path      = require('path');
 const memoryModule = require('./memory');
@@ -339,10 +339,11 @@ function _runHaiku(prompt, agentKey) {
     dbg('haiku', `spawn: claude ${claudeArgs.join(' ')}`);
     dbg('haiku', `cwd: ${cwd}`);
 
-    const child = spawn('claude', claudeArgs, {
+    const child = childProcess.spawn('claude', claudeArgs, {
       cwd,
       env,
       stdio: ['pipe', 'pipe', 'pipe'],
+      shell: process.platform === 'win32',
     });
 
     let stdout    = '';

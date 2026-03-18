@@ -61,33 +61,45 @@ logger.info('Node version:', process.version);
 logger.info('PATH:', process.env.PATH);
 logger.info('HOME:', process.env.HOME);
 
-logger.info('Cargando módulos...');
+// ── Carga de módulos (async por sql.js WASM) ─────────────────────────────────
+
 let sessionManager, telegram, agents, skills, events, memory, providerConfig, providersModule, consolidator;
-try { sessionManager  = require('./sessionManager');  logger.info('sessionManager OK'); }  catch(e) { logger.error('sessionManager FAIL:', e.message); process.exit(1); }
-try { agents          = require('./agents');           logger.info('agents OK'); }          catch(e) { logger.error('agents FAIL:', e.message); process.exit(1); }
-try { skills          = require('./skills');           logger.info('skills OK'); }          catch(e) { logger.error('skills FAIL:', e.message); process.exit(1); }
-try { events          = require('./events');           logger.info('events OK'); }          catch(e) { logger.error('events FAIL:', e.message); process.exit(1); }
-try { memory          = require('./memory');           logger.info('memory OK'); }          catch(e) { logger.error('memory FAIL:', e.message); process.exit(1); }
-try { providerConfig  = require('./provider-config'); logger.info('provider-config OK'); } catch(e) { logger.error('provider-config FAIL:', e.message); process.exit(1); }
-try { providersModule = require('./providers');        logger.info('providers OK'); }       catch(e) { logger.error('providers FAIL:', e.message); process.exit(1); }
-// Telegram + consolidator + mcpRouter via bootstrap.js (DI completa)
 let mcpRouter = null;
-try {
-  const { createContainer } = require('./bootstrap');
-  const _c = createContainer();
-  telegram     = _c.telegramChannel;
-  consolidator = _c.consolidator;
-  // MCP router (embebido en Express)
+
+const _modulesReady = (async function loadModules() {
+  logger.info('Cargando módulos...');
+  try { sessionManager  = require('./sessionManager');  logger.info('sessionManager OK'); }  catch(e) { logger.error('sessionManager FAIL:', e.message); process.exit(1); }
+  try { agents          = require('./agents');           logger.info('agents OK'); }          catch(e) { logger.error('agents FAIL:', e.message); process.exit(1); }
+  try { skills          = require('./skills');           logger.info('skills OK'); }          catch(e) { logger.error('skills FAIL:', e.message); process.exit(1); }
+  try { events          = require('./events');           logger.info('events OK'); }          catch(e) { logger.error('events FAIL:', e.message); process.exit(1); }
+
+  // sql.js requiere inicialización async del WASM antes de crear instancias SQLite
+  try { memory          = require('./memory');           logger.info('memory module loaded'); }  catch(e) { logger.error('memory FAIL:', e.message); process.exit(1); }
   try {
-    const { createMcpRouter } = require('./mcp');
-    mcpRouter = createMcpRouter({ sessionManager: _c.sessionManager, memory: _c.memory });
-    logger.info('MCP router creado OK');
-  } catch (mcpErr) {
-    logger.warn('MCP router no disponible:', mcpErr.message);
-  }
-  logger.info('bootstrap OK (telegram + consolidator)');
-} catch(e) { logger.error('bootstrap FAIL:', e.message); process.exit(1); }
-logger.info('Todos los módulos cargados.');
+    await memory.initDBAsync();
+    logger.info('memory SQLite OK (sql.js WASM)');
+  } catch(e) { logger.error('memory initDBAsync FAIL:', e.message); process.exit(1); }
+
+  try { providerConfig  = require('./provider-config'); logger.info('provider-config OK'); } catch(e) { logger.error('provider-config FAIL:', e.message); process.exit(1); }
+  try { providersModule = require('./providers');        logger.info('providers OK'); }       catch(e) { logger.error('providers FAIL:', e.message); process.exit(1); }
+  // Telegram + consolidator + mcpRouter via bootstrap.js (DI completa)
+  try {
+    const { createContainer } = require('./bootstrap');
+    const _c = createContainer();
+    telegram     = _c.telegramChannel;
+    consolidator = _c.consolidator;
+    // MCP router (embebido en Express)
+    try {
+      const { createMcpRouter } = require('./mcp');
+      mcpRouter = createMcpRouter({ sessionManager: _c.sessionManager, memory: _c.memory });
+      logger.info('MCP router creado OK');
+    } catch (mcpErr) {
+      logger.warn('MCP router no disponible:', mcpErr.message);
+    }
+    logger.info('bootstrap OK (telegram + consolidator)');
+  } catch(e) { logger.error('bootstrap FAIL:', e.message); process.exit(1); }
+  logger.info('Todos los módulos cargados.');
+})();
 
 const app = express();
 app.use(cors());
@@ -834,12 +846,7 @@ app.put('/api/providers/:name', (req, res) => {
   res.json({ ok: true });
 });
 
-// ─── MCP endpoint ─────────────────────────────────────────────────────────────
-
-if (mcpRouter) {
-  app.use('/mcp', mcpRouter);
-  logger.info('MCP endpoint disponible en /mcp');
-}
+// ─── MCP endpoint se monta en _modulesReady.then() (requiere bootstrap async) ─
 
 // ─── Client estático (producción / Docker) ───────────────────────────────────
 
@@ -856,17 +863,28 @@ if (fs.existsSync(clientDist)) {
 
 const PORT = process.env.PORT || 3001;
 logger.info(`Iniciando servidor en puerto ${PORT}...`);
-server.listen(PORT, async () => {
-  logger.info(`Servidor escuchando en http://localhost:${PORT}`);
-  console.log(`Servidor escuchando en http://localhost:${PORT}`);
-  console.log(`HTTP API disponible en http://localhost:${PORT}/api/sessions`);
-
-  logger.info('Iniciando bots de Telegram...');
-  try {
-    await telegram.loadAndStart();
-    logger.info('Bots de Telegram iniciados OK.');
-  } catch (err) {
-    logger.error('Error al iniciar bots de Telegram:', err.stack || err.message);
+// Esperar a que sql.js WASM + módulos estén listos antes de escuchar
+_modulesReady.then(() => {
+  // Montar MCP router si está disponible (necesita bootstrap completo)
+  if (mcpRouter) {
+    app.use('/mcp', mcpRouter);
   }
-  logger.info('=== SERVIDOR LISTO ===');
+
+  server.listen(PORT, async () => {
+    logger.info(`Servidor escuchando en http://localhost:${PORT}`);
+    console.log(`Servidor escuchando en http://localhost:${PORT}`);
+    console.log(`HTTP API disponible en http://localhost:${PORT}/api/sessions`);
+
+    logger.info('Iniciando bots de Telegram...');
+    try {
+      await telegram.loadAndStart();
+      logger.info('Bots de Telegram iniciados OK.');
+    } catch (err) {
+      logger.error('Error al iniciar bots de Telegram:', err.stack || err.message);
+    }
+    logger.info('=== SERVIDOR LISTO ===');
+  });
+}).catch(e => {
+  logger.error('FATAL: No se pudieron cargar módulos:', e.message);
+  process.exit(1);
 });

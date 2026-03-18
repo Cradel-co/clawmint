@@ -10,22 +10,24 @@
 
 const fs          = require('fs');
 const path        = require('path');
-const Database    = require('better-sqlite3');
+const Database    = require('../storage/sqlite-wrapper');
 const memory      = require('../memory');
 const consolidator = require('../memory-consolidator');
 
-// ── Setup DB ──────────────────────────────────────────────────────────────────
+// ── Setup DB (sql.js requiere init async) ─────────────────────────────────────
 
-const TEST_DB = new Database(':memory:');
-TEST_DB.pragma('journal_mode = WAL');
-TEST_DB.pragma('foreign_keys = ON');
-TEST_DB.exec(memory.DB_SCHEMA);
-memory.setDB(TEST_DB);
-
+let TEST_DB;
 const AGENT     = '__test_consol_' + Date.now() + '__';
-const AGENT_DIR = path.join(memory.MEMORY_DIR, AGENT);
+let AGENT_DIR;
 
-beforeAll(() => {
+beforeAll(async () => {
+  await Database.initialize();
+  TEST_DB = new Database(':memory:');
+  TEST_DB.pragma('journal_mode = WAL');
+  TEST_DB.pragma('foreign_keys = ON');
+  TEST_DB.exec(memory.DB_SCHEMA);
+  memory.setDB(TEST_DB);
+  AGENT_DIR = path.join(memory.MEMORY_DIR, AGENT);
   consolidator.init(TEST_DB);
 });
 
@@ -115,7 +117,9 @@ describe('getStats()', () => {
 
   test('sin DB retorna null', () => {
     memory.setDB(null);
+    consolidator.init(null);
     expect(consolidator.getStats(AGENT)).toBeNull();
+    consolidator.init(TEST_DB);
     memory.setDB(TEST_DB);
   });
 
