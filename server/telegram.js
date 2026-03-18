@@ -437,6 +437,7 @@ class TelegramBot {
           { command: 'estado', description: 'Estado detallado' },
           { command: 'agentes', description: 'Listar agentes' },
           { command: 'skills', description: 'Skills instalados' },
+          { command: 'whisper', description: 'Ver o cambiar modelo de transcripción' },
           { command: 'consola', description: 'Modo consola bash' },
           { command: 'recordar', description: 'Crear recordatorio' },
           { command: 'ayuda', description: 'Todos los comandos' },
@@ -529,7 +530,8 @@ class TelegramBot {
       await httpsDownload(fileUrl, tmpFile);
 
       // 3. Transcribir con Whisper local
-      await this.sendText(chatId, '🎙️ Transcribiendo audio...');
+      const whisperModel = require('./transcriber').DEFAULTS.model;
+      await this.sendText(chatId, `🎙️ Transcribiendo audio (whisper:${whisperModel})...`);
       const text = await transcribe(tmpFile);
 
       // 4. Limpiar archivo temporal
@@ -920,6 +922,7 @@ class TelegramBot {
           `/consola — modo consola bash (toggle)\n` +
           `/status-vps — CPU, RAM y disco\n\n` +
           `*Audio:*\n` +
+          `/whisper [modelo] — ver/cambiar modelo Whisper\n` +
           `🎙️ Enviá un audio de voz y se transcribe automáticamente\n\n` +
           `*Bot:*\n` +
           `/agente [key] — ver/cambiar agente\n` +
@@ -1192,6 +1195,34 @@ class TelegramBot {
             `✅ Modo cambiado a *${labels[newMode]}*\n` +
             `_El contexto de conversación se mantiene._`
           );
+        }
+        break;
+      }
+
+      // ── Whisper (transcripción de audio) ────────────────────────────
+      case 'whisper': {
+        const { getConfig, setModel, VALID_MODELS } = require('./transcriber');
+        if (args.length === 0) {
+          const cfg = getConfig();
+          await this.sendWithButtons(chatId,
+            `🎙️ *Whisper — Transcripción de audio*\n\n` +
+            `• Modelo: \`${cfg.model}\`\n` +
+            `• Device: \`${cfg.device}\`\n` +
+            `• Compute: \`${cfg.computeType}\`\n` +
+            `• Idioma: \`${cfg.language}\`\n` +
+            `• Beam size: \`${cfg.beamSize}\`\n` +
+            `• Timeout: \`${cfg.timeout / 1000}s\`\n\n` +
+            `Modelos: ${VALID_MODELS.map(m => `\`${m}\``).join(', ')}\n` +
+            `Usá /whisper <modelo> para cambiar.`,
+            VALID_MODELS.map(m => [{ text: cfg.model === m ? `✅ ${m}` : m, callback_data: `whisper:${m}` }])
+          );
+        } else {
+          const newModel = args[0].toLowerCase();
+          if (!setModel(newModel)) {
+            await this.sendText(chatId, `❌ Modelo inválido: \`${newModel}\`\nDisponibles: ${VALID_MODELS.join(', ')}`);
+          } else {
+            await this.sendText(chatId, `✅ Modelo Whisper cambiado a \`${newModel}\``);
+          }
         }
         break;
       }
@@ -2227,6 +2258,15 @@ class TelegramBot {
       return;
     }
 
+    if (data.startsWith('whisper:')) {
+      const { setModel } = require('./transcriber');
+      const newModel = data.slice(7);
+      if (setModel(newModel)) {
+        await this.sendText(chatId, `✅ Modelo Whisper cambiado a \`${newModel}\``);
+      }
+      return;
+    }
+
     if (data.startsWith('provider:') && providersModule) {
       const newProvider = data.slice(9);
       const available = providersModule.list().map(p => p.name);
@@ -2384,6 +2424,7 @@ class TelegramBot {
           `/consola — modo consola bash (toggle)\n` +
           `/status-vps — CPU, RAM y disco\n\n` +
           `*Audio:*\n` +
+          `/whisper [modelo] — ver/cambiar modelo Whisper\n` +
           `🎙️ Enviá un audio de voz y se transcribe automáticamente\n\n` +
           `*Bot:*\n` +
           `/agente [key] — ver/cambiar agente\n` +
