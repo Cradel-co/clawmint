@@ -7,6 +7,8 @@ const { spawn } = require('child_process');
 
 // ─── Configuración por defecto ───────────────────────────────────────────────
 
+const CONFIG_FILE = path.join(__dirname, 'whisper-config.json');
+
 const DEFAULTS = {
   pythonBin: path.join(process.env.HOME, '.venvs', 'whisper', 'bin', 'python3'),
   model: 'medium',
@@ -16,6 +18,17 @@ const DEFAULTS = {
   beamSize: 5,
   timeout: 300000, // 5 min
 };
+
+// Cargar config persistida al iniciar
+try {
+  const saved = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+  Object.assign(DEFAULTS, saved);
+} catch {}
+
+function _saveConfig() {
+  const { pythonBin, ...rest } = DEFAULTS;
+  try { fs.writeFileSync(CONFIG_FILE, JSON.stringify(rest, null, 2) + '\n'); } catch {}
+}
 
 // ─── Descarga HTTPS genérica ─────────────────────────────────────────────────
 
@@ -96,4 +109,24 @@ print(" ".join(s.text.strip() for s in segments))
   });
 }
 
-module.exports = { httpsDownload, transcribe, DEFAULTS };
+const VALID_MODELS = ['tiny', 'base', 'small', 'medium', 'large-v2', 'large-v3'];
+
+function getConfig() { return { ...DEFAULTS }; }
+
+function setModel(model) {
+  if (!VALID_MODELS.includes(model)) return false;
+  DEFAULTS.model = model;
+  _saveConfig();
+  return true;
+}
+
+const VALID_LANGUAGES = ['es', 'en', 'pt', 'fr', 'de', 'it', 'ja', 'zh', 'ko', 'auto'];
+
+function setLanguage(lang) {
+  if (!VALID_LANGUAGES.includes(lang)) return false;
+  DEFAULTS.language = lang;
+  _saveConfig();
+  return true;
+}
+
+module.exports = { httpsDownload, transcribe, DEFAULTS, VALID_MODELS, VALID_LANGUAGES, getConfig, setModel, setLanguage };

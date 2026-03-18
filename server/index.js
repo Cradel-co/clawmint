@@ -834,11 +834,12 @@ if (fs.existsSync(clientDist)) {
 // ─── Servidor ─────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3001;
-logger.info(`Iniciando servidor en puerto ${PORT}...`);
-server.listen(PORT, async () => {
-  logger.info(`Servidor escuchando en http://localhost:${PORT}`);
-  console.log(`Servidor escuchando en http://localhost:${PORT}`);
-  console.log(`HTTP API disponible en http://localhost:${PORT}/api/sessions`);
+const HOST = process.env.HOST || '0.0.0.0';
+logger.info(`Iniciando servidor en ${HOST}:${PORT}...`);
+server.listen(PORT, HOST, async () => {
+  logger.info(`Servidor escuchando en http://${HOST}:${PORT}`);
+  console.log(`Servidor escuchando en http://${HOST}:${PORT}`);
+  console.log(`HTTP API disponible en http://${HOST}:${PORT}/api/sessions`);
 
   logger.info('Iniciando bots de Telegram...');
   try {

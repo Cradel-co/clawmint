@@ -196,7 +196,12 @@ class ClaudePrintSession {
       claudeArgs.unshift('--permission-mode', modeMap[this.permissionMode] || 'default');
     }
     if (this.model) claudeArgs.push('--model', this.model);
-    if (this.messageCount > 0) claudeArgs.push('--continue');
+    // Reanudar sesión existente usando session_id explícito para no perder contexto
+    if (this.messageCount > 0 && this.claudeSessionId) {
+      claudeArgs.push('--resume', this.claudeSessionId);
+    } else if (this.messageCount > 0) {
+      claudeArgs.push('--continue');
+    }
 
     return new Promise((resolve, reject) => {
       const env = { ...process.env };
@@ -440,6 +445,7 @@ class TelegramBot {
           { command: 'estado', description: 'Estado detallado' },
           { command: 'agentes', description: 'Listar agentes' },
           { command: 'skills', description: 'Skills instalados' },
+          { command: 'whisper', description: 'Ver o cambiar modelo de transcripción' },
           { command: 'consola', description: 'Modo consola bash' },
           { command: 'recordar', description: 'Crear recordatorio' },
           { command: 'ayuda', description: 'Todos los comandos' },
@@ -568,7 +574,8 @@ class TelegramBot {
       await httpsDownload(fileUrl, tmpFile);
 
       // 3. Transcribir con Whisper local
-      await this.sendText(chatId, '🎙️ Transcribiendo audio...');
+      const whisperModel = require('./transcriber').DEFAULTS.model;
+      await this.sendText(chatId, `🎙️ Transcribiendo audio (whisper:${whisperModel})...`);
       const text = await transcribe(tmpFile);
 
       // 4. Limpiar archivo temporal
@@ -1107,6 +1114,7 @@ class TelegramBot {
           `/consola — modo consola bash (toggle)\n` +
           `/status-vps — CPU, RAM y disco\n\n` +
           `*Audio:*\n` +
+          `/whisper [modelo] — ver/cambiar modelo Whisper\n` +
           `🎙️ Enviá un audio de voz y se transcribe automáticamente\n\n` +
           `*Bot:*\n` +
           `/agente [key] — ver/cambiar agente\n` +
@@ -1380,7 +1388,7 @@ class TelegramBot {
       // ── Permisos Claude ───────────────────────────────────────────────────
       case 'permisos':
       case 'modo-permisos': {
-        if (!this._isClaudeBased(chat.provider)) {
+        if (!this._isClaudeBased() && !(chat.provider || '').includes('claude')) {
           await this.sendText(chatId, '❌ Solo disponible con Claude Code.');
           break;
         }
@@ -1411,6 +1419,46 @@ class TelegramBot {
             `✅ Modo cambiado a *${labels[newMode]}*\n` +
             `_El contexto de conversación se mantiene._`
           );
+        }
+        break;
+      }
+
+      // ── Whisper (transcripción de audio) ────────────────────────────
+      case 'whisper': {
+        const { getConfig, setModel, setLanguage, VALID_MODELS, VALID_LANGUAGES } = require('./transcriber');
+        const cfg = getConfig();
+        if (args.length === 0) {
+          const langLabels = { es: '🇪🇸 es', en: '🇺🇸 en', pt: '🇧🇷 pt', fr: '🇫🇷 fr', de: '🇩🇪 de', it: '🇮🇹 it', ja: '🇯🇵 ja', zh: '🇨🇳 zh', ko: '🇰🇷 ko', auto: '🌐 auto' };
+          const modelButtons = VALID_MODELS.map(m => ({ text: cfg.model === m ? `✅ ${m}` : m, callback_data: `whisper:${m}` }));
+          const langButtons = VALID_LANGUAGES.map(l => ({ text: cfg.language === l ? `✅ ${langLabels[l] || l}` : (langLabels[l] || l), callback_data: `whisperlang:${l}` }));
+          // 3 modelos por fila, 5 idiomas por fila
+          const modelRows = [];
+          for (let i = 0; i < modelButtons.length; i += 3) modelRows.push(modelButtons.slice(i, i + 3));
+          const langRows = [];
+          for (let i = 0; i < langButtons.length; i += 5) langRows.push(langButtons.slice(i, i + 5));
+          await this.sendWithButtons(chatId,
+            `🎙️ *Whisper — Transcripción de audio*\n\n` +
+            `• Modelo: \`${cfg.model}\`\n` +
+            `• Idioma: \`${cfg.language}\`\n` +
+            `• Device: \`${cfg.device}\` | Compute: \`${cfg.computeType}\`\n` +
+            `• Beam size: \`${cfg.beamSize}\` | Timeout: \`${cfg.timeout / 1000}s\`\n\n` +
+            `*Modelo:*`,
+            [...modelRows, [{ text: '── Idioma ──', callback_data: 'noop' }], ...langRows]
+          );
+        } else {
+          const val = args[0].toLowerCase();
+          if (VALID_MODELS.includes(val)) {
+            setModel(val);
+            await this.sendText(chatId,
+              `✅ Modelo Whisper cambiado a \`${val}\`\n` +
+              `_Si es la primera vez, se descargará automáticamente al transcribir._`
+            );
+          } else if (VALID_LANGUAGES.includes(val)) {
+            setLanguage(val);
+            await this.sendText(chatId, `✅ Idioma Whisper cambiado a \`${val}\``);
+          } else {
+            await this.sendText(chatId, `❌ Valor inválido: \`${val}\`\nModelos: ${VALID_MODELS.join(', ')}\nIdiomas: ${VALID_LANGUAGES.join(', ')}`);
+          }
         }
         break;
       }
@@ -2027,7 +2075,15 @@ class TelegramBot {
         if (chat) chat.lastButtonsMsgId = editMsgId;
         return result;
       }
-      catch (e) { if (!e.message?.includes('not modified')) throw e; }
+      catch (e) {
+        if (e.message?.includes('not modified')) return;
+        // Fallback sin Markdown si Telegram rechaza el parse
+        try {
+          const result = await this._apiCall('editMessageText', { ...body, message_id: editMsgId, parse_mode: undefined });
+          if (chat) chat.lastButtonsMsgId = editMsgId;
+          return result;
+        } catch {}
+      }
       return;
     }
 
@@ -2544,6 +2600,42 @@ class TelegramBot {
       return;
     }
 
+    if (data.startsWith('whisperlang:') || data.startsWith('whisper:')) {
+      const { getConfig, setModel, setLanguage, VALID_MODELS, VALID_LANGUAGES } = require('./transcriber');
+      let changed = false;
+      if (data.startsWith('whisperlang:')) {
+        changed = setLanguage(data.slice(12));
+      } else {
+        changed = setModel(data.slice(8));
+      }
+      if (changed && msgId) {
+        const cfg = getConfig();
+        const langLabels = { es: '🇪🇸 es', en: '🇺🇸 en', pt: '🇧🇷 pt', fr: '🇫🇷 fr', de: '🇩🇪 de', it: '🇮🇹 it', ja: '🇯🇵 ja', zh: '🇨🇳 zh', ko: '🇰🇷 ko', auto: '🌐 auto' };
+        const modelButtons = VALID_MODELS.map(m => ({ text: cfg.model === m ? `✅ ${m}` : m, callback_data: `whisper:${m}` }));
+        const langButtons = VALID_LANGUAGES.map(l => ({ text: cfg.language === l ? `✅ ${langLabels[l] || l}` : (langLabels[l] || l), callback_data: `whisperlang:${l}` }));
+        const modelRows = [];
+        for (let i = 0; i < modelButtons.length; i += 3) modelRows.push(modelButtons.slice(i, i + 3));
+        const langRows = [];
+        for (let i = 0; i < langButtons.length; i += 5) langRows.push(langButtons.slice(i, i + 5));
+        try {
+          await this._apiCall('editMessageText', {
+            chat_id: chatId,
+            message_id: msgId,
+            text: `🎙️ *Whisper — Transcripción de audio*\n\n` +
+              `• Modelo: \`${cfg.model}\`\n` +
+              `• Idioma: \`${cfg.language}\`\n` +
+              `• Device: \`${cfg.device}\` | Compute: \`${cfg.computeType}\`\n` +
+              `• Beam size: \`${cfg.beamSize}\` | Timeout: \`${cfg.timeout / 1000}s\``,
+            parse_mode: 'Markdown',
+            reply_markup: { inline_keyboard: [...modelRows, [{ text: '── Idioma ──', callback_data: 'noop' }], ...langRows] },
+          });
+        } catch {}
+      }
+      return;
+    }
+
+    if (data === 'noop') return;
+
     if (data.startsWith('provider:') && providersModule) {
       const newProvider = data.slice(9);
       const available = providersModule.list().map(p => p.name);
@@ -2742,6 +2834,7 @@ class TelegramBot {
           `/consola — modo consola bash (toggle)\n` +
           `/status-vps — CPU, RAM y disco\n\n` +
           `*Audio:*\n` +
+          `/whisper [modelo] — ver/cambiar modelo Whisper\n` +
           `🎙️ Enviá un audio de voz y se transcribe automáticamente\n\n` +
           `*Bot:*\n` +
           `/agente [key] — ver/cambiar agente\n` +
