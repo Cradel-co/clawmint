@@ -96,4 +96,14 @@ print(" ".join(s.text.strip() for s in segments))
   });
 }
 
-module.exports = { httpsDownload, transcribe, DEFAULTS };
+const VALID_MODELS = ['tiny', 'base', 'small', 'medium', 'large-v2', 'large-v3'];
+
+function getConfig() { return { ...DEFAULTS }; }
+
+function setModel(model) {
+  if (!VALID_MODELS.includes(model)) return false;
+  DEFAULTS.model = model;
+  return true;
+}
+
+module.exports = { httpsDownload, transcribe, DEFAULTS, VALID_MODELS, getConfig, setModel };
