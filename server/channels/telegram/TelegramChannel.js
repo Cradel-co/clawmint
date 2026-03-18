@@ -16,6 +16,13 @@ const TELEGRAM_HOST = 'api.telegram.org';
 const POLL_TIMEOUT  = 25;
 const RATE_WINDOW_MS = 60 * 60 * 1000;
 
+// ── Debug condicional (activar con DEBUG_TELEGRAM=1) ─────────────────────────
+function _tgDebug() { return process.env.DEBUG_TELEGRAM === '1'; }
+function tdbg(scope, ...args) {
+  if (!_tgDebug()) return;
+  console.log(`[TG:DBG:${scope}]`, ...args);
+}
+
 // ── Utilidades HTTP ──────────────────────────────────────────────────────────
 
 function httpsPost(urlPath, body, timeoutMs = 35000) {
@@ -389,6 +396,19 @@ class TelegramBot {
   }
 
   async _handleMessage(msg) {
+    // Deduplicar: descartar si ya procesamos este message_id
+    if (!this._seenMsgIds) this._seenMsgIds = new Set();
+    if (this._seenMsgIds.has(msg.message_id)) {
+      tdbg('dedup', `SKIP msg_id=${msg.message_id} (duplicado)`);
+      return;
+    }
+    this._seenMsgIds.add(msg.message_id);
+    // Limpiar IDs viejos para no acumular memoria
+    if (this._seenMsgIds.size > 200) {
+      const arr = [...this._seenMsgIds];
+      this._seenMsgIds = new Set(arr.slice(-100));
+    }
+
     const chatId  = msg.chat.id;
     const isGroup = this._isGroup(msg.chat.type);
     const replyTo = isGroup ? msg.message_id : undefined;
@@ -506,9 +526,11 @@ class TelegramBot {
 
   // ── Helpers de animación y envío ─────────────────────────────────────────
 
-  async _startDotAnimation(chatId, label = '...') {
+  async _startDotAnimation(chatId, mode = 'ask') {
+    const modeLabels = { ask: 'ask', plan: 'plan-mode', auto: 'auto-accept' };
+    const label = modeLabels[mode] || mode;
     let sentMsg = null;
-    try { sentMsg = await this._apiCall('sendMessage', { chat_id: chatId, text: label.slice(0, 1) + '.' }); } catch {}
+    try { sentMsg = await this._apiCall('sendMessage', { chat_id: chatId, text: label + '.' }); } catch {}
     if (!sentMsg) return { sentMsg: null, stop: () => {} };
 
     let dotCount = 1, dotDir = 1, stopped = false;
@@ -520,7 +542,7 @@ class TelegramBot {
       try {
         await this._apiCall('editMessageText', {
           chat_id: chatId, message_id: sentMsg.message_id,
-          text: label.slice(0, 1) + '.'.repeat(dotCount),
+          text: label + '.'.repeat(dotCount),
         });
       } catch {}
     }, 1000);
@@ -531,7 +553,8 @@ class TelegramBot {
 
   async _sendResult(chatId, text, sentMsg) {
     const finalText = cleanPtyOutput(text || '').trim();
-    if (!finalText) return;
+    tdbg('result', `chatId=${chatId} rawLen=${(text||'').length} cleanLen=${finalText.length} hasSentMsg=${!!sentMsg}`);
+    if (!finalText) { tdbg('result', `SKIP — finalText vacío`); return; }
 
     const postButtons = [
       [{ text: '▶ Seguir',             callback_data: 'postreply:continue' },
@@ -541,27 +564,33 @@ class TelegramBot {
 
     const chunks = chunkText(finalText, 4096);
     const lastIdx = chunks.length - 1;
+    tdbg('result', `${chunks.length} chunk(s), first=${chunks[0]?.slice(0, 80)}`);
 
     if (sentMsg) {
       if (chunks.length === 1) {
+        tdbg('result', `editando msg ${sentMsg.message_id} con botones`);
         await this.sendWithButtons(chatId, chunks[0], postButtons, sentMsg.message_id);
       } else {
         try {
           await this._apiCall('editMessageText', { chat_id: chatId, message_id: sentMsg.message_id, text: chunks[0] });
-        } catch { await this.sendText(chatId, chunks[0]); }
+        } catch (e) { tdbg('result', `editMsg FAIL: ${e.message}`); await this.sendText(chatId, chunks[0]); }
         for (let i = 1; i < lastIdx; i++) await this.sendText(chatId, chunks[i]);
         await this.sendWithButtons(chatId, chunks[lastIdx], postButtons);
       }
     } else {
+      tdbg('result', `enviando ${chunks.length} chunk(s) como mensajes nuevos`);
       for (let i = 0; i < lastIdx; i++) await this.sendText(chatId, chunks[i]);
       await this.sendWithButtons(chatId, chunks[lastIdx], postButtons);
     }
+    tdbg('result', `OK`);
   }
 
   // ── Envío a sesión / provider ─────────────────────────────────────────────
 
   async _sendToSession(chatId, text, chat) {
+    tdbg('send', `chatId=${chatId} text="${text.slice(0, 80)}" busy=${chat.busy}`);
     if (chat.busy) {
+      tdbg('send', `SKIP — chat busy`);
       try { await this._apiCall('sendMessage', { chat_id: chatId, text: '⏳ Procesando tu mensaje anterior, aguardá un momento...' }); } catch {}
       return;
     }
@@ -571,20 +600,25 @@ class TelegramBot {
     const chatProvider = chat.provider || 'claude-code';
     const agentKey     = chat.activeAgent?.key || chat.activeAgent || this.defaultAgent;
     const useConvSvc   = this._convSvc && (chatProvider !== 'claude-code' || this._isClaudeBased(agentKey));
+    tdbg('send', `provider=${chatProvider} agent=${agentKey} useConvSvc=${useConvSvc} hasConvSvc=${!!this._convSvc}`);
 
     if (!useConvSvc) {
       // Agentes PTY (bash, custom commands, etc.)
+      tdbg('send', `→ ruta PTY`);
       try {
         const session  = await this.getOrCreateSession(chatId, chat);
+        tdbg('send', `PTY session=${session?.id} active=${session?.active}`);
         const fromName = chat.firstName || chat.username || `chat${chatId}`;
         if (this._events) this._events.emit('telegram:session', { sessionId: session.id, from: fromName, text });
         session.injectOutput(`\r\n\x1b[34m┌─ 📨 Telegram: ${fromName}\x1b[0m\r\n`);
         try { await this._apiCall('sendChatAction', { chat_id: chatId, action: 'typing' }); } catch {}
         const result   = await session.sendMessage(text, { timeout: 1080000, stableMs: 3000 });
         const response = cleanPtyOutput(result.raw || '');
+        tdbg('send', `PTY response=${response?.length || 0} chars`);
         if (response) await this.sendText(chatId, response);
       } catch (err) {
         console.error(`[Telegram:${this.key}] Error PTY chat ${chatId}:`, err.message);
+        tdbg('send', `PTY ERROR: ${err.stack || err.message}`);
         try { await this.sendText(chatId, `⚠️ Error: ${err.message}`); } catch {}
       } finally {
         chat.busy = false;
@@ -593,23 +627,30 @@ class TelegramBot {
     }
 
     // ── Ruta ConversationService: claude-code y providers API ────────────────
+    tdbg('send', `→ ruta ConvSvc`);
     const mode = chat.claudeMode || 'ask';
+    tdbg('send', `mode=${mode} model=${chat.model} hasClaudeSession=${!!chat.claudeSession} msgCount=${chat.claudeSession?.messageCount || 0}`);
     const { sentMsg, stop: stopAnim } = await this._startDotAnimation(chatId, mode);
+    tdbg('send', `dotAnim sentMsg=${sentMsg?.message_id || 'null'}`);
 
     let lastEditAt  = 0;
     const THROTTLE  = 1500;
     let animStopped = false;
+    let chunkCount  = 0;
 
     const onChunk = async (partial) => {
-      if (!partial.trim() || !sentMsg) return;
-      if (!animStopped) { animStopped = true; stopAnim(); }
+      chunkCount++;
+      if (!partial.trim() || !sentMsg) { tdbg('chunk', `#${chunkCount} SKIP empty=${!partial.trim()} noMsg=${!sentMsg}`); return; }
+      if (!animStopped) { animStopped = true; stopAnim(); tdbg('chunk', `#${chunkCount} anim stopped`); }
       const now = Date.now();
-      if (now - lastEditAt < THROTTLE) return;
+      if (now - lastEditAt < THROTTLE) { tdbg('chunk', `#${chunkCount} throttled (${now - lastEditAt}ms)`); return; }
       lastEditAt = now;
       try {
         const preview = cleanPtyOutput(partial).slice(0, 4000) || partial.slice(0, 4000);
+        tdbg('chunk', `#${chunkCount} editMsg len=${preview.length}`);
         await this._apiCall('editMessageText', { chat_id: chatId, message_id: sentMsg.message_id, text: preview });
-      } catch {}
+        tdbg('chunk', `#${chunkCount} editMsg OK`);
+      } catch (e) { tdbg('chunk', `#${chunkCount} editMsg FAIL: ${e.message}`); }
     };
 
     try {
@@ -617,8 +658,11 @@ class TelegramBot {
       let messageText = text;
       if (chatProvider === 'claude-code' && chat._savedInSession?.length > 0 && chat.claudeSession?.messageCount > 0) {
         messageText = `[Notas guardadas en esta conversación: ${chat._savedInSession.join(', ')}]\n\n${text}`;
+        tdbg('send', `injected saved notes: ${chat._savedInSession.join(', ')}`);
       }
 
+      tdbg('send', `→ convSvc.processMessage() provider=${chatProvider} agent=${agentKey} textLen=${messageText.length}`);
+      const t0 = Date.now();
       const result = await this._convSvc.processMessage({
         chatId,
         agentKey,
@@ -631,11 +675,12 @@ class TelegramBot {
         onChunk,
         shellId:       String(chatId),
       });
+      tdbg('send', `← convSvc.processMessage() ${Date.now() - t0}ms chunks=${chunkCount} resultText=${(result.text || '').length} chars newSession=${!!result.newSession} savedFiles=${result.savedMemoryFiles?.length || 0}`);
 
       stopAnim();
       if (!animStopped && sentMsg) {
-        // Si nunca hubo chunk, eliminar el mensaje de dots antes de enviar resultado
-        try { await this._apiCall('deleteMessage', { chat_id: chatId, message_id: sentMsg.message_id }); } catch {}
+        tdbg('send', `deleting dot msg (no chunks received)`);
+        try { await this._apiCall('deleteMessage', { chat_id: chatId, message_id: sentMsg.message_id }); } catch (e) { tdbg('send', `deleteMsg FAIL: ${e.message}`); }
       }
 
       if (result.newSession)       chat.claudeSession = result.newSession;
@@ -647,18 +692,22 @@ class TelegramBot {
         }
       }
 
+      tdbg('send', `→ _sendResult() textLen=${(result.text || '').length} hasSentMsg=${!!(animStopped ? sentMsg : null)}`);
       await this._sendResult(chatId, result.text || '', animStopped ? sentMsg : null);
+      tdbg('send', `← _sendResult() OK`);
     } catch (err) {
       stopAnim();
       console.error(`[Telegram:${this.key}] Error en chat ${chatId}:`, err.message);
+      tdbg('send', `CATCH ERROR: ${err.stack || err.message}`);
       const errMsg = `⚠️ Error: ${err.message}`;
       try {
         if (sentMsg) {
           await this._apiCall('editMessageText', { chat_id: chatId, message_id: sentMsg.message_id, text: errMsg });
         } else { await this.sendText(chatId, errMsg); }
-      } catch {}
+      } catch (e2) { tdbg('send', `error-send FAIL: ${e2.message}`); }
     } finally {
       chat.busy = false;
+      tdbg('send', `DONE busy=false`);
     }
   }
 

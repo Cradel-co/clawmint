@@ -344,6 +344,7 @@ function _runHaiku(prompt, agentKey) {
       env,
       stdio: ['pipe', 'pipe', 'pipe'],
       shell: process.platform === 'win32',
+      windowsHide: true,
     });
 
     let stdout    = '';

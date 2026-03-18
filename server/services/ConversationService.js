@@ -1,5 +1,8 @@
 'use strict';
 
+function _csDbg() { return process.env.DEBUG_TELEGRAM === '1'; }
+function csdbg(scope, ...args) { if (_csDbg()) console.log(`[ConvSvc:DBG:${scope}]`, ...args); }
+
 /**
  * ConversationService — orquesta el envío de un mensaje al agente correcto.
  *
@@ -80,13 +83,16 @@ class ConversationService {
     shellId       = null,
   }) {
     const resolvedShellId = shellId || String(chatId);
+    csdbg('msg', `chatId=${chatId} provider=${provider} agent=${agentKey} model=${model} textLen=${text.length} histLen=${history.length} hasSession=${!!claudeSession}`);
 
     if (provider !== 'claude-code' && this._providers) {
+      csdbg('msg', `→ _processApiProvider`);
       return this._processApiProvider({
         chatId, agentKey, provider, model, text, history, onChunk, shellId: resolvedShellId,
       });
     }
 
+    csdbg('msg', `→ _processClaudeCode mode=${claudeMode}`);
     return this._processClaudeCode({
       chatId, agentKey, text, claudeSession, claudeMode, onChunk,
     });
@@ -100,12 +106,16 @@ class ConversationService {
     if (!session) {
       session = new this._ClaudePrintSession({ permissionMode: claudeMode || 'ask' });
       isNewSession = true;
+      csdbg('claude', `nueva ClaudePrintSession mode=${claudeMode}`);
+    } else {
+      csdbg('claude', `reutilizando session msgCount=${session.messageCount}`);
     }
 
     // Detección de señales de memoria
     const { shouldNudge, signals } = (agentKey && this._memory)
       ? this._memory.detectSignals(agentKey, text)
       : { shouldNudge: false, signals: [] };
+    csdbg('claude', `signals=${signals.length} shouldNudge=${shouldNudge}`);
 
     // Construir mensaje con contexto de memoria inyectado
     let messageText = text;
@@ -115,22 +125,29 @@ class ConversationService {
         const toolInstr = shouldNudge ? this._memory.TOOL_INSTRUCTIONS : '';
         const parts     = [memCtx, toolInstr].filter(Boolean);
         if (parts.length > 0) messageText = `${parts.join('\n\n')}\n\n---\n\n${text}`;
+        csdbg('claude', `memCtx injected: ${memCtx?.length || 0} chars, toolInstr: ${toolInstr?.length || 0} chars`);
       }
     }
     if (shouldNudge && this._memory) messageText += this._memory.buildNudge(signals);
 
+    csdbg('claude', `→ session.sendMessage() textLen=${messageText.length}`);
+    const t0 = Date.now();
     const rawResponse = await session.sendMessage(messageText, onChunk);
+    csdbg('claude', `← session.sendMessage() ${Date.now() - t0}ms responseLen=${rawResponse?.length || 0}`);
 
     // Extraer y aplicar operaciones de memoria
     let response = rawResponse;
     const savedMemoryFiles = [];
     if (agentKey && rawResponse && this._memory) {
       const { clean, ops } = this._memory.extractMemoryOps(rawResponse);
+      csdbg('claude', `memOps=${ops.length} cleanLen=${clean?.length || 0}`);
       if (ops.length > 0) {
         const saved = this._memory.applyOps(agentKey, ops);
         response = clean || rawResponse;
         savedMemoryFiles.push(...saved);
+        csdbg('claude', `saved files: [${saved.join(', ')}]`);
       } else if (shouldNudge && this._consolidator) {
+        csdbg('claude', `enqueuing to consolidator`);
         this._consolidator.enqueue(
           agentKey, chatId,
           [{ text, types: signals.map(s => s.type), ts: Date.now() }],
@@ -139,6 +156,7 @@ class ConversationService {
       }
     }
 
+    csdbg('claude', `DONE responseLen=${(response || '').length} savedFiles=${savedMemoryFiles.length} isNew=${isNewSession}`);
     return {
       text: response || '',
       savedMemoryFiles,
