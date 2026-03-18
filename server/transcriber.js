@@ -1,22 +1,26 @@
 'use strict';
 
 const fs = require('fs');
-const https = require('https');
 const path = require('path');
-const { spawn } = require('child_process');
+const https = require('https');
+const os = require('os');
+
+// ─── Estado singleton ────────────────────────────────────────────────────────
+
+let _pipeline = null;
+let _loadingPromise = null;
+let _idleTimer = null;
 
 // ─── Configuración por defecto ───────────────────────────────────────────────
 
 const CONFIG_FILE = path.join(__dirname, 'whisper-config.json');
 
 const DEFAULTS = {
-  pythonBin: path.join(process.env.HOME, '.venvs', 'whisper', 'bin', 'python3'),
-  model: 'medium',
-  device: 'cpu',
-  computeType: 'int8',
+  model: 'Xenova/whisper-medium',
   language: 'es',
-  beamSize: 5,
-  timeout: 300000, // 5 min
+  chunkLengthS: 30,
+  idleTimeoutMs: 5 * 60 * 1000,
+  timeout: 300000,
 };
 
 // Cargar config persistida al iniciar
@@ -26,18 +30,133 @@ try {
 } catch {}
 
 function _saveConfig() {
-  const { pythonBin, ...rest } = DEFAULTS;
-  try { fs.writeFileSync(CONFIG_FILE, JSON.stringify(rest, null, 2) + '\n'); } catch {}
+  try { fs.writeFileSync(CONFIG_FILE, JSON.stringify(DEFAULTS, null, 2) + '\n'); } catch {}
+}
+
+const MEMORY_THRESHOLDS = {
+  'Xenova/whisper-tiny':    600 * 1024 * 1024,
+  'Xenova/whisper-tiny.en': 600 * 1024 * 1024,
+  'Xenova/whisper-base':    800 * 1024 * 1024,
+  'Xenova/whisper-small':  1400 * 1024 * 1024,
+  'Xenova/whisper-medium': 2600 * 1024 * 1024,
+};
+
+const MODEL_FALLBACK_CHAIN = [
+  'Xenova/whisper-medium',
+  'Xenova/whisper-small',
+  'Xenova/whisper-base',
+  'Xenova/whisper-tiny',
+];
+
+// ─── Funciones internas ──────────────────────────────────────────────────────
+
+function _checkMemory(modelId) {
+  const threshold = MEMORY_THRESHOLDS[modelId];
+  if (!threshold) return true;
+  const free = os.freemem();
+  return free >= threshold;
+}
+
+function _resolveModel(preferredModel) {
+  const startIdx = MODEL_FALLBACK_CHAIN.indexOf(preferredModel);
+  const chain = startIdx >= 0 ? MODEL_FALLBACK_CHAIN.slice(startIdx) : [preferredModel];
+
+  for (const modelId of chain) {
+    if (_checkMemory(modelId)) {
+      if (modelId !== preferredModel) {
+        console.log(`[transcriber] Memoria insuficiente para ${preferredModel}, usando ${modelId}`);
+      }
+      return modelId;
+    }
+  }
+
+  const free = os.freemem();
+  const freeMB = Math.round(free / 1024 / 1024);
+  const smallest = chain[chain.length - 1];
+  const needMB = Math.round((MEMORY_THRESHOLDS[smallest] || 0) / 1024 / 1024);
+  throw new Error(`Memoria insuficiente: el modelo más pequeño (${smallest}) necesita ${needMB}MB, disponible ${freeMB}MB`);
+}
+
+async function _loadModel(modelId) {
+  if (_pipeline) {
+    _resetIdleTimer(modelId);
+    return _pipeline;
+  }
+  if (_loadingPromise) {
+    return _loadingPromise;
+  }
+  _loadingPromise = (async () => {
+    try {
+      const resolvedModel = _resolveModel(modelId);
+      console.log(`[transcriber] Cargando modelo ${resolvedModel}...`);
+      const { pipeline, env } = await import('@huggingface/transformers');
+      env.cacheDir = path.join(__dirname, 'models-cache');
+      _pipeline = await pipeline('automatic-speech-recognition', resolvedModel, {
+        dtype: 'q8',
+        device: 'cpu',
+      });
+      console.log(`[transcriber] Modelo ${resolvedModel} cargado`);
+      _resetIdleTimer(resolvedModel);
+      return _pipeline;
+    } catch (err) {
+      _pipeline = null;
+      throw err;
+    } finally {
+      _loadingPromise = null;
+    }
+  })();
+  return _loadingPromise;
+}
+
+function _resetIdleTimer(modelId) {
+  if (_idleTimer) clearTimeout(_idleTimer);
+  _idleTimer = setTimeout(() => _unloadModel(modelId), DEFAULTS.idleTimeoutMs);
+}
+
+function _unloadModel(modelId) {
+  if (_idleTimer) {
+    clearTimeout(_idleTimer);
+    _idleTimer = null;
+  }
+  if (_pipeline) {
+    _pipeline = null;
+    console.log(`[transcriber] Modelo ${modelId || 'whisper'} descargado por inactividad`);
+    if (typeof global.gc === 'function') global.gc();
+  }
+}
+
+async function _decodeOgg(filePath) {
+  const { OggOpusDecoder } = await import('ogg-opus-decoder');
+  const decoder = new OggOpusDecoder();
+  await decoder.ready;
+
+  const fileBuffer = fs.readFileSync(filePath);
+  const { channelData, sampleRate } = await decoder.decode(new Uint8Array(fileBuffer));
+  decoder.free();
+
+  let pcm = channelData[0];
+  if (sampleRate !== 16000) {
+    pcm = _resample(pcm, sampleRate, 16000);
+  }
+  return pcm;
+}
+
+function _resample(float32, fromRate, toRate) {
+  const ratio = fromRate / toRate;
+  const newLength = Math.floor(float32.length / ratio);
+  const result = new Float32Array(newLength);
+  for (let i = 0; i < newLength; i++) {
+    const srcIdx = i * ratio;
+    const lo = Math.floor(srcIdx);
+    const hi = Math.min(lo + 1, float32.length - 1);
+    const frac = srcIdx - lo;
+    result[i] = float32[lo] * (1 - frac) + float32[hi] * frac;
+  }
+  return result;
 }
 
 // ─── Descarga HTTPS genérica ─────────────────────────────────────────────────
 
-/**
- * Descarga un archivo binario por HTTPS y lo guarda en disco.
- * @param {string} url
- * @param {string} destPath
- * @returns {Promise<string>} ruta local del archivo descargado
- */
 function httpsDownload(url, destPath) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
@@ -65,62 +184,41 @@ function httpsDownload(url, destPath) {
   });
 }
 
-// ─── Transcripción con faster-whisper ────────────────────────────────────────
+// ─── Transcripción con Transformers.js (Whisper ONNX) ────────────────────────
 
-/**
- * Transcribe un archivo de audio usando faster-whisper (CTranslate2).
- * @param {string} filePath - ruta al archivo OGG/MP3/WAV
- * @param {object} [opts] - opciones para sobreescribir defaults
- * @returns {Promise<string>} texto transcrito
- */
-function transcribe(filePath, opts = {}) {
+async function transcribe(filePath, opts = {}) {
   const cfg = { ...DEFAULTS, ...opts };
 
-  return new Promise((resolve, reject) => {
-    const script = `
-import sys
-from faster_whisper import WhisperModel
-model = WhisperModel("${cfg.model}", device="${cfg.device}", compute_type="${cfg.computeType}")
-segments, _ = model.transcribe(sys.argv[1], language="${cfg.language}", beam_size=${cfg.beamSize})
-print(" ".join(s.text.strip() for s in segments))
-`;
-    const child = spawn(cfg.pythonBin, ['-c', script, filePath], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: cfg.timeout,
-    });
+  const pipe = await _loadModel(cfg.model);
+  const audio = await _decodeOgg(filePath);
 
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', chunk => { stdout += chunk; });
-    child.stderr.on('data', chunk => { stderr += chunk; });
-
-    child.on('close', (exitCode) => {
-      if (exitCode !== 0) {
-        return reject(new Error(`faster-whisper salió con código ${exitCode}: ${stderr.slice(0, 300)}`));
-      }
-      const text = stdout.trim();
-      if (!text) {
-        return reject(new Error('No se pudo extraer texto del audio'));
-      }
-      resolve(text);
-    });
-
-    child.on('error', reject);
+  const result = await pipe(audio, {
+    language: cfg.language,
+    chunk_length_s: cfg.chunkLengthS,
+    return_timestamps: false,
   });
+
+  _resetIdleTimer(cfg.model);
+
+  const text = result.text.trim();
+  if (!text) {
+    throw new Error('No se pudo extraer texto del audio');
+  }
+  return text;
 }
 
-const VALID_MODELS = ['tiny', 'base', 'small', 'medium', 'large-v2', 'large-v3'];
+const VALID_MODELS = ['tiny', 'base', 'small', 'medium'];
+
+const VALID_LANGUAGES = ['es', 'en', 'pt', 'fr', 'de', 'it', 'ja', 'zh', 'ko', 'auto'];
 
 function getConfig() { return { ...DEFAULTS }; }
 
 function setModel(model) {
   if (!VALID_MODELS.includes(model)) return false;
-  DEFAULTS.model = model;
+  DEFAULTS.model = `Xenova/whisper-${model}`;
   _saveConfig();
   return true;
 }
-
-const VALID_LANGUAGES = ['es', 'en', 'pt', 'fr', 'de', 'it', 'ja', 'zh', 'ko', 'auto'];
 
 function setLanguage(lang) {
   if (!VALID_LANGUAGES.includes(lang)) return false;

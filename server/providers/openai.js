@@ -9,7 +9,7 @@ module.exports = {
   defaultModel: 'gpt-4o',
   models: ['gpt-4o', 'gpt-4o-mini', 'o1', 'o3-mini'],
 
-  async *chat({ systemPrompt, history, apiKey, model }) {
+  async *chat({ systemPrompt, history, apiKey, model, executeTool: execToolFn }) {
     if (!apiKey) {
       yield { type: 'done', fullText: 'Error: API key de OpenAI no configurada. Configurala en el panel ⚙️.' };
       return;
@@ -17,7 +17,8 @@ module.exports = {
 
     const client = new OpenAI({ apiKey });
     const usedModel = model || this.defaultModel;
-    const toolDefs = tools.toOpenAIFormat();
+    const toolDefs  = tools.toOpenAIFormat();
+    const execTool  = execToolFn || tools.executeTool;
 
     // Construir messages OpenAI
     const messages = [];
@@ -74,7 +75,7 @@ module.exports = {
         try { fnArgs = JSON.parse(tc.function.arguments || '{}'); } catch {}
 
         yield { type: 'tool_call', name: fnName, args: fnArgs };
-        const result = await tools.executeTool(fnName, fnArgs);
+        const result = await execTool(fnName, fnArgs);
         yield { type: 'tool_result', name: fnName, result };
 
         messages.push({

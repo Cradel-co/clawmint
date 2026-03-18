@@ -1,4 +1,6 @@
-# IA Local — Modelos self-hosted
+> Estado: `propuesta` | Fecha: 2026-03
+
+# Propuesta 002: IA local — Modelos self-hosted
 
 Estrategia para integrar modelos de IA locales en Clawmint, complementando los providers cloud (Anthropic, Gemini, OpenAI).
 

@@ -33,7 +33,10 @@ class PtySession {
   }
 
   _spawn({ command, cols, rows }) {
-    const args = command ? ['-c', command] : [];
+    const isWin = os.platform() === 'win32';
+    const args = command
+      ? (isWin ? ['-Command', command] : ['-c', command])
+      : [];
 
     const env = { ...process.env };
     delete env.CLAUDECODE;
