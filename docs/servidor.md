@@ -1,4 +1,4 @@
-> Última modificación: 2026-03-16
+> Última modificación: 2026-03-18
 
 # Módulo Servidor
 
@@ -144,6 +144,32 @@ Skills locales en `server/skills/<slug>/SKILL.md`. Se inyectan como contexto adi
 ### memory.js — Memoria por agente
 
 Archivos de texto en `server/memory/<agentKey>/`. Se inyectan al inicio de cada conversación. El agente puede escribir en memoria usando la sintaxis `<memory:write file="nombre">contenido</memory:write>` en su respuesta.
+
+### transcriber.js — Transcripción de audio
+
+Transcribe audio (OGG/MP3/WAV) a texto usando **faster-whisper** (CTranslate2) con un venv Python local.
+
+| Parámetro | Default | Descripción |
+|---|---|---|
+| `model` | `medium` | Modelo Whisper (`tiny`, `base`, `small`, `medium`, `large-v2`, `large-v3`) |
+| `device` | `cpu` | Dispositivo de inferencia (`cpu` o `cuda`) |
+| `computeType` | `int8` | Tipo de cómputo (cuantización) |
+| `language` | `es` | Idioma de transcripción |
+| `beamSize` | `5` | Beam search size |
+| `timeout` | `300000` | Timeout en ms (5 min) |
+
+**Requisitos:**
+- Python venv en `~/.venvs/whisper/` con `faster-whisper` instalado
+- `ffmpeg` en PATH para decodificar audio OGG de Telegram
+
+**Funciones exportadas:**
+- `transcribe(filePath, opts)` — transcribe un archivo de audio
+- `getConfig()` — devuelve la configuración actual
+- `setModel(model)` — cambia el modelo en runtime
+- `VALID_MODELS` — array con los modelos disponibles
+- `httpsDownload(url, destPath)` — descarga un archivo por HTTPS
+
+**Comando Telegram:** `/whisper [modelo]` — ver config actual o cambiar modelo.
 
 ### events.js — EventEmitter global
 
@@ -292,6 +318,7 @@ El servidor responde con `{ type: "session_id", id: "uuid" }`. El cliente debe g
 | `/estado` | Estado de la sesión actual |
 | `/costo` | Costo acumulado de la sesión |
 | `/memoria` | Ver archivos de memoria del agente activo |
+| `/whisper [modelo]` | Ver o cambiar modelo de transcripción Whisper |
 | `/status-vps` | CPU, RAM y disco del servidor |
 | `/ls [path]` | Navegar el sistema de archivos |
 | `/dir [path]` | Alias de `/ls` |
