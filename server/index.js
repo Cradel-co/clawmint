@@ -70,18 +70,32 @@ try { events          = require('./events');           logger.info('events OK');
 try { memory          = require('./memory');           logger.info('memory OK'); }          catch(e) { logger.error('memory FAIL:', e.message); process.exit(1); }
 try { providerConfig  = require('./provider-config'); logger.info('provider-config OK'); } catch(e) { logger.error('provider-config FAIL:', e.message); process.exit(1); }
 try { providersModule = require('./providers');        logger.info('providers OK'); }       catch(e) { logger.error('providers FAIL:', e.message); process.exit(1); }
-try { telegram        = require('./telegram');         logger.info('telegram OK'); }        catch(e) { logger.error('telegram FAIL:', e.message); process.exit(1); }
-// Consolidador de memoria: se inicializa después de memory.js (necesita la DB)
+// Telegram + consolidator + mcpRouter via bootstrap.js (DI completa)
+let mcpRouter = null;
 try {
-  consolidator = require('./memory-consolidator');
-  consolidator.init(memory.getDB());
-  logger.info('memory-consolidator OK');
-} catch(e) { logger.warn('memory-consolidator no disponible:', e.message); }
+  const { createContainer } = require('./bootstrap');
+  const _c = createContainer();
+  telegram     = _c.telegramChannel;
+  consolidator = _c.consolidator;
+  // MCP router (embebido en Express)
+  try {
+    const { createMcpRouter } = require('./mcp');
+    mcpRouter = createMcpRouter({ sessionManager: _c.sessionManager, memory: _c.memory });
+    logger.info('MCP router creado OK');
+  } catch (mcpErr) {
+    logger.warn('MCP router no disponible:', mcpErr.message);
+  }
+  logger.info('bootstrap OK (telegram + consolidator)');
+} catch(e) { logger.error('bootstrap FAIL:', e.message); process.exit(1); }
 logger.info('Todos los módulos cargados.');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// ── MCP endpoint (montado después de inicializar mcpRouter) ──────────────────
+// Se registra con app.use('/mcp', ...) luego de que mcpRouter esté disponible.
+// Ver sección "Servidor" más abajo.
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
@@ -819,6 +833,13 @@ app.put('/api/providers/:name', (req, res) => {
   providerConfig.setProvider(req.params.name, { apiKey, model });
   res.json({ ok: true });
 });
+
+// ─── MCP endpoint ─────────────────────────────────────────────────────────────
+
+if (mcpRouter) {
+  app.use('/mcp', mcpRouter);
+  logger.info('MCP endpoint disponible en /mcp');
+}
 
 // ─── Client estático (producción / Docker) ───────────────────────────────────
 

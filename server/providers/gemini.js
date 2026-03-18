@@ -6,10 +6,10 @@ const tools = require('../tools');
 module.exports = {
   name: 'gemini',
   label: 'Google Gemini',
-  defaultModel: 'gemini-2.0-flash',
-  models: ['gemini-2.0-flash', 'gemini-2.5-pro'],
+  defaultModel: 'gemini-2.5-flash',
+  models: ['gemini-2.5-flash', 'gemini-2.5-pro'],
 
-  async *chat({ systemPrompt, history, apiKey, model }) {
+  async *chat({ systemPrompt, history, apiKey, model, executeTool: execToolFn }) {
     if (!apiKey) {
       yield { type: 'done', fullText: 'Error: API key de Gemini no configurada. Configurala en el panel ⚙️.' };
       return;
@@ -17,7 +17,8 @@ module.exports = {
 
     const ai = new GoogleGenAI({ apiKey });
     const usedModel = model || this.defaultModel;
-    const toolDefs = tools.toGeminiFormat();
+    const toolDefs  = tools.toGeminiFormat();
+    const execTool  = execToolFn || tools.executeTool;
 
     // Convertir history al formato Gemini
     // history: [{ role: 'user'|'assistant', content: string }]
@@ -87,7 +88,7 @@ module.exports = {
       const functionResponses = [];
       for (const fc of functionCalls) {
         yield { type: 'tool_call', name: fc.name, args: fc.args };
-        const result = await tools.executeTool(fc.name, fc.args || {});
+        const result = await execTool(fc.name, fc.args || {});
         yield { type: 'tool_result', name: fc.name, result };
         functionResponses.push({
           functionResponse: {

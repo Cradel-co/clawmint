@@ -1212,8 +1212,16 @@ initDB();
 /** Expone la instancia de DB para módulos internos (consolidator). Solo lectura de ref. */
 function getDB() { return db; }
 
+/**
+ * Permite inyectar una instancia de DB externamente (desde bootstrap.js).
+ * Útil cuando la DB fue inicializada antes de cargar memory.js,
+ * o para reutilizar la misma instancia en toda la app.
+ */
+function setDB(db_) { db = db_; }
+
 module.exports = {
   MEMORY_DIR,
+  DB_SCHEMA,
   listFiles,
   read,
   write,
@@ -1241,4 +1249,5 @@ module.exports = {
   trackAccess,
   buildGraph,
   getDB,
+  setDB,
 };

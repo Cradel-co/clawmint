@@ -7,7 +7,7 @@
     },
     "gemini": {
       "apiKey": "AIzaSyCtYhxJ8U07kWqe5Wbd_lds3RLRQcOLDgo",
-      "model": "gemini-2.0-flash"
+      "model": "gemini-2.5-flash"
     },
     "openai": {
       "apiKey": "",

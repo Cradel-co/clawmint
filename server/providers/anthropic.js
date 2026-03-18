@@ -9,15 +9,16 @@ module.exports = {
   defaultModel: 'claude-opus-4-6',
   models: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
 
-  async *chat({ systemPrompt, history, apiKey, model }) {
+  async *chat({ systemPrompt, history, apiKey, model, executeTool: execToolFn }) {
     if (!apiKey) {
       yield { type: 'done', fullText: 'Error: API key de Anthropic no configurada. Configurala en el panel ⚙️.' };
       return;
     }
 
     const client = new Anthropic({ apiKey });
-    const toolDefs = tools.toAnthropicFormat();
-    const messages = [...history];
+    const toolDefs  = tools.toAnthropicFormat();
+    const execTool  = execToolFn || tools.executeTool;
+    const messages  = [...history];
     const usedModel = model || this.defaultModel;
 
     let fullText = '';
@@ -66,7 +67,7 @@ module.exports = {
       const toolResults = [];
       for (const toolUse of toolUses) {
         yield { type: 'tool_call', name: toolUse.name, args: toolUse.input };
-        const result = await tools.executeTool(toolUse.name, toolUse.input || {});
+        const result = await execTool(toolUse.name, toolUse.input || {});
         yield { type: 'tool_result', name: toolUse.name, result };
         toolResults.push({
           type: 'tool_result',
