@@ -502,7 +502,7 @@ class CommandHandler {
           `/recordar <tiempo> <msg> — crear alarma\n` +
           `/recordatorios — ver pendientes\n\n` +
           `*Monitor:*\n` +
-          `/consola — modo consola bash (toggle)\n` +
+          `/consola — modo consola (toggle)\n` +
           `/status-vps — CPU, RAM y disco\n\n` +
           `*Audio:*\n` +
           `🎙️ Enviá un audio de voz y se transcribe automáticamente\n\n` +

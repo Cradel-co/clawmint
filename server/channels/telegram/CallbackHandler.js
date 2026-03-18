@@ -254,20 +254,21 @@ class CallbackHandler {
       // ── Monitor ───────────────────────────────────────────────────────────
       'menu:monitor': {
         text: (chat) => `🖥️ *Monitor*\nDirectorio: \`${chat?.monitorCwd || process.env.HOME}\``,
-        buttons: () => [
-          [{ text: '📁 ls',          id: 'menu:monitor:ls'      },
-           { text: '🖥️ Consola',      id: 'menu:monitor:consola' }],
-          [{ text: '📊 Status VPS',   id: 'status_vps'           },
-           { text: '← Menú',          id: 'menu'                 }],
-        ],
+        buttons: () => {
+          const listCmd = process.platform === 'win32' ? 'dir' : 'ls';
+          return [
+            [{ text: `📁 ${listCmd}`,   id: 'menu:monitor:ls'      },
+             { text: '🖥️ Consola',       id: 'menu:monitor:consola' }],
+            [{ text: '📊 Status',        id: 'status_vps'           },
+             { text: '← Menú',           id: 'menu'                 }],
+          ];
+        },
       },
       'menu:monitor:consola': {
         action: async ({ chatId, chat, bot: b }) => {
           chat.consoleMode = true;
-          const cwd = chat.monitorCwd || process.env.HOME;
-          const cwdShort = cwd.replace(process.env.HOME, '~');
           await b._sendConsolePrompt(chatId,
-            `🖥️ *Modo consola activado*\n📁 \`${cwdShort}\`\n\nEscribí comandos directamente.\n\`exit\` o /consola para salir.`,
+            `🖥️ *Modo consola activado*\n\nEscribí comandos directamente.\n\`exit\` o /consola para salir.`,
             chat);
         },
       },
@@ -715,7 +716,7 @@ class CallbackHandler {
           `*Skills:*\n/skills — instalados\n/buscar-skill — buscar en ClawHub\n` +
           `/mcps — MCPs configurados\n/buscar-mcp — buscar en Smithery\n\n` +
           `*Recordatorios:*\n/recordar <tiempo> <msg>\n/recordatorios — ver pendientes\n\n` +
-          `*Monitor:*\n/consola — modo bash\n/status-vps — CPU, RAM y disco\n\n` +
+          `*Monitor:*\n/consola — modo consola\n/status-vps — CPU, RAM y disco\n\n` +
           `*Bot:*\n/agente [key] — ver/cambiar agente\n/ayuda — esta ayuda`
         );
         break;

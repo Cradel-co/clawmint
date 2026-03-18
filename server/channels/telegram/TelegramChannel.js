@@ -8,6 +8,7 @@ const os   = require('os');
 
 const BaseChannel          = require('../BaseChannel');
 const ClaudePrintSession   = require('../../core/ClaudePrintSession');
+const ConsoleSession       = require('../../core/ConsoleSession');
 const CommandHandler       = require('./CommandHandler');
 const CallbackHandler      = require('./CallbackHandler');
 const PendingActionHandler = require('./PendingActionHandler');
@@ -727,82 +728,54 @@ class TelegramBot {
     return session;
   }
 
-  // ── Modo consola ─────────────────────────────────────────────────────────
+  // ── Modo consola (delega a core/ConsoleSession) ─────────────────────────
 
-  _runShellCommand(command, cwd, timeoutMs = 30000) {
-    return new Promise((resolve, reject) => {
-      const isWin = process.platform === 'win32';
-      const shell = isWin ? 'cmd.exe' : 'bash';
-      const args  = isWin ? ['/c', command] : ['-c', command];
-      const child = spawn(shell, args, {
-        cwd,
-        env: { ...process.env },
-        stdio: ['ignore', 'pipe', 'pipe'],
-        windowsHide: true,
-      });
-      let stdout = '', stderr = '';
-      const timer = setTimeout(() => {
-        try { child.kill('SIGTERM'); } catch {}
-        resolve({ stdout, stderr: stderr + '\n[timeout]', code: 124 });
-      }, timeoutMs);
-      child.stdout.on('data', d => { stdout += d.toString(); });
-      child.stderr.on('data', d => { stderr += d.toString(); });
-      child.on('close', code => { clearTimeout(timer); resolve({ stdout, stderr, code }); });
-      child.on('error', err  => { clearTimeout(timer); reject(err); });
-    });
+  _getConsoleSession(chat) {
+    if (!chat._consoleSession) {
+      chat._consoleSession = new ConsoleSession(chat.monitorCwd);
+    }
+    return chat._consoleSession;
   }
 
   async _sendConsolePrompt(chatId, output, chat) {
-    const cwd      = chat.monitorCwd || process.env.HOME;
-    const cwdShort = cwd.replace(process.env.HOME, '~');
+    const session  = this._getConsoleSession(chat);
+    const cwdShort = session.getCwdShort();
     const text     = `${output ? output + '\n\n' : ''}📁 \`${cwdShort}\``;
-    const buttons  = [
-      [{ text: '📋 ls',     callback_data: 'console:ls'          },
-       { text: '📋 ls -la', callback_data: 'console:ls -la'      },
-       { text: '⬆️ cd ..',  callback_data: 'console:cd ..'       }],
-      [{ text: '📊 df -h',  callback_data: 'console:df -h'       },
-       { text: '⚙️ ps',     callback_data: 'console:ps aux|head -20' },
-       { text: '🚪 Salir',  callback_data: 'console:exit'        }],
-    ];
+    const rawBtns  = session.getPromptButtons();
+    // Adaptar formato genérico { text, command } → Telegram { text, callback_data }
+    const buttons  = rawBtns.map(row =>
+      row.map(b => ({ text: b.text, callback_data: `console:${b.command}` }))
+    );
     await this.sendWithButtons(chatId, text.slice(0, 4090), buttons);
   }
 
   async _handleConsoleInput(chatId, command, chat) {
-    const trimmed = command.trim();
+    const trimmed = (command || '').trim();
     if (!trimmed) return;
 
-    if (trimmed === 'exit' || trimmed === 'salir' || trimmed === 'quit') {
+    const session = this._getConsoleSession(chat);
+
+    if (session.isExitCommand(trimmed)) {
       chat.consoleMode = false;
+      chat._consoleSession = null;
       await this.sendWithButtons(chatId, '🖥️ Modo consola *desactivado*.',
         [[{ text: '🖥️ Monitor', callback_data: 'menu:monitor' },
           { text: '🤖 Menú',    callback_data: 'menu' }]]);
       return;
     }
 
-    if (/^cd(\s|$)/.test(trimmed)) {
-      const target   = trimmed.slice(2).trim() || process.env.HOME;
-      const resolved = target === '~' ? process.env.HOME
-        : target.startsWith('/') ? target
-        : path.resolve(chat.monitorCwd || process.env.HOME, target);
-      try {
-        const stat = fs.statSync(resolved);
-        if (!stat.isDirectory()) throw new Error('no es un directorio');
-        chat.monitorCwd = resolved;
-        await this._sendConsolePrompt(chatId, '', chat);
-      } catch (err) {
-        await this._sendConsolePrompt(chatId, `❌ cd: ${err.message}`, chat);
-      }
+    if (session.isCdCommand(trimmed)) {
+      const target = trimmed.slice(2).trim();
+      const result = session.changeDirectory(target);
+      chat.monitorCwd = session.cwd;
+      const msg = result.ok ? '' : `❌ cd: ${result.error}`;
+      await this._sendConsolePrompt(chatId, msg, chat);
       return;
     }
 
-    const cwd = chat.monitorCwd || process.env.HOME;
     try {
-      const { stdout, stderr, code } = await this._runShellCommand(trimmed, cwd);
-      const combined = [stdout.trimEnd(), stderr.trimEnd()].filter(Boolean).join('\n').trim();
-      const cleaned  = stripAnsi(combined) || '(sin salida)';
-      const prefix   = code !== 0 ? `⚠️ [exit ${code}]\n` : '';
-      let out = `\`$ ${trimmed}\`\n${prefix}${cleaned}`;
-      if (out.length > 3800) out = out.slice(0, 3800) + `\n…[+${combined.length - 3800} chars]`;
+      const { stdout, stderr, code } = await session.executeCommand(trimmed);
+      const out = session.formatOutput(trimmed, stdout, stderr, code);
       await this._sendConsolePrompt(chatId, out, chat);
     } catch (err) {
       await this._sendConsolePrompt(chatId, `❌ Error: ${err.message}`, chat);
