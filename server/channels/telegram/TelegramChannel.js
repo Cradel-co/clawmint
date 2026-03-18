@@ -3,7 +3,6 @@
 const fs   = require('fs');
 const path = require('path');
 const https = require('https');
-const { spawn } = require('child_process');
 const os   = require('os');
 
 const BaseChannel          = require('../BaseChannel');
@@ -397,17 +396,33 @@ class TelegramBot {
   }
 
   async _handleMessage(msg) {
-    // Deduplicar: descartar si ya procesamos este message_id
+    // Deduplicar por message_id (re-entrega de updates)
     if (!this._seenMsgIds) this._seenMsgIds = new Set();
     if (this._seenMsgIds.has(msg.message_id)) {
-      tdbg('dedup', `SKIP msg_id=${msg.message_id} (duplicado)`);
+      tdbg('dedup', `SKIP msg_id=${msg.message_id} (duplicado por id)`);
       return;
     }
     this._seenMsgIds.add(msg.message_id);
-    // Limpiar IDs viejos para no acumular memoria
     if (this._seenMsgIds.size > 200) {
       const arr = [...this._seenMsgIds];
       this._seenMsgIds = new Set(arr.slice(-100));
+    }
+
+    // Deduplicar por contenido+chat (mismo texto en <2s = tap doble o retry)
+    if (!this._lastMsgByChat) this._lastMsgByChat = new Map();
+    const dedupKey = `${msg.chat.id}:${(msg.text || '').trim()}`;
+    const lastTs   = this._lastMsgByChat.get(dedupKey) || 0;
+    const now      = Date.now();
+    if (now - lastTs < 2000) {
+      tdbg('dedup', `SKIP "${(msg.text||'').slice(0,30)}" (mismo texto en ${now - lastTs}ms)`);
+      return;
+    }
+    this._lastMsgByChat.set(dedupKey, now);
+    // Limpiar entries viejas
+    if (this._lastMsgByChat.size > 500) {
+      for (const [k, v] of this._lastMsgByChat) {
+        if (now - v > 10000) this._lastMsgByChat.delete(k);
+      }
     }
 
     const chatId  = msg.chat.id;
