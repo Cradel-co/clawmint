@@ -1754,7 +1754,15 @@ class TelegramBot {
         if (chat) chat.lastButtonsMsgId = editMsgId;
         return result;
       }
-      catch (e) { if (!e.message?.includes('not modified')) throw e; }
+      catch (e) {
+        if (e.message?.includes('not modified')) return;
+        // Fallback sin Markdown si Telegram rechaza el parse
+        try {
+          const result = await this._apiCall('editMessageText', { ...body, message_id: editMsgId, parse_mode: undefined });
+          if (chat) chat.lastButtonsMsgId = editMsgId;
+          return result;
+        } catch {}
+      }
       return;
     }
 
