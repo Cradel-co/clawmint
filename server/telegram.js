@@ -1201,27 +1201,39 @@ class TelegramBot {
 
       // ── Whisper (transcripción de audio) ────────────────────────────
       case 'whisper': {
-        const { getConfig, setModel, VALID_MODELS } = require('./transcriber');
+        const { getConfig, setModel, setLanguage, VALID_MODELS, VALID_LANGUAGES } = require('./transcriber');
+        const cfg = getConfig();
         if (args.length === 0) {
-          const cfg = getConfig();
+          const langLabels = { es: '🇪🇸 es', en: '🇺🇸 en', pt: '🇧🇷 pt', fr: '🇫🇷 fr', de: '🇩🇪 de', it: '🇮🇹 it', ja: '🇯🇵 ja', zh: '🇨🇳 zh', ko: '🇰🇷 ko', auto: '🌐 auto' };
+          const modelButtons = VALID_MODELS.map(m => ({ text: cfg.model === m ? `✅ ${m}` : m, callback_data: `whisper:${m}` }));
+          const langButtons = VALID_LANGUAGES.map(l => ({ text: cfg.language === l ? `✅ ${langLabels[l] || l}` : (langLabels[l] || l), callback_data: `whisperlang:${l}` }));
+          // 3 modelos por fila, 5 idiomas por fila
+          const modelRows = [];
+          for (let i = 0; i < modelButtons.length; i += 3) modelRows.push(modelButtons.slice(i, i + 3));
+          const langRows = [];
+          for (let i = 0; i < langButtons.length; i += 5) langRows.push(langButtons.slice(i, i + 5));
           await this.sendWithButtons(chatId,
             `🎙️ *Whisper — Transcripción de audio*\n\n` +
             `• Modelo: \`${cfg.model}\`\n` +
-            `• Device: \`${cfg.device}\`\n` +
-            `• Compute: \`${cfg.computeType}\`\n` +
             `• Idioma: \`${cfg.language}\`\n` +
-            `• Beam size: \`${cfg.beamSize}\`\n` +
-            `• Timeout: \`${cfg.timeout / 1000}s\`\n\n` +
-            `Modelos: ${VALID_MODELS.map(m => `\`${m}\``).join(', ')}\n` +
-            `Usá /whisper <modelo> para cambiar.`,
-            VALID_MODELS.map(m => [{ text: cfg.model === m ? `✅ ${m}` : m, callback_data: `whisper:${m}` }])
+            `• Device: \`${cfg.device}\` | Compute: \`${cfg.computeType}\`\n` +
+            `• Beam size: \`${cfg.beamSize}\` | Timeout: \`${cfg.timeout / 1000}s\`\n\n` +
+            `*Modelo:*`,
+            [...modelRows, [{ text: '── Idioma ──', callback_data: 'noop' }], ...langRows]
           );
         } else {
-          const newModel = args[0].toLowerCase();
-          if (!setModel(newModel)) {
-            await this.sendText(chatId, `❌ Modelo inválido: \`${newModel}\`\nDisponibles: ${VALID_MODELS.join(', ')}`);
+          const val = args[0].toLowerCase();
+          if (VALID_MODELS.includes(val)) {
+            setModel(val);
+            await this.sendText(chatId,
+              `✅ Modelo Whisper cambiado a \`${val}\`\n` +
+              `_Si es la primera vez, se descargará automáticamente al transcribir._`
+            );
+          } else if (VALID_LANGUAGES.includes(val)) {
+            setLanguage(val);
+            await this.sendText(chatId, `✅ Idioma Whisper cambiado a \`${val}\``);
           } else {
-            await this.sendText(chatId, `✅ Modelo Whisper cambiado a \`${newModel}\``);
+            await this.sendText(chatId, `❌ Valor inválido: \`${val}\`\nModelos: ${VALID_MODELS.join(', ')}\nIdiomas: ${VALID_LANGUAGES.join(', ')}`);
           }
         }
         break;
@@ -2258,14 +2270,41 @@ class TelegramBot {
       return;
     }
 
-    if (data.startsWith('whisper:')) {
-      const { setModel } = require('./transcriber');
-      const newModel = data.slice(7);
-      if (setModel(newModel)) {
-        await this.sendText(chatId, `✅ Modelo Whisper cambiado a \`${newModel}\``);
+    if (data.startsWith('whisperlang:') || data.startsWith('whisper:')) {
+      const { getConfig, setModel, setLanguage, VALID_MODELS, VALID_LANGUAGES } = require('./transcriber');
+      let changed = false;
+      if (data.startsWith('whisperlang:')) {
+        changed = setLanguage(data.slice(12));
+      } else {
+        changed = setModel(data.slice(8));
+      }
+      if (changed && msgId) {
+        const cfg = getConfig();
+        const langLabels = { es: '🇪🇸 es', en: '🇺🇸 en', pt: '🇧🇷 pt', fr: '🇫🇷 fr', de: '🇩🇪 de', it: '🇮🇹 it', ja: '🇯🇵 ja', zh: '🇨🇳 zh', ko: '🇰🇷 ko', auto: '🌐 auto' };
+        const modelButtons = VALID_MODELS.map(m => ({ text: cfg.model === m ? `✅ ${m}` : m, callback_data: `whisper:${m}` }));
+        const langButtons = VALID_LANGUAGES.map(l => ({ text: cfg.language === l ? `✅ ${langLabels[l] || l}` : (langLabels[l] || l), callback_data: `whisperlang:${l}` }));
+        const modelRows = [];
+        for (let i = 0; i < modelButtons.length; i += 3) modelRows.push(modelButtons.slice(i, i + 3));
+        const langRows = [];
+        for (let i = 0; i < langButtons.length; i += 5) langRows.push(langButtons.slice(i, i + 5));
+        try {
+          await this._apiCall('editMessageText', {
+            chat_id: chatId,
+            message_id: msgId,
+            text: `🎙️ *Whisper — Transcripción de audio*\n\n` +
+              `• Modelo: \`${cfg.model}\`\n` +
+              `• Idioma: \`${cfg.language}\`\n` +
+              `• Device: \`${cfg.device}\` | Compute: \`${cfg.computeType}\`\n` +
+              `• Beam size: \`${cfg.beamSize}\` | Timeout: \`${cfg.timeout / 1000}s\``,
+            parse_mode: 'Markdown',
+            reply_markup: { inline_keyboard: [...modelRows, [{ text: '── Idioma ──', callback_data: 'noop' }], ...langRows] },
+          });
+        } catch {}
       }
       return;
     }
+
+    if (data === 'noop') return;
 
     if (data.startsWith('provider:') && providersModule) {
       const newProvider = data.slice(9);
