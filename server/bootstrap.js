@@ -69,6 +69,7 @@ function createContainer() {
   try {
     const t = require('./transcriber');
     transcriber = { httpsDownload: t.httpsDownload, transcribe: t.transcribe };
+    t.preload();
   } catch {}
 
   let mcps = null;

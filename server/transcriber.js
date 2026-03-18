@@ -227,4 +227,13 @@ function setLanguage(lang) {
   return true;
 }
 
-module.exports = { httpsDownload, transcribe, DEFAULTS, VALID_MODELS, VALID_LANGUAGES, getConfig, setModel, setLanguage };
+async function preload() {
+  try {
+    await _loadModel(DEFAULTS.model);
+    console.log(`[transcriber] Modelo precargado: ${DEFAULTS.model}`);
+  } catch (err) {
+    console.error(`[transcriber] Error al precargar modelo: ${err.message}`);
+  }
+}
+
+module.exports = { httpsDownload, transcribe, preload, DEFAULTS, VALID_MODELS, VALID_LANGUAGES, getConfig, setModel, setLanguage };
