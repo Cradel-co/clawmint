@@ -8,3 +8,4 @@ server/bots.json
 server/logs.json
 server/server.log
 server/memory/
+server/models-cache/
