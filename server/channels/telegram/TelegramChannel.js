@@ -944,6 +944,7 @@ class TelegramChannel extends BaseChannel {
       sessionManager: this._sessionManager,
       providers:     this._providers,
       providerConfig: this._providerConfig,
+      transcriber:   this._transcriber,
       logger:        this._logger,
     });
     const callbackHandler = new CallbackHandler({
@@ -956,6 +957,7 @@ class TelegramChannel extends BaseChannel {
       providers:     this._providers,
       providerConfig: this._providerConfig,
       chatSettings:  this._chatSettings,
+      transcriber:   this._transcriber,
       logger:        this._logger,
     });
     const pendingHandler = new PendingActionHandler({

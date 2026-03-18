@@ -25,6 +25,7 @@ class CommandHandler {
     sessionManager = null,
     providers    = null,
     providerConfig = null,
+    transcriber  = null,
     logger       = console,
   }) {
     this.agents        = agents;
@@ -36,10 +37,19 @@ class CommandHandler {
     this.sessionManager = sessionManager;
     this.providers     = providers;
     this.providerConfig = providerConfig;
+    this.transcriber   = transcriber;
     this.logger        = logger;
   }
 
   _getSystemStats() { return getSystemStats(); }
+
+  _formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  }
 
   _buildLsText(dir) {
     const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -52,6 +62,34 @@ class CommandHandler {
       } catch { return name; }
     });
     return `📁 *${dir.replace(process.env.HOME, '~')}*\n\n${lines.join('\n') || '_vacío_'}`;
+  }
+
+  _buildWhisperUI() {
+    const { getConfig, VALID_MODELS, VALID_LANGUAGES } = this.transcriber;
+    const cfg = getConfig();
+    const currentModel = cfg.model.replace('Xenova/whisper-', '');
+    const currentLang  = cfg.language;
+
+    const text =
+      `🎙️ *Whisper — Transcripción de audio*\n\n` +
+      `• Modelo: \`${currentModel}\`\n` +
+      `• Idioma: \`${currentLang}\`\n\n` +
+      `Modelos: ${VALID_MODELS.map(m => `\`${m}\``).join(', ')}`;
+
+    const modelButtons = VALID_MODELS.map(m => ({
+      text: m === currentModel ? `✓ ${m}` : m,
+      callback_data: `whisper:${m}`,
+    }));
+
+    const langRows = [];
+    for (let i = 0; i < VALID_LANGUAGES.length; i += 5) {
+      langRows.push(VALID_LANGUAGES.slice(i, i + 5).map(l => ({
+        text: l === currentLang ? `✓ ${l}` : l,
+        callback_data: `whisperlang:${l}`,
+      })));
+    }
+
+    return { text, buttons: [modelButtons, ...langRows] };
   }
 
   /**
@@ -463,6 +501,7 @@ class CommandHandler {
           `/consola — modo consola (toggle)\n` +
           `/status-vps — CPU, RAM y disco\n\n` +
           `*Audio:*\n` +
+          `/whisper [modelo|idioma] — ver/cambiar modelo Whisper\n` +
           `🎙️ Enviá un audio de voz y se transcribe automáticamente\n\n` +
           `*Bot:*\n` +
           `/agente [key] — ver/cambiar agente\n` +
@@ -825,6 +864,33 @@ class CommandHandler {
           `⏰ *Recordatorios pendientes* (${list.length})\n\n${lines}`,
           buttons
         );
+        break;
+      }
+
+      // ── Whisper ──────────────────────────────────────────────────────────
+      case 'whisper': {
+        if (!this.transcriber) { await bot.sendText(chatId, '❌ Módulo de transcripción no disponible.'); break; }
+        const { getConfig, setModel, setLanguage, VALID_MODELS, VALID_LANGUAGES } = this.transcriber;
+
+        if (args.length === 0) {
+          const { text, buttons } = this._buildWhisperUI();
+          await bot.sendWithButtons(chatId, text, buttons);
+        } else {
+          const val = args[0].toLowerCase();
+          if (VALID_MODELS.includes(val)) {
+            setModel(val);
+            await bot.sendText(chatId, `✅ Modelo Whisper cambiado a \`${val}\``);
+          } else if (VALID_LANGUAGES.includes(val)) {
+            setLanguage(val);
+            await bot.sendText(chatId, `✅ Idioma Whisper cambiado a \`${val}\``);
+          } else {
+            await bot.sendText(chatId,
+              `❌ Valor inválido: \`${val}\`\n\n` +
+              `Modelos: ${VALID_MODELS.map(m => `\`${m}\``).join(', ')}\n` +
+              `Idiomas: ${VALID_LANGUAGES.map(l => `\`${l}\``).join(', ')}`
+            );
+          }
+        }
         break;
       }
 

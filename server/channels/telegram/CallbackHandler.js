@@ -22,6 +22,7 @@ class CallbackHandler {
     providers      = null,
     providerConfig = null,
     chatSettings   = null,
+    transcriber    = null,
     logger         = console,
   }) {
     this.agents        = agents;
@@ -33,10 +34,39 @@ class CallbackHandler {
     this.providers     = providers;
     this.providerConfig = providerConfig;
     this.chatSettings  = chatSettings;
+    this.transcriber   = transcriber;
     this.logger        = logger;
   }
 
   _getSystemStats() { return getSystemStats(); }
+
+  _buildWhisperUI() {
+    const { getConfig, VALID_MODELS, VALID_LANGUAGES } = this.transcriber;
+    const cfg = getConfig();
+    const currentModel = cfg.model.replace('Xenova/whisper-', '');
+    const currentLang  = cfg.language;
+
+    const text =
+      `🎙️ *Whisper — Transcripción de audio*\n\n` +
+      `• Modelo: \`${currentModel}\`\n` +
+      `• Idioma: \`${currentLang}\`\n\n` +
+      `Modelos: ${VALID_MODELS.map(m => `\`${m}\``).join(', ')}`;
+
+    const modelButtons = VALID_MODELS.map(m => ({
+      text: m === currentModel ? `✓ ${m}` : m,
+      callback_data: `whisper:${m}`,
+    }));
+
+    const langRows = [];
+    for (let i = 0; i < VALID_LANGUAGES.length; i += 5) {
+      langRows.push(VALID_LANGUAGES.slice(i, i + 5).map(l => ({
+        text: l === currentLang ? `✓ ${l}` : l,
+        callback_data: `whisperlang:${l}`,
+      })));
+    }
+
+    return { text, buttons: [modelButtons, ...langRows] };
+  }
 
   // ── Motor de menús declarativo ──────────────────────────────────────────────
 
@@ -513,6 +543,22 @@ class CallbackHandler {
       return;
     }
 
+    if (data.startsWith('whisper:') && this.transcriber) {
+      const model = data.slice(8);
+      this.transcriber.setModel(model);
+      const ui = this._buildWhisperUI();
+      await bot.sendWithButtons(chatId, ui.text, ui.buttons, msgId);
+      return;
+    }
+
+    if (data.startsWith('whisperlang:') && this.transcriber) {
+      const lang = data.slice(12);
+      this.transcriber.setLanguage(lang);
+      const ui = this._buildWhisperUI();
+      await bot.sendWithButtons(chatId, ui.text, ui.buttons, msgId);
+      return;
+    }
+
     if (data.startsWith('mem:')) {
       const memSub      = data.slice(4);
       const memAgentKey = chat.activeAgent?.key || bot.defaultAgent;
@@ -674,6 +720,7 @@ class CallbackHandler {
           `*Skills:*\n/skills — instalados\n/buscar-skill — buscar en ClawHub\n` +
           `/mcps — MCPs configurados\n/buscar-mcp — buscar en Smithery\n\n` +
           `*Recordatorios:*\n/recordar <tiempo> <msg>\n/recordatorios — ver pendientes\n\n` +
+          `*Audio:*\n/whisper [modelo|idioma] — ver/cambiar modelo Whisper\n\n` +
           `*Monitor:*\n/consola — modo consola\n/status-vps — CPU, RAM y disco\n\n` +
           `*Bot:*\n/agente [key] — ver/cambiar agente\n/ayuda — esta ayuda`
         );
