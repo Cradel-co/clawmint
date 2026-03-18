@@ -862,7 +862,8 @@ if (fs.existsSync(clientDist)) {
 // ─── Servidor ─────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3001;
-logger.info(`Iniciando servidor en puerto ${PORT}...`);
+const HOST = process.env.HOST || '0.0.0.0';
+logger.info(`Iniciando servidor en ${HOST}:${PORT}...`);
 // Esperar a que sql.js WASM + módulos estén listos antes de escuchar
 _modulesReady.then(() => {
   // Montar MCP router si está disponible (necesita bootstrap completo)
@@ -870,10 +871,10 @@ _modulesReady.then(() => {
     app.use('/mcp', mcpRouter);
   }
 
-  server.listen(PORT, async () => {
-    logger.info(`Servidor escuchando en http://localhost:${PORT}`);
-    console.log(`Servidor escuchando en http://localhost:${PORT}`);
-    console.log(`HTTP API disponible en http://localhost:${PORT}/api/sessions`);
+  server.listen(PORT, HOST, async () => {
+    logger.info(`Servidor escuchando en http://${HOST}:${PORT}`);
+    console.log(`Servidor escuchando en http://${HOST}:${PORT}`);
+    console.log(`HTTP API disponible en http://${HOST}:${PORT}/api/sessions`);
 
     logger.info('Iniciando bots de Telegram...');
     try {

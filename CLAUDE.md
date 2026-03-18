@@ -29,6 +29,7 @@ clawmint/
 │   ├── agents.js         # CRUD de agentes
 │   ├── skills.js         # Skills locales + búsqueda ClawHub
 │   ├── memory.js         # Memoria persistente por agente
+│   ├── transcriber.js    # Transcripción audio con faster-whisper
 │   └── events.js         # EventEmitter global
 └── client/
     └── src/
