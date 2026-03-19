@@ -5,6 +5,7 @@ const providers = {
   'anthropic':   require('./anthropic'),
   'gemini':      require('./gemini'),
   'openai':      require('./openai'),
+  'grok':        require('./grok'),
 };
 
 module.exports = {

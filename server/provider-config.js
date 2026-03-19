@@ -11,6 +11,7 @@ const DEFAULT_CONFIG = {
     anthropic: { apiKey: '', model: 'claude-opus-4-6' },
     gemini:    { apiKey: '', model: 'gemini-2.0-flash' },
     openai:    { apiKey: '', model: 'gpt-4o' },
+    grok:      { apiKey: '', model: 'grok-3-fast' },
   },
 };
 
@@ -41,6 +42,7 @@ function getApiKey(name) {
     anthropic: 'ANTHROPIC_API_KEY',
     gemini:    'GOOGLE_API_KEY',
     openai:    'OPENAI_API_KEY',
+    grok:      'XAI_API_KEY',
   };
   const envKey = envMap[name];
   if (envKey && process.env[envKey]) return process.env[envKey];
