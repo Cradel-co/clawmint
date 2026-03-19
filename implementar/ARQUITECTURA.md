@@ -1,62 +1,124 @@
-# terminal-live — Arquitectura e Implementación
+# Clawmint — Arquitectura e Implementación
 
-> Documento de referencia para reimplementar o extender el proyecto con cualquier proveedor de IA (Anthropic Claude, Google Gemini, OpenAI ChatGPT).
+> Documento de referencia para entender, extender o reimplementar el sistema.
 
 ---
 
 ## Resumen del sistema
 
-**terminal-live** es un servidor de terminales en tiempo real accesible desde el navegador y desde Telegram. Combina:
+**Clawmint** es un servidor de terminales en tiempo real accesible desde el navegador y desde Telegram. Combina:
 
 - **PTY virtual** (`node-pty`) para ejecutar procesos reales del sistema operativo.
 - **WebSocket** para streaming bidireccional de terminal (xterm.js en el cliente).
-- **HTTP REST API** para operaciones sobre sesiones, agentes, skills y bots de Telegram.
+- **HTTP REST API** para operaciones sobre sesiones, agentes, skills, memoria y bots.
 - **SSE** (Server-Sent Events) para output en tiempo real sin WebSocket.
-- **Sesiones de IA** directas (sin PTY) que conectan al LLM elegido.
-- **Bot de Telegram** con polling que actúa como frontend alternativo.
+- **6 proveedores de IA** (Anthropic, Claude Code CLI, Gemini, OpenAI, Grok, Ollama).
+- **Bot de Telegram** modular con polling, streaming progresivo y persistencia completa.
+- **Sistema TTS multi-proveedor** con 6 engines de voz.
+- **Servidor MCP** integrado con herramientas expuestas.
+- **Persistencia SQLite** (sql.js WASM) para sesiones, settings, memoria y modo de permisos.
 
 ---
 
-## Stack tecnológico actual
+## Stack tecnológico
 
 | Capa | Tecnología |
 |---|---|
-| Runtime | Node.js (CommonJS, `'use strict'`) |
+| Runtime | Node.js 22+ (CommonJS, `'use strict'`) |
 | HTTP / WS | Express 4 + `ws` |
 | Terminal | `node-pty` (spawn PTY real) |
-| IA actual | Anthropic SDK (`@anthropic-ai/sdk`) vía `claude-opus-4-6` |
-| IA CLI | `claude -p` (modo print, stream-json) — wrapper `ClaudePrintSession` |
-| Cliente | React + Vite + xterm.js |
-| Persistencia | JSON planos (`agents.json`, `bots.json`) |
+| IA — Providers | Anthropic SDK, Claude Code CLI, Gemini, OpenAI, Grok (xAI), Ollama |
+| TTS | Edge TTS, Piper TTS, SpeechT5, ElevenLabs, OpenAI TTS, Google TTS |
+| Cliente | React 18 + Vite + xterm.js |
+| Persistencia | SQLite via sql.js (WASM) + JSON planos |
 | Skills | Archivos `SKILL.md` con frontmatter YAML |
-| Mensajería | Telegram Bot API (long polling, HTTPS nativo) |
+| Mensajería | Telegram Bot API (long polling) |
+| Transcripción | Whisper (Xenova/whisper-medium) |
+| Procesos | PM2 + systemd (auto-arranque) |
 
 ---
 
 ## Estructura de archivos
 
 ```
-terminal-live/
+clawmint/
 ├── server/
-│   ├── index.js          # Punto de entrada: HTTP, WebSocket, rutas
-│   ├── sessionManager.js # Clase PtySession + Map de sesiones activas
-│   ├── agents.js         # CRUD de agentes (JSON + carpeta agents/)
-│   ├── telegram.js       # Bot Telegram: TelegramBot + ClaudePrintSession
-│   ├── skills.js         # Listar, parsear y buscar skills en ClawHub
-│   ├── events.js         # EventEmitter global (telegram:session, etc.)
-│   ├── agents.json       # Persistencia de agentes
-│   ├── bots.json         # Persistencia de bots Telegram
-│   └── skills/           # Skills instalados (cada uno: slug/SKILL.md)
+│   ├── index.js                 # HTTP, WebSocket, rutas REST (puerto 3002)
+│   ├── bootstrap.js             # Inicialización de módulos (Telegram, TTS, etc.)
+│   ├── sessionManager.js        # PtySession + pool de sesiones
+│   │
+│   ├── channels/
+│   │   ├── BaseChannel.js       # Clase base para canales de mensajería
+│   │   └── telegram/
+│   │       ├── TelegramChannel.js      # Bot principal + envío/recepción
+│   │       ├── CommandHandler.js       # /start, /cd, /modo, /permisos, etc.
+│   │       ├── CallbackHandler.js      # Callbacks de botones inline
+│   │       └── PendingActionHandler.js # Acciones pendientes (whitelist, etc.)
+│   │
+│   ├── core/
+│   │   ├── ClaudePrintSession.js  # Sesión Claude CLI con persistencia
+│   │   ├── ConsoleSession.js      # Sesión de consola bash
+│   │   ├── EventBus.js            # Bus de eventos centralizado
+│   │   ├── Logger.js              # Logger con niveles y archivo
+│   │   └── systemStats.js         # Stats del sistema (CPU, RAM, uptime)
+│   │
+│   ├── services/
+│   │   └── ConversationService.js # Orquestador de conversación con IA
+│   │
+│   ├── providers/
+│   │   ├── index.js              # Registry + factory de proveedores
+│   │   ├── anthropic.js          # Anthropic SDK directo
+│   │   ├── claude-code.js        # Claude Code CLI (claude -p)
+│   │   ├── gemini.js             # Google Gemini
+│   │   ├── openai.js             # OpenAI ChatGPT
+│   │   ├── grok.js               # Grok (xAI) con streaming
+│   │   └── ollama.js             # Ollama (modelos locales)
+│   │
+│   ├── voice-providers/
+│   │   ├── index.js              # Registry de proveedores TTS
+│   │   ├── edge-tts.js           # Microsoft Edge TTS (offline)
+│   │   ├── piper-tts.js          # Piper TTS (offline, español nativo)
+│   │   ├── speecht5.js           # SpeechT5 (@huggingface/transformers)
+│   │   ├── elevenlabs.js         # ElevenLabs API
+│   │   ├── openai-tts.js         # OpenAI TTS API
+│   │   └── google-tts.js         # Google Cloud TTS
+│   │
+│   ├── storage/
+│   │   ├── sqlite-wrapper.js     # Wrapper sql.js compatible con better-sqlite3
+│   │   ├── DatabaseProvider.js   # Inicialización y acceso a la DB
+│   │   ├── ChatSettingsRepository.js # provider, cwd, sesión, modo por chat
+│   │   └── BotsRepository.js     # Configuración persistente de bots
+│   │
+│   ├── mcp/
+│   │   ├── index.js              # Router MCP (herramientas expuestas)
+│   │   └── ShellSession.js       # Sesión shell para MCP
+│   │
+│   ├── mcps.js                   # Gestión de servidores MCP externos
+│   ├── tts.js                    # Módulo TTS central
+│   ├── tts-config.js             # Configuración de proveedores TTS
+│   ├── agents.js                 # CRUD de agentes
+│   ├── skills.js                 # Skills locales + búsqueda ClawHub
+│   ├── memory.js                 # Memoria persistente por agente (SQLite)
+│   ├── memory-consolidator.js    # Consolidación periódica de memoria
+│   ├── embeddings.js             # Embeddings para búsqueda semántica
+│   ├── tools.js                  # Herramientas disponibles para agentes
+│   ├── reminders.js              # Recordatorios/alarmas programadas
+│   ├── transcriber.js            # Transcripción audio con Whisper
+│   ├── provider-config.js        # Configuración de proveedores IA
+│   ├── events.js                 # EventEmitter global (legacy)
+│   ├── ecosystem.config.js       # Configuración PM2
+│   └── test/                     # Tests unitarios
+│
 └── client/
-    ├── src/
-    │   ├── App.jsx               # Estado global + tabs + layout
-    │   ├── components/
-    │   │   ├── TerminalPanel.jsx # xterm.js + WebSocket
-    │   │   ├── TabBar.jsx        # Barra de pestañas de sesiones
-    │   │   ├── CommandBar.jsx    # Barra inferior con acciones rápidas
-    │   │   ├── AgentsPanel.jsx   # CRUD de agentes desde la UI
-    │   │   └── TelegramPanel.jsx # Gestión de bots Telegram desde la UI
-    └── vite.config.js
+    └── src/
+        ├── App.jsx
+        └── components/
+            ├── TerminalPanel.jsx   # xterm.js + WebSocket
+            ├── TabBar.jsx          # Pestañas de sesiones
+            ├── AgentsPanel.jsx     # CRUD de agentes
+            ├── ProvidersPanel.jsx  # Selector de proveedor IA
+            ├── CommandBar.jsx      # Acciones rápidas
+            └── TelegramPanel.jsx   # Gestión de bots
 ```
 
 ---
@@ -87,98 +149,126 @@ Métodos:
   destroy()                         → mata el PTY
 ```
 
-**Patrón de estabilización en `sendMessage`:**
-Espera `stableMs` ms sin nueva salida antes de resolver. Útil para agentes CLI que no indican fin de mensaje.
+---
+
+### `providers/` — Sistema multi-proveedor de IA
+
+6 proveedores implementados. Cada uno expone `sendMessage(messages, opts)` con streaming.
+
+| Provider | Archivo | Dependencia | Streaming |
+|----------|---------|-------------|-----------|
+| Anthropic | `anthropic.js` | `@anthropic-ai/sdk` | ✅ SSE |
+| Claude Code | `claude-code.js` | CLI `claude -p` | ✅ stream-json via PTY |
+| Gemini | `gemini.js` | `@google/generative-ai` | ✅ chunk iterator |
+| OpenAI | `openai.js` | `openai` | ✅ SSE |
+| Grok | `grok.js` | HTTP directo (xAI API) | ✅ SSE |
+| Ollama | `ollama.js` | HTTP directo (localhost) | ✅ NDJSON |
+
+`providers/index.js` actúa como registry: `providers.get(name)` → instancia del provider.
+
+El provider se selecciona **por chat** desde Telegram (`/provider`) o por agente.
 
 ---
 
-### `agents.js` — AgentManager
+### `services/ConversationService.js` — Orquestador
 
-Registro de agentes disponibles. Un agente = `{ key, command, description, prompt }`.
+Punto central de conversación con IA. Responsabilidades:
 
-- `command: null` → bash puro (shell por defecto)
-- `command: 'claude'` → lanza el CLI de Claude
-- `prompt` → string de system prompt para agentes de rol en Telegram
-
-Persistencia dual: `agents.json` (editable en UI) + carpeta `agents/` (archivos `.json` privados con prioridad).
-
----
-
-### `skills.js` — Skills
-
-Los skills son fragmentos de instrucciones en Markdown que se inyectan en el system prompt de los agentes de rol.
-
-**Formato de un skill (`SKILL.md`):**
-```markdown
----
-name: Nombre del Skill
-description: Qué hace
----
-Instrucciones para el agente...
-```
-
-Fuente de skills: [clawhub.ai](https://clawhub.ai) (búsqueda e instalación desde Telegram o la API).
-
-`buildAgentPrompt(agentDef)` → concatena el prompt del agente + todos los skills instalados.
+- Seleccionar provider según chat/agente
+- Construir contexto (system prompt + memoria + skills)
+- Manejar `--resume` para Claude Code (con fallback automático si falla)
+- Extraer y aplicar operaciones de memoria del response
+- Retornar respuesta + metadata (costo, tokens)
 
 ---
 
-### `telegram.js` — Bot Telegram
+### `channels/telegram/` — Bot de Telegram
 
-**Dos modos de sesión según el agente:**
+Arquitectura modular con 4 componentes:
 
-#### Modo 1: Claude-based (agentes con `command.includes('claude')`)
-Usa `ClaudePrintSession`: ejecuta `claude -p <texto> --output-format stream-json` en un PTY para forzar flush inmediato. Parsea eventos JSON del stream. Soporta continuación de contexto con `--continue`.
+| Componente | Responsabilidad |
+|------------|-----------------|
+| `TelegramChannel.js` | Bot principal: polling, envío/recepción, edición progresiva, persistencia |
+| `CommandHandler.js` | Parsing y ejecución de `/comandos` (40+ comandos) |
+| `CallbackHandler.js` | Menú inline con botones (config, modelo, provider, voz, permisos) |
+| `PendingActionHandler.js` | Flujos multi-paso (agregar whitelist, etc.) |
 
-```
-ClaudePrintSession
-├── id, createdAt, messageCount
-├── model: string | null
-├── totalCostUsd, lastCostUsd
-└── claudeSessionId: string | null
+**Persistencia completa en SQLite** (`ChatSettingsRepository`):
+- `provider` y `model` por chat
+- `cwd` (directorio de trabajo)
+- `claude_session_id` + `message_count` (resume tras reinicio)
+- `claude_mode` (`ask`/`auto`/`plan`) — sobrevive reinicios
 
-sendMessage(text, onChunk?) → Promise<string>
-  ↳ lanza `claude -p` con node-pty
-  ↳ parsea stream_event / assistant / result
-  ↳ llama onChunk(partial) para edición progresiva en Telegram
-```
-
-#### Modo 2: Agentes PTY (bash, python, etc.)
-Crea una `PtySession` normal y usa `sendMessage` con estabilización.
-
-**Comandos de Telegram implementados:**
-
-| Comando | Descripción |
-|---|---|
-| `/start` | Saludo e inicio |
-| `/nueva` / `/reset` | Nueva conversación |
-| `/compact` | Compactar contexto Claude |
-| `/bash` | Nueva sesión bash |
-| `/modelo [nombre]` | Ver/cambiar modelo LLM |
-| `/costo` | Costo acumulado de la sesión |
-| `/estado` | Estado detallado de sesión |
-| `/memoria` | Leer archivos CLAUDE.md / MEMORY.md |
-| `/dir` | Directorio de trabajo actual |
-| `/agentes` | Listar agentes de rol con prompt |
-| `/<key>` | Activar agente de rol |
-| `/basta` | Desactivar agente de rol activo |
-| `/skills` | Skills instalados |
-| `/buscar-skill` | Buscar e instalar skill de ClawHub |
-| `/agente [key]` | Ver/cambiar agente activo del bot |
-| `/id` | Ver el chat ID propio |
-| `/ayuda` | Ayuda completa |
-
-**Rate limiting:** por chat, por ventana de 1 hora. Configurable. Soporta keyword de reseteo.
-
-**Whitelist:** lista de chat IDs permitidos (vacía = todos).
-
-**Edición progresiva:** al recibir un mensaje, envía `⏳` inmediatamente y edita el mismo mensaje con cada chunk (throttle 1500ms), evitando spam de mensajes.
+**Edición progresiva:** envía `⏳` inmediatamente, edita el mismo mensaje con cada chunk (throttle 1500ms).
 
 ---
 
-### `index.js` — Servidor principal
+### `core/ClaudePrintSession.js` — Sesión Claude CLI
 
-**HTTP API:**
+Ejecuta `claude -p <texto> --output-format stream-json` en un PTY. Soporta:
+
+- `--resume <sessionId>` para continuar contexto
+- `--permission-mode` configurable (`ask`/`auto`/`plan`)
+- Fallback automático: si `--resume` falla, reintenta como sesión nueva
+- Persistencia de `sessionId`, `messageCount` y `cwd` en SQLite
+
+---
+
+### `storage/` — Capa de persistencia
+
+| Componente | Tabla/Función |
+|------------|---------------|
+| `sqlite-wrapper.js` | Wrapper sql.js con API compatible better-sqlite3 |
+| `DatabaseProvider.js` | Singleton de inicialización de DB |
+| `ChatSettingsRepository.js` | `chat_settings`: provider, model, cwd, session, mode |
+| `BotsRepository.js` | Configuración persistente de bots Telegram |
+
+La DB vive en memoria y se auto-persiste a disco con debounce de 500ms.
+
+---
+
+### `voice-providers/` — Sistema TTS
+
+6 proveedores. Cada uno implementa `synthesize(text, opts)` → `Buffer`.
+
+| Provider | Offline | Español nativo |
+|----------|---------|----------------|
+| Edge TTS | ✅ | ✅ |
+| Piper TTS | ✅ | ✅ |
+| SpeechT5 | ✅ | ❌ |
+| ElevenLabs | ❌ | ✅ |
+| OpenAI TTS | ❌ | ✅ |
+| Google TTS | ❌ | ✅ |
+
+Configuración en `tts-config.js` / `tts-config.json`.
+
+---
+
+### `mcp/` — Servidor MCP
+
+- `index.js`: router que expone herramientas del sistema como MCP tools
+- `ShellSession.js`: sesión shell dedicada para operaciones MCP
+- `mcps.js`: gestión de conexiones a servidores MCP externos (configs en `server/mcps/`)
+
+---
+
+### Otros módulos
+
+| Módulo | Función |
+|--------|---------|
+| `memory.js` | Memoria por agente en SQLite (notes, tags, links, grafo) |
+| `memory-consolidator.js` | Consolidación periódica cada 2 min |
+| `embeddings.js` | Embeddings para búsqueda semántica en memoria |
+| `tools.js` | Herramientas que los agentes pueden invocar |
+| `reminders.js` | Recordatorios/alarmas (`/recordar`, `/recordatorios`) |
+| `transcriber.js` | Transcripción de audio con Whisper (mensajes de voz Telegram) |
+| `agents.js` | CRUD de agentes (JSON + carpeta `agents/`) |
+| `skills.js` | Skills en Markdown + búsqueda en ClawHub |
+| `bootstrap.js` | Inicialización ordenada de todos los módulos |
+
+---
+
+## API REST
 
 | Método | Ruta | Descripción |
 |---|---|---|
@@ -189,13 +279,18 @@ Crea una `PtySession` normal y usa `sendMessage` con estabilización.
 | POST | `/api/sessions/:id/input` | Input raw `{text}` |
 | POST | `/api/sessions/:id/message` | Send + esperar respuesta `{text}` |
 | GET | `/api/sessions/:id/stream` | SSE: output en tiempo real |
-| GET | `/api/sessions/:id/output?since=0` | Pull del buffer desde timestamp |
+| GET | `/api/sessions/:id/output?since=0` | Pull del buffer |
 | GET/POST/PATCH/DELETE | `/api/agents/...` | CRUD de agentes |
 | GET/POST/DELETE | `/api/skills/...` | Gestión de skills |
 | GET | `/api/skills/search?q=` | Buscar en ClawHub |
-| GET/POST/DELETE/PATCH | `/api/telegram/bots/...` | Gestión de bots Telegram |
+| GET/POST/DELETE/PATCH | `/api/telegram/bots/...` | Gestión de bots |
+| GET | `/api/providers` | Listar proveedores IA |
+| GET | `/api/memory/graph` | Grafo de memoria (nodos + links) |
+| GET | `/api/memory/:agentKey/search` | Búsqueda en memoria |
 
-**WebSocket:** protocolo de mensajes JSON:
+---
+
+## Protocolo WebSocket
 
 ```
 Cliente → Servidor:
@@ -207,219 +302,66 @@ Servidor → Cliente:
   { type: 'session_id', id }
   { type: 'output', data: string }
   { type: 'exit' }
-  { type: 'telegram_session', sessionId, from, text }  ← broadcast global
+  { type: 'telegram_session', sessionId, from, text }
 ```
-
-**Sesión Claude API (WebSocket sin PTY):**
-Cuando `sessionType === 'claude'`, no se crea PTY. El servidor instancia el SDK de Anthropic directamente y hace streaming de tokens al cliente como si fuera output de terminal (con ANSI colors para el prompt).
 
 ---
 
-## Abstracciones para multi-proveedor
-
-El sistema actual acopla el LLM en dos lugares:
-
-### Lugar 1: `startClaudeSession()` en `index.js`
-Sesión interactiva vía WebSocket. Usa Anthropic SDK con streaming.
-
-### Lugar 2: `ClaudePrintSession` en `telegram.js`
-Sesión no-interactiva para Telegram. Actualmente usa `claude -p` (CLI).
-
----
-
-## Plan de reimplementación multi-proveedor
-
-### Interfaz unificada de proveedor de IA
-
-Para hacer el sistema agnóstico al proveedor, se debe extraer una interfaz común:
-
-```javascript
-// Contrato que debe cumplir cualquier proveedor
-class AIProvider {
-  constructor(config) {}
-
-  // Streaming de texto. Llama onChunk(text) por cada token.
-  // Retorna el texto completo al resolver.
-  async streamMessage(messages, systemPrompt, onChunk) → Promise<string>
-
-  // Metadatos opcionales (costo, modelo activo, etc.)
-  getMetadata() → { model, costUsd, ... }
-
-  // Nombre del proveedor (para logs y UI)
-  get name() → string
-}
-```
-
-### Implementación por proveedor
-
-#### Anthropic (actual)
-```javascript
-// Dependencia: @anthropic-ai/sdk
-// Config: { apiKey, model: 'claude-sonnet-4-6' }
-stream = client.messages.stream({
-  model, max_tokens: 4096,
-  system: systemPrompt,
-  messages,
-})
-// Evento: content_block_delta / text_delta
-```
-
-#### OpenAI / ChatGPT
-```javascript
-// Dependencia: openai
-// Config: { apiKey, model: 'gpt-4o' }
-stream = await client.chat.completions.create({
-  model, stream: true,
-  messages: [{ role: 'system', content: systemPrompt }, ...messages],
-})
-// Evento: choices[0].delta.content
-```
-
-#### Google Gemini
-```javascript
-// Dependencia: @google/generative-ai
-// Config: { apiKey, model: 'gemini-2.0-flash' }
-const model = genAI.getGenerativeModel({ model })
-const chat = model.startChat({ history: messages, systemInstruction: systemPrompt })
-const result = await chat.sendMessageStream(lastMessage)
-// Iteración: for await (const chunk of result.stream)
-//   chunk.text()
-```
-
-### Variables de entorno sugeridas
-
-```env
-AI_PROVIDER=anthropic          # anthropic | openai | gemini
-ANTHROPIC_API_KEY=sk-ant-...
-OPENAI_API_KEY=sk-...
-GEMINI_API_KEY=AIza...
-AI_MODEL=                      # vacío = default del proveedor
-```
-
-### Cambios necesarios en el código
-
-1. **`server/ai-provider.js`** ← nuevo archivo con la interfaz y las 3 implementaciones.
-
-2. **`server/index.js` — `startClaudeSession()`**
-   Reemplazar `new Anthropic()` por `new AIProvider(config)`.
-   El ciclo de streaming cambia según proveedor pero la lógica WS queda igual.
-
-3. **`server/telegram.js` — `ClaudePrintSession`**
-   Esta clase hoy lanza el CLI `claude -p`. Para soporte multi-proveedor:
-   - Reemplazarla por una clase `AISession` que use `AIProvider.streamMessage()` directamente (SDK, no CLI).
-   - Esto también elimina la dependencia de tener instalado el CLI de Claude.
-   - El campo `--continue` de Claude CLI se reemplaza por mantener `history[]` en memoria (igual que hace `startClaudeSession`).
-
-4. **`server/agents.js`**
-   Agregar campo `provider?: string` por agente para soporte de proveedor por agente.
-
----
-
-## Flujo de datos completo
+## Flujo de datos
 
 ```
-Usuario (browser/Telegram)
+Usuario (browser / Telegram / MCP)
        │
        ▼
-   WebSocket / HTTP / Telegram API
+   WebSocket / HTTP / Telegram API / MCP
        │
        ▼
-   index.js (router)
+   index.js + bootstrap.js (router)
        │
-       ├──→ PtySession (node-pty)
+       ├──→ PtySession (node-pty) → proceso del OS
+       │
+       ├──→ ConversationService → Provider IA
+       │         │                    ├─→ Anthropic SDK
+       │         │                    ├─→ Claude Code CLI
+       │         │                    ├─→ Gemini SDK
+       │         │                    ├─→ OpenAI SDK
+       │         │                    ├─→ Grok HTTP
+       │         │                    └─→ Ollama HTTP
        │         │
-       │         ▼
-       │    Proceso del OS (bash, python, etc.)
+       │         ├──→ memory.js (contexto + persist)
+       │         └──→ tools.js (herramientas)
        │
-       └──→ AISession (sin PTY)
-                 │
-                 ▼
-            AIProvider
-                 │
-                 ├──→ Anthropic SDK (streaming)
-                 ├──→ OpenAI SDK (streaming)
-                 └──→ Gemini SDK (streaming)
+       ├──→ TTS → voice-providers/ → Buffer audio
+       │
+       └──→ MCP Router → herramientas expuestas
 ```
 
 ---
 
-## Notas de implementación importantes
+## Producción (PM2 + systemd)
 
-### stripAnsi / cleanPtyOutput
-Hay dos variantes. `cleanPtyOutput` en `telegram.js` es más sofisticada: simula carriage return real y filtra líneas decorativas del TUI de Claude Code. Usar esta versión como canónica.
-
-### Persistencia de sesiones ante desconexión WS
-Las `PtySession` no se destruyen cuando el WebSocket se cierra. Persisten en el `Map` del `sessionManager`. El cliente puede reconectarse con `{ type: 'init', sessionId: 'uuid-existente' }` para adjuntarse a la sesión viva.
-
-### Broadcast de eventos Telegram
-Cuando llega un mensaje de Telegram en una sesión PTY, se emite `events.emit('telegram:session', {...})`. Todos los clientes WS conectados reciben `{ type: 'telegram_session' }` para poder abrir automáticamente la pestaña correspondiente.
-
-### Rate limit de Telegram edits
-Telegram permite aproximadamente 1 edición de mensaje por segundo por chat. El throttle está en 1500ms para estar dentro del límite con margen.
-
-### node-pty para `claude -p`
-Se usa `pty.spawn` (en lugar de `child_process.spawn`) para ejecutar `claude -p` porque el CLI detecta si está en un TTY y hace flush de línea. Sin TTY, puede buffear la salida y nunca llegar al proceso.
-
-### WSL2 + node-pty: stack overflow (0xC00000FD)
-
-En WSL2, `node-pty` puede crashear el proceso de Node.js con el código `0xC00000FD` (`STATUS_STACK_OVERFLOW`). Causas posibles:
-
-1. **Stack insuficiente**: Node.js arranca con ~1 MB de stack por defecto. El addon nativo de node-pty puede superarlo al inicializar PTYs.
-2. **Binario pre-compilado incorrecto**: `npm install` descarga un `.node` pre-built para una plataforma/versión de Node específica. Si hay mismatch (ej: binario compilado para Win32 corriendo en WSL2), crashea al cargarse.
-
-**Fix aplicado en `package.json`:**
-```json
-"start": "node --stack-size=65536 index.js"
-```
-`--stack-size=65536` le asigna 64 MB de stack a Node (valor en KB).
-
-**Fix complementario — rebuild del módulo nativo:**
 ```bash
-cd server
-npm rebuild node-pty
+# Arrancar
+cd server && pm2 start ecosystem.config.js
+
+# Auto-arranque al encender
+pm2 startup    # genera comando sudo
+pm2 save       # guarda estado
+
+# Operaciones
+pm2 restart clawmint
+pm2 logs clawmint
+pm2 status
 ```
-Recompila el addon C++ de node-pty en la máquina local, para la versión exacta de Node instalada. Elimina cualquier mismatch de binario pre-built.
 
-**Cuándo ejecutar el rebuild:**
-- Al cambiar la versión de Node.js
-- Al clonar el repo en una máquina nueva
-- Después de `npm install` si el crash persiste
-
-### Eliminar variables de entorno al lanzar PTY
-Se eliminan `CLAUDECODE` y `CLAUDE_CODE_ENTRYPOINT` del env antes de spawner para evitar que los procesos hijos hereden el contexto de Claude Code y entren en modo interactivo inesperado.
+`ecosystem.config.js` carga `.env` automáticamente y usa `--stack-size=65536`.
 
 ---
 
-## Dependencias mínimas del servidor
+## Notas de implementación
 
-```json
-{
-  "express": "^4",
-  "ws": "^8",
-  "node-pty": "^1",
-  "cors": "^2",
-  "@anthropic-ai/sdk": "^0.78"
-}
-```
-
-**Para multi-proveedor agregar según necesidad:**
-```json
-{
-  "openai": "^4",
-  "@google/generative-ai": "^0.21"
-}
-```
-
----
-
-## Checklist de implementación futura
-
-- [ ] Extraer `AIProvider` a `server/ai-provider.js` con interfaz unificada
-- [ ] Reemplazar `ClaudePrintSession` (CLI) por `AISession` (SDK directo)
-- [ ] Agregar campo `provider` al schema de agentes
-- [ ] Leer `AI_PROVIDER` desde env en arranque
-- [ ] UI: selector de proveedor/modelo en `AgentsPanel`
-- [ ] UI: mostrar costo estimado por sesión (disponible en Anthropic y OpenAI)
-- [ ] Persistencia de historial de conversaciones (actualmente solo en memoria)
-- [ ] Reconexión automática de WebSocket en el cliente
-- [ ] Autenticación básica para la API HTTP (actualmente abierta)
+- **sql.js (WASM)**: no requiere compilación nativa (funciona en Windows y Linux sin build tools). DB en memoria con auto-persist a disco (debounce 500ms).
+- **node-pty + WSL2**: requiere `--stack-size=65536` para evitar stack overflow. Ejecutar `npm rebuild node-pty` al cambiar versión de Node.
+- **Claude CLI**: se spawna con `pty.spawn` (no `child_process`) para forzar flush. Se eliminan `CLAUDECODE` y `CLAUDE_CODE_ENTRYPOINT` del env.
+- **Telegram edits**: throttle 1500ms (límite de la API).
+- **Persistencia de sesión**: `claudeSessionId`, `messageCount`, `cwd` y `claudeMode` en SQLite. Resume automático con fallback a sesión nueva.
