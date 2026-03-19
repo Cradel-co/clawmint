@@ -6,7 +6,7 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
 ---
 
-## [Unreleased]
+## [0.9.0] — 2026-03-19
 
 ### Added
 - Provider Grok (xAI) con soporte streaming y modelos configurables (`server/providers/grok.js`)
@@ -14,7 +14,9 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 - Sistema TTS multi-proveedor desacoplado: Edge TTS, Piper TTS, SpeechT5, ElevenLabs, OpenAI TTS, Google TTS (`server/voice-providers/`)
 - Módulo TTS central con selección dinámica de proveedor (`server/tts.js`, `server/tts-config.js`)
 - Persistencia de sesión Claude en SQLite para resume tras reinicio del servidor
+- Persistencia del modo de permisos Claude (`ask`/`auto`/`plan`) en SQLite — sobrevive reinicios
 - Configuración PM2 para gestión de procesos en producción (`server/ecosystem.config.js`)
+- Auto-arranque del servidor con PM2 + systemd al encender la máquina
 - Modularización del transcriptor de audio (`server/transcriber.js`)
 
 ### Fixed
@@ -22,6 +24,7 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 - Limpiar sesión rota en caso de error para evitar reintento con `--resume`
 - Sincronizar `cwd` de `claudeSession` al cambiar directorio con `/cd` y `>>cd`
 - Persistir `monitorCwd` (elegido por el usuario) en vez del `cwd` interno de Claude
+- `_isClaudeBased` reconoce `'claude-code'` como provider válido (fix `/permisos`)
 
 ### Changed
 - Piper TTS: extracción por OS, lock de concurrencia y preload al inicio
