@@ -1,13 +1,21 @@
 'use strict';
 
-const providers = {
-  speecht5:      require('./speecht5'),
-  'openai-tts':  require('./openai-tts'),
-  elevenlabs:    require('./elevenlabs'),
-  'google-tts':  require('./google-tts'),
-  'edge-tts':    require('./edge-tts'),
-  'piper-tts':   require('./piper-tts'),
-};
+function safeRequire(mod) {
+  try { return require(mod); } catch { return null; }
+}
+
+const providers = {};
+for (const [key, file] of [
+  ['speecht5',    './speecht5'],
+  ['openai-tts',  './openai-tts'],
+  ['elevenlabs',  './elevenlabs'],
+  ['google-tts',  './google-tts'],
+  ['edge-tts',    './edge-tts'],
+  ['piper-tts',   './piper-tts'],
+]) {
+  const mod = safeRequire(file);
+  if (mod) providers[key] = mod;
+}
 
 module.exports = {
   list() {

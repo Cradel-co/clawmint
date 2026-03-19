@@ -22,7 +22,7 @@
       "model": "standard"
     },
     "edge-tts": {
-      "voice": "es-AR-ElenaNeural",
+      "voice": "es-MX-JorgeNeural",
       "model": "default"
     },
     "piper-tts": {

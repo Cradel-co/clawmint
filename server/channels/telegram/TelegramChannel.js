@@ -328,6 +328,8 @@ class TelegramBot {
           { command: 'agentes',      description: 'Listar agentes' },
           { command: 'skills',       description: 'Skills instalados' },
           { command: 'consola',      description: 'Modo consola bash' },
+          { command: 'whisper',      description: 'Ver/cambiar modelo Whisper' },
+          { command: 'tts',          description: 'Ver/configurar text-to-speech' },
           { command: 'recordar',     description: 'Crear recordatorio' },
           { command: 'ayuda',        description: 'Todos los comandos' },
         ],

@@ -547,7 +547,7 @@ class CommandHandler {
           `/status-vps — CPU, RAM y disco\n\n` +
           `*Audio:*\n` +
           `/whisper [modelo|idioma] — ver/cambiar modelo Whisper\n` +
-          `/tts [on|off] — text-to-speech (on/off)\n` +
+          `/tts [on|off] — ver/configurar text-to-speech\n` +
           `🎙️ Enviá un audio de voz y se transcribe automáticamente\n\n` +
           `*Bot:*\n` +
           `/agente [key] — ver/cambiar agente\n` +
