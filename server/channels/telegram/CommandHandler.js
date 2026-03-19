@@ -26,6 +26,7 @@ class CommandHandler {
     providers    = null,
     providerConfig = null,
     transcriber  = null,
+    chatSettings = null,
     logger       = console,
   }) {
     this.agents        = agents;
@@ -38,7 +39,12 @@ class CommandHandler {
     this.providers     = providers;
     this.providerConfig = providerConfig;
     this.transcriber   = transcriber;
+    this.chatSettings  = chatSettings;
     this.logger        = logger;
+  }
+
+  _persistCwd(botKey, chatId, cwd) {
+    if (this.chatSettings) this.chatSettings.saveCwd(String(botKey), String(chatId), cwd);
   }
 
   _getSystemStats() { return getSystemStats(); }
@@ -407,6 +413,7 @@ class CommandHandler {
           const stat = fs.statSync(resolved);
           if (!stat.isDirectory()) throw new Error('no es un directorio');
           chat.monitorCwd = resolved;
+          this._persistCwd(bot.key, chatId, resolved);
           const short = resolved.replace(process.env.HOME, '~');
           await bot.sendText(chatId, `📁 Directorio cambiado a \`${short}\``);
         } catch (err) {
@@ -652,6 +659,7 @@ class CommandHandler {
             await bot.sendText(chatId, `📄 ${path.basename(dir)}\n\n${content.slice(0, 3500)}${note}`);
           } else {
             chat.monitorCwd = dir;
+            this._persistCwd(bot.key, chatId, dir);
             await bot.sendText(chatId, this._buildLsText(dir));
           }
         } catch (err) {
@@ -669,6 +677,7 @@ class CommandHandler {
           const stat = fs.statSync(filePath);
           if (stat.isDirectory()) {
             chat.monitorCwd = filePath;
+            this._persistCwd(bot.key, chatId, filePath);
             await bot.sendText(chatId, this._buildLsText(filePath));
           } else {
             let content;

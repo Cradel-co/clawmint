@@ -470,7 +470,7 @@ class TelegramBot {
         lastPreview:    '',
         rateLimited:    false,
         rateLimitedUntil: 0,
-        monitorCwd:     process.env.HOME,
+        monitorCwd:     saved?.cwd || process.env.HOME,
         busy:           false,
         provider:       saved?.provider || 'claude-code',
         model:          saved?.model    || null,
@@ -791,6 +791,7 @@ class TelegramBot {
       const target = trimmed.slice(2).trim();
       const result = session.changeDirectory(target);
       chat.monitorCwd = session.cwd;
+      if (this._chatSettings) this._chatSettings.saveCwd(this.key, chatId, session.cwd);
       const msg = result.ok ? '' : `❌ cd: ${result.error}`;
       await this._sendConsolePrompt(chatId, msg, chat);
       return;
@@ -952,6 +953,7 @@ class TelegramChannel extends BaseChannel {
       sessionManager: this._sessionManager,
       providers:     this._providers,
       providerConfig: this._providerConfig,
+      chatSettings:  this._chatSettings,
       transcriber:   this._transcriber,
       logger:        this._logger,
     });
