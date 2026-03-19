@@ -388,19 +388,31 @@ class CallbackHandler {
     let chat = bot.chats.get(chatId);
     if (!chat) {
       const saved = this.chatSettings ? this.chatSettings.load(bot.key, chatId) : null;
+
+      // Restaurar sesión de Claude desde SQLite si hay una guardada
+      let restoredSession = null;
+      if (saved?.claude_session_id && saved.message_count > 0) {
+        restoredSession = new ClaudePrintSession({
+          claudeSessionId: saved.claude_session_id,
+          messageCount:    saved.message_count,
+          cwd:             saved.cwd || process.env.HOME,
+          model:           saved.model || null,
+        });
+      }
+
       chat = {
         chatId,
         username: cbq.from?.username || null,
         firstName: cbq.from?.first_name || 'Usuario',
         sessionId: null,
-        claudeSession: null,
+        claudeSession: restoredSession,
         activeAgent: null,
         pendingAction: null,
         lastMessageAt: Date.now(),
         lastPreview: '',
         rateLimited: false,
         rateLimitedUntil: 0,
-        monitorCwd: process.env.HOME,
+        monitorCwd: saved?.cwd || process.env.HOME,
         busy: false,
         provider: saved?.provider || 'claude-code',
         model: saved?.model || null,
@@ -520,6 +532,7 @@ class CallbackHandler {
         chat.model    = null;
         if (newProvider === 'claude-code') {
           chat.claudeSession = null;
+          if (this.chatSettings) this.chatSettings.clearSession(bot.key, chatId);
         } else {
           chat.aiHistory = [];
         }
@@ -660,6 +673,7 @@ class CallbackHandler {
       case 'reset': {
         if (bot._isClaudeBased()) {
           chat.claudeSession = new ClaudePrintSession(bot._claudeSessionOpts(chat));
+          if (this.chatSettings) this.chatSettings.clearSession(bot.key, chatId);
           await bot.sendWithButtons(chatId,
             `✅ Nueva conversación *${bot.defaultAgent}* iniciada (\`${chat.claudeSession.id.slice(0,8)}…\`)`,
             [[{ text: '🤖 Menú', callback_data: 'menu' }]]

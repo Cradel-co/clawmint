@@ -125,6 +125,7 @@ class CommandHandler {
       case 'clear': {
         if (bot._isClaudeBased()) {
           chat.claudeSession = new ClaudePrintSession(bot._claudeSessionOpts(chat));
+          if (this.chatSettings) this.chatSettings.clearSession(bot.key, chatId);
           await bot.sendWithButtons(chatId,
             `✅ Nueva conversación *${bot.defaultAgent}* iniciada (\`${chat.claudeSession.id.slice(0,8)}…\`)`,
             [[{ text: '🤖 Menú', callback_data: 'menu' }]]
@@ -785,6 +786,7 @@ class CommandHandler {
           chat.provider = newProvider;
           if (newProvider === 'claude-code') {
             chat.claudeSession = null;
+            if (this.chatSettings) this.chatSettings.clearSession(bot.key, chatId);
           } else {
             chat.aiHistory = [];
           }

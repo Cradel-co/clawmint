@@ -19,6 +19,8 @@ class ChatSettingsRepository {
 
   static MIGRATIONS = [
     `ALTER TABLE chat_settings ADD COLUMN cwd TEXT`,
+    `ALTER TABLE chat_settings ADD COLUMN claude_session_id TEXT`,
+    `ALTER TABLE chat_settings ADD COLUMN message_count INTEGER DEFAULT 0`,
   ];
 
   constructor(db) {
@@ -42,7 +44,7 @@ class ChatSettingsRepository {
   load(botKey, chatId) {
     if (!this._db) return null;
     return this._db.prepare(
-      'SELECT provider, model, cwd FROM chat_settings WHERE bot_key = ? AND chat_id = ?'
+      'SELECT provider, model, cwd, claude_session_id, message_count FROM chat_settings WHERE bot_key = ? AND chat_id = ?'
     ).get(String(botKey), String(chatId)) || null;
   }
 
@@ -73,6 +75,32 @@ class ChatSettingsRepository {
       VALUES (?, ?, 'claude-code', ?)
       ON CONFLICT(bot_key, chat_id) DO UPDATE SET cwd = excluded.cwd
     `).run(String(botKey), String(chatId), cwd);
+  }
+
+  /**
+   * Persiste el estado de la sesión de Claude (session_id + message_count + cwd).
+   */
+  saveSession(botKey, chatId, { claudeSessionId, messageCount, cwd }) {
+    if (!this._db) return;
+    this._db.prepare(`
+      INSERT INTO chat_settings (bot_key, chat_id, provider, claude_session_id, message_count, cwd)
+      VALUES (?, ?, 'claude-code', ?, ?, ?)
+      ON CONFLICT(bot_key, chat_id) DO UPDATE SET
+        claude_session_id = excluded.claude_session_id,
+        message_count     = excluded.message_count,
+        cwd               = excluded.cwd
+    `).run(String(botKey), String(chatId), claudeSessionId ?? null, messageCount ?? 0, cwd ?? null);
+  }
+
+  /**
+   * Limpia la sesión de Claude (al hacer /new o reset).
+   */
+  clearSession(botKey, chatId) {
+    if (!this._db) return;
+    this._db.prepare(`
+      UPDATE chat_settings SET claude_session_id = NULL, message_count = 0
+      WHERE bot_key = ? AND chat_id = ?
+    `).run(String(botKey), String(chatId));
   }
 }
 

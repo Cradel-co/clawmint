@@ -11,17 +11,17 @@ function cpdbg(scope, ...args) { if (_cpDbg()) console.log(`[CPS:DBG:${scope}]`,
  * Extraído de telegram.js para reutilización por cualquier canal (Telegram, Discord, HTTP).
  */
 class ClaudePrintSession {
-  constructor({ model = null, permissionMode = 'ask', cwd = null } = {}) {
+  constructor({ model = null, permissionMode = 'ask', cwd = null, claudeSessionId = null, messageCount = 0 } = {}) {
     this.id = crypto.randomUUID();
     this.createdAt = Date.now();
     this.active = true;
-    this.messageCount = 0;
+    this.messageCount = messageCount;
     this.title = 'claude';
     this.model = model;                    // modelo explícito (null = default)
     this.permissionMode = permissionMode;  // 'auto' | 'ask' | 'plan'
     this.totalCostUsd = 0;        // costo acumulado de la sesión
     this.lastCostUsd = 0;         // costo del último mensaje
-    this.claudeSessionId = null;  // session_id interno de claude
+    this.claudeSessionId = claudeSessionId;  // session_id interno de claude (persistible)
     this.cwd = cwd || process.env.HOME;  // directorio de trabajo de la sesión
   }
 
@@ -40,7 +40,11 @@ class ClaudePrintSession {
       claudeArgs.unshift('--permission-mode', modeMap[this.permissionMode] || 'default');
     }
     if (this.model) claudeArgs.push('--model', this.model);
-    if (this.messageCount > 0) claudeArgs.push('--continue');
+    if (this.messageCount > 0 && this.claudeSessionId) {
+      claudeArgs.push('--resume', this.claudeSessionId);
+    } else if (this.messageCount > 0) {
+      claudeArgs.push('--continue');
+    }
 
     cpdbg('spawn', `args=[${claudeArgs.join(' ')}] mode=${this.permissionMode} model=${this.model} msgCount=${this.messageCount}`);
     cpdbg('spawn', `text="${text.slice(0, 120)}${text.length > 120 ? '...' : ''}" (${text.length} chars ${isWin ? 'via stdin' : 'via arg'})`);

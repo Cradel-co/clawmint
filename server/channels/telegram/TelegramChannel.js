@@ -458,12 +458,25 @@ class TelegramBot {
     let chat = this.chats.get(chatId);
     if (!chat) {
       const saved = this._chatSettings ? this._chatSettings.load(this.key, chatId) : null;
+
+      // Restaurar sesión de Claude desde SQLite si hay una guardada
+      let restoredSession = null;
+      if (saved?.claude_session_id && saved.message_count > 0) {
+        restoredSession = new ClaudePrintSession({
+          claudeSessionId: saved.claude_session_id,
+          messageCount:    saved.message_count,
+          cwd:             saved.cwd || process.env.HOME,
+          model:           saved.model || null,
+        });
+        tdbg('init', `restored session ${saved.claude_session_id.slice(0,8)}… msgCount=${saved.message_count} cwd=${saved.cwd}`);
+      }
+
       chat = {
         chatId,
         username:       msg.from?.username || null,
         firstName:      msg.from?.first_name || 'Usuario',
         sessionId:      null,
-        claudeSession:  null,
+        claudeSession:  restoredSession,
         activeAgent:    null,
         pendingAction:  null,
         lastMessageAt:  Date.now(),
@@ -709,6 +722,16 @@ class TelegramBot {
 
       if (result.newSession)       chat.claudeSession = result.newSession;
       if (result.history)          chat.aiHistory     = result.history;
+
+      // Persistir sesión de Claude en SQLite para sobrevivir reinicios
+      if (chat.claudeSession?.claudeSessionId && this._chatSettings) {
+        this._chatSettings.saveSession(this.key, chatId, {
+          claudeSessionId: chat.claudeSession.claudeSessionId,
+          messageCount:    chat.claudeSession.messageCount,
+          cwd:             chat.claudeSession.cwd,
+        });
+      }
+
       if (result.savedMemoryFiles?.length > 0) {
         if (!chat._savedInSession) chat._savedInSession = [];
         for (const f of result.savedMemoryFiles) {
