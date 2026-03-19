@@ -224,6 +224,14 @@ class TelegramBot {
     return !!(def && def.command && def.command.includes('claude'));
   }
 
+  _claudeSessionOpts(chat) {
+    return {
+      model: chat.claudeSession?.model || null,
+      permissionMode: chat.claudeMode || 'ask',
+      cwd: chat.monitorCwd || process.env.HOME,
+    };
+  }
+
   // ── Telegram API ─────────────────────────────────────────────────────────
 
   async _apiCall(method, body = {}) {
@@ -738,7 +746,7 @@ class TelegramBot {
     const agentKey = agentKeyOverride || this.defaultAgent;
     const agent    = this._agents ? this._agents.get(agentKey) : null;
     const command  = agent ? agent.command : agentKey === 'bash' ? null : agentKey;
-    const session  = this._sessionManager.create({ type: 'pty', command, cols: 80, rows: 24 });
+    const session  = this._sessionManager.create({ type: 'pty', command, cols: 80, rows: 24, cwd: chat.monitorCwd || process.env.HOME });
     chat.sessionId = session.id;
     return session;
   }

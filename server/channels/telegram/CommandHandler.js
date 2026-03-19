@@ -118,8 +118,7 @@ class CommandHandler {
       case 'reset':
       case 'clear': {
         if (bot._isClaudeBased()) {
-          const model = chat.claudeSession?.model || null;
-          chat.claudeSession = new ClaudePrintSession({ model, permissionMode: chat.claudeMode || 'ask' });
+          chat.claudeSession = new ClaudePrintSession(bot._claudeSessionOpts(chat));
           await bot.sendWithButtons(chatId,
             `✅ Nueva conversación *${bot.defaultAgent}* iniciada (\`${chat.claudeSession.id.slice(0,8)}…\`)`,
             [[{ text: '🤖 Menú', callback_data: 'menu' }]]
@@ -218,7 +217,7 @@ class CommandHandler {
           );
         } else {
           const nuevoModelo = args[0];
-          chat.claudeSession = new ClaudePrintSession({ model: nuevoModelo, permissionMode: chat.claudeMode || 'ask' });
+          chat.claudeSession = new ClaudePrintSession({ ...bot._claudeSessionOpts(chat), model: nuevoModelo });
           await bot.sendText(chatId, `✅ Modelo cambiado a \`${nuevoModelo}\`\nNueva sesión iniciada (\`${chat.claudeSession.id.slice(0,8)}…\`).`);
         }
         break;
@@ -399,18 +398,35 @@ class CommandHandler {
       }
 
       // ── Directorio ────────────────────────────────────────────────────────
+      case 'cd': {
+        const target = args.join(' ').trim() || process.env.HOME;
+        const resolved = target === '~' ? process.env.HOME
+          : target.startsWith('/') ? target
+          : path.resolve(chat.monitorCwd || process.env.HOME, target);
+        try {
+          const stat = fs.statSync(resolved);
+          if (!stat.isDirectory()) throw new Error('no es un directorio');
+          chat.monitorCwd = resolved;
+          const short = resolved.replace(process.env.HOME, '~');
+          await bot.sendText(chatId, `📁 Directorio cambiado a \`${short}\``);
+        } catch (err) {
+          await bot.sendText(chatId, `❌ cd: ${err.message}`);
+        }
+        break;
+      }
+
       case 'dir':
       case 'pwd':
       case 'cwd':
       case 'directorio': {
-        const sessionCwd = bot._isClaudeBased() && chat.claudeSession
-          ? chat.claudeSession.cwd : null;
         const monitorCwd = chat.monitorCwd || process.env.HOME;
-        await bot.sendText(chatId,
-          `📁 *Directorio de trabajo*\n\n` +
-          `Sesión Claude: \`${sessionCwd || 'sin sesión activa'}\`\n` +
-          `Monitor: \`${monitorCwd}\``
-        );
+        const short = monitorCwd.replace(process.env.HOME, '~');
+        let lines = `📁 *Directorio de trabajo*: \`${short}\``;
+        if (bot._isClaudeBased() && chat.claudeSession && chat.claudeSession.cwd !== monitorCwd) {
+          const sesShort = chat.claudeSession.cwd.replace(process.env.HOME, '~');
+          lines += `\n⚠️ Sesión Claude usa \`${sesShort}\` (se actualizará al resetear)`;
+        }
+        await bot.sendText(chatId, lines);
         break;
       }
 
@@ -440,7 +456,7 @@ class CommandHandler {
       case 'basta': {
         const prevKey = chat.activeAgent?.key;
         chat.activeAgent = null;
-        chat.claudeSession = new ClaudePrintSession({ permissionMode: chat.claudeMode || 'ask' });
+        chat.claudeSession = new ClaudePrintSession({ ...bot._claudeSessionOpts(chat), model: null });
         await bot.sendText(chatId, prevKey
           ? `✅ Agente *${prevKey}* desactivado. Claude normal restaurado.`
           : 'No había agente activo.');
@@ -898,7 +914,7 @@ class CommandHandler {
         // Detectar /{key} de agente con prompt de rol
         const agentDef = this.agents.get(cmd);
         if (agentDef?.prompt) {
-          chat.claudeSession = new ClaudePrintSession({ permissionMode: chat.claudeMode || 'ask' });
+          chat.claudeSession = new ClaudePrintSession(bot._claudeSessionOpts(chat));
           chat.activeAgent = { key: agentDef.key, prompt: agentDef.prompt };
           const fullPrompt = this.skills.buildAgentPrompt(agentDef);
           await bot._sendToSession(chatId, fullPrompt, chat);
