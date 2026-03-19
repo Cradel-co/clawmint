@@ -775,6 +775,7 @@ class CommandHandler {
           }
           chat.claudeMode = modo;
           if (chat.claudeSession) chat.claudeSession.permissionMode = modo;
+          if (this.chatSettings) this.chatSettings.saveMode(bot.key, chatId, modo);
           await bot.sendText(chatId, `✅ Modo de permisos cambiado a \`${modo}\``);
         }
         break;
@@ -845,6 +846,7 @@ class CommandHandler {
           }
           chat.claudeMode = newMode;
           if (chat.claudeSession) chat.claudeSession.permissionMode = newMode;
+          if (this.chatSettings) this.chatSettings.saveMode(bot.key, chatId, newMode);
           const labels = { auto: '⚡ auto-accept', ask: '❓ ask', plan: '📋 plan' };
           await bot.sendText(chatId,
             `✅ Modo cambiado a *${labels[newMode]}*\n` +

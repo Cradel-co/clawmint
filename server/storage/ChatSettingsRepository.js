@@ -21,6 +21,7 @@ class ChatSettingsRepository {
     `ALTER TABLE chat_settings ADD COLUMN cwd TEXT`,
     `ALTER TABLE chat_settings ADD COLUMN claude_session_id TEXT`,
     `ALTER TABLE chat_settings ADD COLUMN message_count INTEGER DEFAULT 0`,
+    `ALTER TABLE chat_settings ADD COLUMN claude_mode TEXT DEFAULT 'ask'`,
   ];
 
   constructor(db) {
@@ -44,7 +45,7 @@ class ChatSettingsRepository {
   load(botKey, chatId) {
     if (!this._db) return null;
     return this._db.prepare(
-      'SELECT provider, model, cwd, claude_session_id, message_count FROM chat_settings WHERE bot_key = ? AND chat_id = ?'
+      'SELECT provider, model, cwd, claude_session_id, message_count, claude_mode FROM chat_settings WHERE bot_key = ? AND chat_id = ?'
     ).get(String(botKey), String(chatId)) || null;
   }
 
@@ -90,6 +91,18 @@ class ChatSettingsRepository {
         message_count     = excluded.message_count,
         cwd               = excluded.cwd
     `).run(String(botKey), String(chatId), claudeSessionId ?? null, messageCount ?? 0, cwd ?? null);
+  }
+
+  /**
+   * Persiste el modo de permisos de Claude (ask/auto/plan).
+   */
+  saveMode(botKey, chatId, mode) {
+    if (!this._db) return;
+    this._db.prepare(`
+      INSERT INTO chat_settings (bot_key, chat_id, provider, claude_mode)
+      VALUES (?, ?, 'claude-code', ?)
+      ON CONFLICT(bot_key, chat_id) DO UPDATE SET claude_mode = excluded.claude_mode
+    `).run(String(botKey), String(chatId), mode);
   }
 
   /**
