@@ -26,6 +26,7 @@ class CommandHandler {
     providers    = null,
     providerConfig = null,
     transcriber  = null,
+    tts          = null,
     chatSettings = null,
     logger       = console,
   }) {
@@ -39,6 +40,7 @@ class CommandHandler {
     this.providers     = providers;
     this.providerConfig = providerConfig;
     this.transcriber   = transcriber;
+    this.tts           = tts;
     this.chatSettings  = chatSettings;
     this.logger        = logger;
   }
@@ -96,6 +98,22 @@ class CommandHandler {
     }
 
     return { text, buttons: [modelButtons, ...langRows] };
+  }
+
+  _buildTtsUI() {
+    const enabled = this.tts.isEnabled();
+    const cfg = this.tts.getConfig();
+    const dtypeInfo = cfg.loadedDtype ? ` (${cfg.loadedDtype})` : '';
+    const text =
+      `🔊 *TTS — Text-to-Speech*\n\n` +
+      `• Estado: ${enabled ? '✅ Activado' : '❌ Desactivado'}\n` +
+      `• Modelo: \`${cfg.model}\`${dtypeInfo}\n` +
+      `• Máx texto: \`${cfg.maxTextLength}\` chars`;
+    const buttons = [[{
+      text: enabled ? '🔇 Desactivar' : '🔊 Activar',
+      callback_data: 'tts:toggle',
+    }]];
+    return { text, buttons };
   }
 
   /**
@@ -529,6 +547,7 @@ class CommandHandler {
           `/status-vps — CPU, RAM y disco\n\n` +
           `*Audio:*\n` +
           `/whisper [modelo|idioma] — ver/cambiar modelo Whisper\n` +
+          `/tts [on|off] — text-to-speech (on/off)\n` +
           `🎙️ Enviá un audio de voz y se transcribe automáticamente\n\n` +
           `*Bot:*\n` +
           `/agente [key] — ver/cambiar agente\n` +
@@ -919,6 +938,28 @@ class CommandHandler {
               `Modelos: ${VALID_MODELS.map(m => `\`${m}\``).join(', ')}\n` +
               `Idiomas: ${VALID_LANGUAGES.map(l => `\`${l}\``).join(', ')}`
             );
+          }
+        }
+        break;
+      }
+
+      // ── TTS ────────────────────────────────────────────────────────────
+      case 'tts': {
+        if (!this.tts) { await bot.sendText(chatId, '❌ Módulo TTS no disponible.'); break; }
+
+        if (args.length === 0) {
+          const { text, buttons } = this._buildTtsUI();
+          await bot.sendWithButtons(chatId, text, buttons);
+        } else {
+          const val = args[0].toLowerCase();
+          if (val === 'on') {
+            this.tts.enable();
+            await bot.sendText(chatId, '✅ TTS activado. Las respuestas se enviarán también como audio.');
+          } else if (val === 'off') {
+            this.tts.disable();
+            await bot.sendText(chatId, '✅ TTS desactivado.');
+          } else {
+            await bot.sendText(chatId, '❌ Uso: `/tts` (ver estado) | `/tts on` | `/tts off`');
           }
         }
         break;

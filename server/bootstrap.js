@@ -71,6 +71,31 @@ function createContainer() {
     transcriber.preload();
   } catch {}
 
+  let tts = { synthesize: async () => null, isEnabled: () => false };
+  try {
+    const t = require('./tts');
+    tts = t;
+    if (t.isEnabled()) t.preload();
+  } catch {}
+
+  let voiceProviders = null;
+  try { voiceProviders = require('./voice-providers'); } catch {}
+
+  let ttsConfig = null;
+  try { ttsConfig = require('./tts-config'); } catch {}
+
+  // Preload del voice provider activo (descarga binario + modelo al iniciar)
+  if (voiceProviders && ttsConfig && ttsConfig.enabled && ttsConfig.default) {
+    try {
+      const activeVP = voiceProviders.get(ttsConfig.default);
+      if (activeVP && typeof activeVP.preload === 'function') {
+        activeVP.preload();
+      }
+    } catch (e) {
+      logger.warn('[bootstrap] voice-provider preload falló:', e.message);
+    }
+  }
+
   let mcps = null;
   try { mcps = require('./mcps'); } catch {}
 
@@ -105,6 +130,9 @@ function createContainer() {
     providerConfig,
     eventBus,
     transcriber,
+    tts,
+    voiceProviders,
+    ttsConfig,
     logger,
   });
 
@@ -128,6 +156,9 @@ function createContainer() {
     providerConfig,
     mcps,
     transcriber,
+    tts,
+    voiceProviders,
+    ttsConfig,
   };
 
   return _container;
