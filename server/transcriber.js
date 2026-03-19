@@ -26,10 +26,6 @@ const DEFAULTS = {
 // Cargar config persistida al iniciar
 try {
   const saved = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-  // Normalizar modelo: si solo dice "medium", convertir a "Xenova/whisper-medium"
-  if (saved.model && !saved.model.includes('/')) {
-    saved.model = `Xenova/whisper-${saved.model}`;
-  }
   Object.assign(DEFAULTS, saved);
 } catch {}
 

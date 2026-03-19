@@ -65,10 +65,11 @@ function createContainer() {
   try { providers     = require('./providers');      } catch {}
   try { providerConfig = require('./provider-config'); } catch {}
 
-  let transcriber = null;
+  let transcriber = { httpsDownload: null, transcribe: null };
   try {
-    transcriber = require('./transcriber');
-    transcriber.preload();
+    const t = require('./transcriber');
+    transcriber = { httpsDownload: t.httpsDownload, transcribe: t.transcribe };
+    t.preload();
   } catch {}
 
   let mcps = null;
