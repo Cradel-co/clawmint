@@ -14,7 +14,7 @@ Terminal en tiempo real accesible desde el navegador y Telegram. Combina PTY vir
 - **Runtime:** Node.js 22+ (CommonJS, `'use strict'`)
 - **Server:** Express 4 + `ws` + `node-pty`
 - **Client:** React 18 + Vite + xterm.js
-- **IA:** Anthropic SDK + `claude -p` (CLI) + Grok (xAI) + Ollama (local)
+- **IA:** Anthropic SDK + `claude -p` (CLI) + Gemini + OpenAI + Grok (xAI) + Ollama (local)
 - **TTS:** Edge TTS, Piper TTS, SpeechT5, ElevenLabs, OpenAI TTS, Google TTS
 - **Persistencia:** SQLite via sql.js (WASM) + JSON planos (`agents.json`, `bots.json`)
 - **Mensajería:** Telegram Bot API (long polling)
@@ -25,40 +25,63 @@ Terminal en tiempo real accesible desde el navegador y Telegram. Combina PTY vir
 ```
 clawmint/
 ├── server/
-│   ├── index.js              # HTTP, WebSocket, rutas REST (puerto 3002)
-│   ├── bootstrap.js          # Inicialización de módulos (Telegram, TTS, etc.)
-│   ├── sessionManager.js     # PtySession + pool de sesiones
+│   ├── index.js                # HTTP, WebSocket, rutas REST (puerto 3002)
+│   ├── bootstrap.js            # Inicialización de módulos (Telegram, TTS, etc.)
+│   ├── sessionManager.js       # PtySession + pool de sesiones
 │   ├── channels/
+│   │   ├── BaseChannel.js      # Clase base para canales de mensajería
 │   │   └── telegram/
-│   │       ├── TelegramChannel.js   # TelegramBot + manejo de mensajes
-│   │       ├── CommandHandler.js    # Comandos /start, /cd, /consola, etc.
-│   │       └── CallbackHandler.js   # Callbacks de botones inline
-│   ├── services/
-│   │   └── ConversationService.js   # Lógica de conversación con IA
-│   ├── providers/
-│   │   ├── index.js          # Registry de proveedores
-│   │   ├── grok.js           # Provider Grok (xAI)
-│   │   └── ollama.js         # Provider Ollama (local)
-│   ├── voice-providers/
-│   │   ├── index.js          # Registry de proveedores TTS
-│   │   ├── edge-tts.js       # Microsoft Edge TTS
-│   │   ├── piper-tts.js      # Piper TTS (offline, español nativo)
-│   │   ├── speecht5.js       # SpeechT5 (@huggingface/transformers)
-│   │   ├── elevenlabs.js     # ElevenLabs API
-│   │   ├── openai-tts.js     # OpenAI TTS API
-│   │   └── google-tts.js     # Google Cloud TTS
-│   ├── storage/
-│   │   └── sqlite-wrapper.js # Wrapper sql.js compatible con better-sqlite3
+│   │       ├── TelegramChannel.js     # TelegramBot + manejo de mensajes
+│   │       ├── CommandHandler.js      # Comandos /start, /cd, /consola, etc.
+│   │       ├── CallbackHandler.js     # Callbacks de botones inline
+│   │       └── PendingActionHandler.js # Acciones pendientes (whitelist, etc.)
 │   ├── core/
-│   │   └── ClaudePrintSession.js # Sesión Claude CLI con persistencia
-│   ├── tts.js                # Módulo TTS central
-│   ├── tts-config.js         # Configuración de proveedores TTS
-│   ├── agents.js             # CRUD de agentes
-│   ├── skills.js             # Skills locales + búsqueda ClawHub
-│   ├── memory.js             # Memoria persistente por agente
-│   ├── transcriber.js        # Transcripción audio con Whisper
-│   ├── events.js             # EventEmitter global
-│   └── ecosystem.config.js   # Configuración PM2
+│   │   ├── ClaudePrintSession.js # Sesión Claude CLI con persistencia
+│   │   ├── ConsoleSession.js     # Sesión de consola bash
+│   │   ├── EventBus.js           # Bus de eventos centralizado
+│   │   ├── Logger.js             # Logger con niveles y archivo
+│   │   └── systemStats.js        # Stats del sistema (CPU, RAM, uptime)
+│   ├── services/
+│   │   └── ConversationService.js # Lógica de conversación con IA
+│   ├── providers/
+│   │   ├── index.js             # Registry de proveedores IA
+│   │   ├── anthropic.js         # Anthropic SDK directo
+│   │   ├── claude-code.js       # Claude Code CLI (claude -p)
+│   │   ├── gemini.js            # Google Gemini
+│   │   ├── openai.js            # OpenAI ChatGPT
+│   │   ├── grok.js              # Grok (xAI)
+│   │   └── ollama.js            # Ollama (modelos locales)
+│   ├── voice-providers/
+│   │   ├── index.js             # Registry de proveedores TTS
+│   │   ├── edge-tts.js          # Microsoft Edge TTS (offline)
+│   │   ├── piper-tts.js         # Piper TTS (offline, español nativo)
+│   │   ├── speecht5.js          # SpeechT5 (@huggingface/transformers)
+│   │   ├── elevenlabs.js        # ElevenLabs API
+│   │   ├── openai-tts.js        # OpenAI TTS API
+│   │   └── google-tts.js        # Google Cloud TTS
+│   ├── storage/
+│   │   ├── sqlite-wrapper.js    # Wrapper sql.js compatible con better-sqlite3
+│   │   ├── DatabaseProvider.js  # Inicialización y acceso a la DB
+│   │   ├── ChatSettingsRepository.js # Persistencia: provider, cwd, sesión, modo
+│   │   └── BotsRepository.js    # Persistencia de configuración de bots
+│   ├── mcp/
+│   │   ├── index.js             # Router MCP (herramientas expuestas)
+│   │   └── ShellSession.js      # Sesión shell para MCP
+│   ├── mcps.js                  # Gestión de servidores MCP externos
+│   ├── tts.js                   # Módulo TTS central
+│   ├── tts-config.js            # Configuración de proveedores TTS
+│   ├── agents.js                # CRUD de agentes
+│   ├── skills.js                # Skills locales + búsqueda ClawHub
+│   ├── memory.js                # Memoria persistente por agente (SQLite)
+│   ├── memory-consolidator.js   # Consolidación periódica de memoria
+│   ├── embeddings.js            # Embeddings para búsqueda semántica
+│   ├── tools.js                 # Herramientas disponibles para agentes
+│   ├── reminders.js             # Recordatorios/alarmas programadas
+│   ├── transcriber.js           # Transcripción audio con Whisper
+│   ├── provider-config.js       # Configuración de proveedores IA
+│   ├── events.js                # EventEmitter global (legacy)
+│   ├── ecosystem.config.js      # Configuración PM2
+│   └── test/                    # Tests unitarios
 └── client/
     └── src/
         ├── App.jsx
@@ -103,9 +126,12 @@ pm2 save             # guardar estado para auto-arranque
   - La DB vive en memoria y se auto-persiste a disco con debounce de 500ms.
   - La inicialización es async (`await Database.initialize()` en `memory.initDBAsync()`).
 - **spawn de `claude` CLI** usa `shell: true` en Windows (`process.platform === 'win32'`) para resolver `.cmd`.
-- **Persistencia de sesión Claude**: se guarda `claudeSessionId`, `messageCount` y `cwd` en SQLite. Al reiniciar el servidor, se restaura la sesión con `--resume`. Si `--resume` falla, se reintenta como nueva sesión automáticamente.
+- **Persistencia de sesión Claude**: se guarda `claudeSessionId`, `messageCount`, `cwd` y `claudeMode` en SQLite. Al reiniciar el servidor, se restaura la sesión con `--resume`. Si `--resume` falla, se reintenta como nueva sesión automáticamente.
+- **Persistencia de modo de permisos**: `claudeMode` (`ask`/`auto`/`plan`) se guarda en `chat_settings` y se restaura al reconectar.
 - **TTS multi-proveedor**: configurado en `tts-config.js`/`tts-config.json`. Cada proveedor implementa `synthesize(text, opts)` → `Buffer`. Edge TTS y Piper funcionan offline.
-- **PM2**: el servidor se gestiona con PM2 en producción. `ecosystem.config.js` carga `.env` automáticamente y usa `--stack-size=65536`.
+- **Providers IA**: 6 proveedores (Anthropic, Claude Code, Gemini, OpenAI, Grok, Ollama). Cada uno implementa `sendMessage(messages, opts)` con streaming. Se seleccionan por chat desde Telegram.
+- **MCP**: servidor MCP integrado (`mcp/index.js`) que expone herramientas del sistema. `mcps.js` gestiona conexiones a MCPs externos.
+- **PM2**: el servidor se gestiona con PM2 en producción. `ecosystem.config.js` carga `.env` automáticamente y usa `--stack-size=65536`. Auto-arranque con systemd.
 
 ## Arquitectura detallada
 
