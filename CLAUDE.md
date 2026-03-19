@@ -14,23 +14,51 @@ Terminal en tiempo real accesible desde el navegador y Telegram. Combina PTY vir
 - **Runtime:** Node.js 22+ (CommonJS, `'use strict'`)
 - **Server:** Express 4 + `ws` + `node-pty`
 - **Client:** React 18 + Vite + xterm.js
-- **IA:** Anthropic SDK + `claude -p` (CLI)
+- **IA:** Anthropic SDK + `claude -p` (CLI) + Grok (xAI) + Ollama (local)
+- **TTS:** Edge TTS, Piper TTS, SpeechT5, ElevenLabs, OpenAI TTS, Google TTS
 - **Persistencia:** SQLite via sql.js (WASM) + JSON planos (`agents.json`, `bots.json`)
 - **Mensajería:** Telegram Bot API (long polling)
+- **Procesos:** PM2 (auto-restart, logs, monitoreo)
 
 ## Estructura
 
 ```
 clawmint/
 ├── server/
-│   ├── index.js          # HTTP, WebSocket, rutas REST (puerto 3001)
-│   ├── sessionManager.js # PtySession + pool de sesiones
-│   ├── telegram.js       # TelegramBot + ClaudePrintSession
-│   ├── agents.js         # CRUD de agentes
-│   ├── skills.js         # Skills locales + búsqueda ClawHub
-│   ├── memory.js         # Memoria persistente por agente
-│   ├── transcriber.js    # Transcripción audio con faster-whisper
-│   └── events.js         # EventEmitter global
+│   ├── index.js              # HTTP, WebSocket, rutas REST (puerto 3002)
+│   ├── bootstrap.js          # Inicialización de módulos (Telegram, TTS, etc.)
+│   ├── sessionManager.js     # PtySession + pool de sesiones
+│   ├── channels/
+│   │   └── telegram/
+│   │       ├── TelegramChannel.js   # TelegramBot + manejo de mensajes
+│   │       ├── CommandHandler.js    # Comandos /start, /cd, /consola, etc.
+│   │       └── CallbackHandler.js   # Callbacks de botones inline
+│   ├── services/
+│   │   └── ConversationService.js   # Lógica de conversación con IA
+│   ├── providers/
+│   │   ├── index.js          # Registry de proveedores
+│   │   ├── grok.js           # Provider Grok (xAI)
+│   │   └── ollama.js         # Provider Ollama (local)
+│   ├── voice-providers/
+│   │   ├── index.js          # Registry de proveedores TTS
+│   │   ├── edge-tts.js       # Microsoft Edge TTS
+│   │   ├── piper-tts.js      # Piper TTS (offline, español nativo)
+│   │   ├── speecht5.js       # SpeechT5 (@huggingface/transformers)
+│   │   ├── elevenlabs.js     # ElevenLabs API
+│   │   ├── openai-tts.js     # OpenAI TTS API
+│   │   └── google-tts.js     # Google Cloud TTS
+│   ├── storage/
+│   │   └── sqlite-wrapper.js # Wrapper sql.js compatible con better-sqlite3
+│   ├── core/
+│   │   └── ClaudePrintSession.js # Sesión Claude CLI con persistencia
+│   ├── tts.js                # Módulo TTS central
+│   ├── tts-config.js         # Configuración de proveedores TTS
+│   ├── agents.js             # CRUD de agentes
+│   ├── skills.js             # Skills locales + búsqueda ClawHub
+│   ├── memory.js             # Memoria persistente por agente
+│   ├── transcriber.js        # Transcripción audio con Whisper
+│   ├── events.js             # EventEmitter global
+│   └── ecosystem.config.js   # Configuración PM2
 └── client/
     └── src/
         ├── App.jsx
@@ -38,17 +66,29 @@ clawmint/
             ├── TerminalPanel.jsx
             ├── TabBar.jsx
             ├── AgentsPanel.jsx
+            ├── ProvidersPanel.jsx
+            ├── CommandBar.jsx
             └── TelegramPanel.jsx
 ```
 
 ## Comandos
 
 ```bash
-# Server
-cd server && npm install && npm start  # http://localhost:3001
+# Server (desarrollo)
+cd server && npm install && npm start  # http://localhost:3002
+
+# Server (producción con PM2)
+cd server && pm2 start ecosystem.config.js  # auto-restart, logs en ~/.pm2/logs/
 
 # Client
 cd client && npm install && npm run dev  # http://localhost:5173
+
+# PM2 útil
+pm2 logs clawmint    # ver logs en vivo
+pm2 restart clawmint # reiniciar
+pm2 stop clawmint    # parar
+pm2 status           # estado
+pm2 save             # guardar estado para auto-arranque
 ```
 
 ## Convenciones
@@ -63,7 +103,10 @@ cd client && npm install && npm run dev  # http://localhost:5173
   - La DB vive en memoria y se auto-persiste a disco con debounce de 500ms.
   - La inicialización es async (`await Database.initialize()` en `memory.initDBAsync()`).
 - **spawn de `claude` CLI** usa `shell: true` en Windows (`process.platform === 'win32'`) para resolver `.cmd`.
+- **Persistencia de sesión Claude**: se guarda `claudeSessionId`, `messageCount` y `cwd` en SQLite. Al reiniciar el servidor, se restaura la sesión con `--resume`. Si `--resume` falla, se reintenta como nueva sesión automáticamente.
+- **TTS multi-proveedor**: configurado en `tts-config.js`/`tts-config.json`. Cada proveedor implementa `synthesize(text, opts)` → `Buffer`. Edge TTS y Piper funcionan offline.
+- **PM2**: el servidor se gestiona con PM2 en producción. `ecosystem.config.js` carga `.env` automáticamente y usa `--stack-size=65536`.
 
 ## Arquitectura detallada
 
-Ver `ARQUITECTURA.md` para documentación completa de módulos, API REST, protocolo WebSocket, plan multi-proveedor y notas de implementación.
+Ver `implementar/ARQUITECTURA.md` para documentación completa de módulos, API REST, protocolo WebSocket, plan multi-proveedor y notas de implementación.
