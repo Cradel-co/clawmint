@@ -42,7 +42,13 @@
       "Bash(npm search:*)",
       "Bash(npm uninstall:*)",
       "Bash(pm2 stop:*)",
-      "Bash(npx kill-port:*)"
+      "Bash(npx kill-port:*)",
+      "Bash(ls:*)",
+      "Bash(tar -tf \"C:\\\\Users\\\\padil\\\\Documents\\\\wsl\\\\terminal-live\\\\server\\\\voice-providers\\\\piper\\\\piper_windows_amd64.zip\")",
+      "Bash(tar -tf \"C:/Users/padil/Documents/wsl/terminal-live/server/voice-providers/piper/piper_windows_amd64.zip\")",
+      "Bash(tar -tf piper_windows_amd64.zip)",
+      "Bash(unzip -l piper_windows_amd64.zip)",
+      "Bash(git fetch:*)"
     ]
   }
 }

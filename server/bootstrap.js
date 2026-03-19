@@ -85,6 +85,18 @@ function createContainer() {
   let ttsConfig = null;
   try { ttsConfig = require('./tts-config'); } catch {}
 
+  // Preload del voice provider activo (descarga binario + modelo al iniciar)
+  if (voiceProviders && ttsConfig && ttsConfig.enabled && ttsConfig.default) {
+    try {
+      const activeVP = voiceProviders.get(ttsConfig.default);
+      if (activeVP && typeof activeVP.preload === 'function') {
+        activeVP.preload();
+      }
+    } catch (e) {
+      logger.warn('[bootstrap] voice-provider preload falló:', e.message);
+    }
+  }
+
   let mcps = null;
   try { mcps = require('./mcps'); } catch {}
 

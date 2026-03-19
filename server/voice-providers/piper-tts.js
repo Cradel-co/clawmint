@@ -36,6 +36,8 @@ const DEFAULT_VOICE = 'es_MX-claude-medium';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+let _setupPromise = null;
+
 function _ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
@@ -49,23 +51,24 @@ async function _download(url, dest) {
   console.log(`[tts:piper] Descargado ${path.basename(dest)} (${(buf.length / 1024 / 1024).toFixed(1)}MB)`);
 }
 
-async function _ensureBinary() {
+async function _ensureBinaryImpl() {
   if (fs.existsSync(PIPER_BIN)) return;
-  _ensureDir(PIPER_DIR);
 
-  const archivePath = path.join(PIPER_DIR, PIPER_ARCHIVE);
+  const parentDir = path.dirname(PIPER_DIR);
+  const archivePath = path.join(parentDir, PIPER_ARCHIVE);
   await _download(`${PIPER_RELEASE_BASE}/${PIPER_ARCHIVE}`, archivePath);
 
   console.log(`[tts:piper] Extrayendo binario...`);
   if (IS_WIN) {
-    // Usar tar que viene con Windows 10+
-    const proc = spawn('tar', ['-xf', archivePath, '-C', PIPER_DIR, '--strip-components=1'], { stdio: 'pipe' });
+    // unzip disponible en Git Bash; zip contiene piper/ como raíz → extraer al parent
+    const proc = spawn('unzip', ['-o', archivePath, '-d', parentDir], { stdio: 'pipe' });
     await new Promise((resolve, reject) => {
-      proc.on('close', code => code === 0 ? resolve() : reject(new Error(`tar exit ${code}`)));
+      proc.on('close', code => code === 0 ? resolve() : reject(new Error(`unzip exit ${code}`)));
       proc.on('error', reject);
     });
   } else {
-    const proc = spawn('tar', ['-xzf', archivePath, '-C', PIPER_DIR, '--strip-components=1'], { stdio: 'pipe' });
+    // .tar.gz nativo en Linux; contiene piper/ como raíz → extraer al parent
+    const proc = spawn('tar', ['-xzf', archivePath, '-C', parentDir], { stdio: 'pipe' });
     await new Promise((resolve, reject) => {
       proc.on('close', code => code === 0 ? resolve() : reject(new Error(`tar exit ${code}`)));
       proc.on('error', reject);
@@ -73,9 +76,19 @@ async function _ensureBinary() {
     fs.chmodSync(PIPER_BIN, 0o755);
   }
 
-  // Limpiar archivo
+  // Limpiar archivo descargado
   try { fs.unlinkSync(archivePath); } catch {}
-  console.log(`[tts:piper] Binario listo`);
+  console.log(`[tts:piper] Binario listo en ${PIPER_DIR}`);
+}
+
+function _ensureBinary() {
+  if (!_setupPromise) {
+    _setupPromise = _ensureBinaryImpl().catch(err => {
+      _setupPromise = null; // permitir reintentos si falla
+      throw err;
+    });
+  }
+  return _setupPromise;
 }
 
 async function _ensureModel(voiceName) {

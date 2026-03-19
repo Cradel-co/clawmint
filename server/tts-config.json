@@ -1,0 +1,33 @@
+{
+  "enabled": true,
+  "default": "piper-tts",
+  "providers": {
+    "speecht5": {
+      "voice": null,
+      "model": "Xenova/speecht5_tts"
+    },
+    "openai-tts": {
+      "apiKey": "",
+      "voice": "nova",
+      "model": "tts-1"
+    },
+    "elevenlabs": {
+      "apiKey": "",
+      "voice": "rachel",
+      "model": "eleven_multilingual_v2"
+    },
+    "google-tts": {
+      "apiKey": "",
+      "voice": "es-US-Standard-A",
+      "model": "standard"
+    },
+    "edge-tts": {
+      "voice": "es-AR-ElenaNeural",
+      "model": "default"
+    },
+    "piper-tts": {
+      "voice": "es_MX-claude-medium",
+      "model": "medium"
+    }
+  }
+}
