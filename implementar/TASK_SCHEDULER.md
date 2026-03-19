@@ -1,6 +1,8 @@
 # Sistema de Tareas en Background — Task Scheduler
 
-> Diseño completo para `terminal-live/server`. Tareas persistentes en JSON que corren en segundo plano y notifican por Telegram sin depender de sesiones activas.
+> Diseño completo para Clawmint. Tareas persistentes en JSON que corren en segundo plano y notifican por Telegram sin depender de sesiones activas.
+>
+> **Estado (2026-03-19):** NO IMPLEMENTADO. No existe `scheduler.js`, `tasks.json` ni `runners/`. Existe `server/reminders.js` que implementa recordatorios simples por Telegram (`/recordar`, `/recordatorios`), pero no es un task scheduler completo. Este plan sigue siendo válido como roadmap.
 
 ---
 

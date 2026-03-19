@@ -2,6 +2,14 @@
 
 Análisis basado en comparación directa con OpenClaw (marzo 2026).
 
+> **Estado (2026-03-19):**
+> - **#1 Multi-canal:** ⚠️ Infraestructura creada (`channels/BaseChannel.js` + `channels/telegram/`), pero solo Telegram implementado.
+> - **#2 Browser CDP:** ❌ Sin implementar.
+> - **#3 Cron/tareas:** ❌ Sin implementar (existe `reminders.js` como versión simple).
+> - **#4 Canvas HTML:** ❌ Sin implementar.
+> - **#5 Voz:** ✅ IMPLEMENTADO. Whisper transcripción + 6 proveedores TTS (Edge, Piper, SpeechT5, ElevenLabs, OpenAI, Google). Integrado en Telegram.
+> - **#6 Seguridad DM:** ❌ Sin implementar (sigue con whitelist estática).
+
 ---
 
 ## 🔴 Alta prioridad
@@ -17,7 +25,7 @@ Canales a añadir por orden de demanda:
 - [ ] WhatsApp (whatsapp-web.js o Baileys — requiere sesión QR)
 - [ ] Slack (Bolt SDK)
 
-**Archivos afectados:** `server/telegram.js` → refactor a `server/channels/telegram.js`, nuevo `server/channelManager.js`
+**Archivos afectados:** Ya refactorizado: `server/channels/BaseChannel.js` + `server/channels/telegram/`. Falta implementar canales Discord, WhatsApp, Slack.
 
 ---
 
@@ -63,13 +71,15 @@ El frontend renderiza en un panel lateral o modal con iframe sandboxed.
 
 ## 🟢 Baja prioridad
 
-### 5. Voz (transcripción + síntesis)
+### 5. Voz (transcripción + síntesis) — ✅ IMPLEMENTADO
 OpenClaw tiene wake word y Talk Mode.
-Clawmint tiene transcripción Whisper parcial (solo en Telegram).
 
-**Enfoque sugerido:**
-- Transcripción: exponer `faster-whisper` vía API REST para uso desde browser también
-- Síntesis: integrar TTS (piper-tts local o ElevenLabs API)
+**Implementado en Clawmint:**
+- Transcripción: `server/transcriber.js` con Whisper (Xenova/whisper-medium)
+- Síntesis: 6 proveedores TTS en `server/voice-providers/` (Edge TTS, Piper, SpeechT5, ElevenLabs, OpenAI, Google)
+- Módulo central: `server/tts.js` + `server/tts-config.js`
+- Integración completa con Telegram
+- ⚠️ Falta: exposición vía WebSocket/REST para uso desde el browser
 
 ---
 
@@ -82,7 +92,7 @@ Clawmint usa whitelist estática.
 - Owner responde `/aprobar <código>` → se añade a whitelist automáticamente
 - Timeout configurable (ej. 10 min)
 
-**Archivos afectados:** `server/telegram.js`, `server/bots.json` (nuevo campo `pendingApprovals`)
+**Archivos afectados:** `server/channels/telegram/TelegramChannel.js`, `server/storage/BotsRepository.js`
 
 ---
 

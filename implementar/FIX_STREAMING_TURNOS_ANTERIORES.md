@@ -47,5 +47,4 @@ if (event.result && !fullText) fullText = event.result;
 
 ## Estado
 
-Este commit está en la rama local `main` pero **no se ha subido a GitHub**.
-Para publicarlo: `git push origin main`.
+✅ **IMPLEMENTADO y en producción.** Commit `a3d8fbc` mergeado a `main` y publicado en GitHub. La lógica ahora vive en `server/core/ClaudePrintSession.js` (refactorizado desde `telegram.js`).

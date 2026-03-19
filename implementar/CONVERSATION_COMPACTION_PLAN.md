@@ -1,5 +1,7 @@
 # Plan: Compactación de Conversaciones
 
+> **Estado (2026-03-19):** NO IMPLEMENTADO. Existe `memory-consolidator.js` que hace consolidación periódica de chunks de memoria cada 2 min, pero NO implementa compactación de conversaciones ni reinicio de sesión por umbral de tokens. Este plan sigue siendo válido como roadmap.
+
 ## El problema
 
 Las conversaciones largas acumulan tokens. A medida que crece el historial:

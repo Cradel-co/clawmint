@@ -1,5 +1,7 @@
 # Instalador multiplataforma con pkg
 
+> **Estado (2026-03-19):** NO IMPLEMENTADO. No existe configuración pkg en `package.json`, ni binarios, ni `build.sh`. El servidor se despliega con PM2 + systemd en producción. Este plan sigue siendo válido como roadmap para distribución.
+
 ## Objetivo
 
 Convertir Clawmint en un programa instalable como cualquier otro:

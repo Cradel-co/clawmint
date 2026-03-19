@@ -1,5 +1,11 @@
 # Plan: Sistema de Memoria con Grafo Obsidian-style
 
+> **Estado (2026-03-19):**
+> - **Fase 1 — IMPLEMENTADA:** `parseFrontmatter()`, `buildGraph()`, `searchByTags()`, schema SQLite con `notes`, `tags`, `note_tags`, `note_links`, endpoints `/api/memory/graph` y `/api/memory/:agentKey/search`. Todo en `server/memory.js`.
+> - **Fase 2 — NO IMPLEMENTADA:** Embeddings semánticos, prompt caching, decay de relevancia, tiering, anti-patrones con superficie proactiva.
+> - **Frontend — NO IMPLEMENTADO:** No existe `MemoryPanel.jsx` con grafo D3.
+> - **Nota:** Se usa `sql.js` (WASM) en vez de `better-sqlite3` como dice el plan original.
+
 ## Objetivo
 
 Reemplazar el sistema de memoria actual (archivos planos cargados completos en el system prompt)

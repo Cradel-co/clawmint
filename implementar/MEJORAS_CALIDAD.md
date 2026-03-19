@@ -1,6 +1,8 @@
-# Mejoras de calidad de respuesta — terminal-live/server
+# Mejoras de calidad de respuesta — Clawmint
 
 > Análisis realizado el 2026-03-15. Objetivo: mejorar calidad sin afectar eficiencia.
+>
+> **Estado (2026-03-19):** Ninguna de las 5 mejoras fue implementada. El sistema actual usa `ConversationService.js` como orquestador de IA que construye contexto con memoria + skills. Algunas ideas siguen siendo válidas, otras fueron superadas por la arquitectura actual.
 
 ---
 
@@ -181,12 +183,12 @@ function buildAgentPrompt(agentDef) {
 
 ## Resumen de prioridades
 
-| # | Mejora | Impacto calidad | Complejidad | Tokens |
-|---|--------|-----------------|-------------|--------|
-| 1 | `--system-prompt` en ClaudePrintSession | **Alta** | Baja | = (mismos datos) |
-| 2 | System prompt WS enriquecido | Media | Muy baja | +~30 |
-| 3 | Memoria en nueva sesión | Media | Muy baja | = |
-| 4 | `stableMs` adaptativo | Baja–Media | Muy baja | 0 |
-| 5 | Skills selectivos | Media | Media | ↓ reduce |
+| # | Mejora | Impacto | Complejidad | Estado |
+|---|--------|---------|-------------|--------|
+| 1 | `--system-prompt` en ClaudePrintSession | **Alta** | Baja | ❌ Sin implementar |
+| 2 | System prompt WS enriquecido | Media | Muy baja | ❌ Sin implementar |
+| 3 | Memoria en nueva sesión | Media | Muy baja | ⚠️ Parcial (`buildMemoryContext` existe) |
+| 4 | `stableMs` adaptativo | Baja–Media | Muy baja | ❌ Sin implementar |
+| 5 | Skills selectivos | Media | Media | ❌ Sin implementar |
 
-**Recomendación de orden de implementación:** 1 → 3 → 2 → 5 → 4
+**Nota:** Los archivos referenciados (`server/telegram.js`) han sido refactorizados. La lógica ahora vive en `ConversationService.js`, `ClaudePrintSession.js` (en `core/`) y `channels/telegram/`.
