@@ -521,8 +521,9 @@ class TelegramBot {
           messageCount:    saved.message_count,
           cwd:             saved.cwd || process.env.HOME,
           model:           saved.model || null,
+          permissionMode:  saved.claude_mode || 'ask',
         });
-        tdbg('init', `restored session ${saved.claude_session_id.slice(0,8)}… msgCount=${saved.message_count} cwd=${saved.cwd}`);
+        tdbg('init', `restored session ${saved.claude_session_id.slice(0,8)}… msgCount=${saved.message_count} cwd=${saved.cwd} mode=${saved.claude_mode || 'ask'}`);
       }
 
       chat = {
@@ -542,7 +543,7 @@ class TelegramBot {
         provider:       saved?.provider || 'claude-code',
         model:          saved?.model    || null,
         aiHistory:      [],
-        claudeMode:     'ask',
+        claudeMode:     saved?.claude_mode || 'ask',
         consoleMode:    false,
         lastButtonsMsgId: null,
       };

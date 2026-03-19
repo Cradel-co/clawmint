@@ -460,6 +460,7 @@ class CallbackHandler {
           messageCount:    saved.message_count,
           cwd:             saved.cwd || process.env.HOME,
           model:           saved.model || null,
+          permissionMode:  saved.claude_mode || 'ask',
         });
       }
 
@@ -480,7 +481,7 @@ class CallbackHandler {
         provider: saved?.provider || 'claude-code',
         model: saved?.model || null,
         aiHistory: [],
-        claudeMode: 'ask',
+        claudeMode: saved?.claude_mode || 'ask',
         consoleMode: false,
       };
       bot.chats.set(chatId, chat);
@@ -582,6 +583,7 @@ class CallbackHandler {
       if (['auto', 'ask', 'plan'].includes(newMode)) {
         chat.claudeMode = newMode;
         if (chat.claudeSession) chat.claudeSession.permissionMode = newMode;
+        if (this.chatSettings) this.chatSettings.saveMode(bot.key, chatId, newMode);
         const labels = { auto: '⚡ auto-accept', ask: '❓ ask', plan: '📋 plan' };
         await bot.sendText(chatId, `✅ Modo cambiado a *${labels[newMode]}*\n_Contexto preservado._`);
       }
