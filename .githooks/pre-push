@@ -1,0 +1,13 @@
+#!/bin/bash
+# Bloquear push directo a main — usar ramas + PR
+
+protected_branch="main"
+current_branch=$(git symbolic-ref HEAD 2>/dev/null | sed 's|refs/heads/||')
+
+if [ "$current_branch" = "$protected_branch" ]; then
+  echo "❌ Push directo a '$protected_branch' bloqueado."
+  echo "   Creá una rama, pusheá ahí y abrí un PR."
+  exit 1
+fi
+
+exit 0
