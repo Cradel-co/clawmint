@@ -6,6 +6,7 @@ const providers = {
   'gemini':      require('./gemini'),
   'openai':      require('./openai'),
   'grok':        require('./grok'),
+  'ollama':      require('./ollama'),
 };
 
 module.exports = {

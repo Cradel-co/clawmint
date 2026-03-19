@@ -62,6 +62,22 @@ export default function CommandBar({ onCommand, onClaude, onAI }) {
       return;
     }
 
+    // /grok [system] → Grok (xAI)
+    if (raw === '/grok' || raw.startsWith('/grok ')) {
+      const sys = raw.slice(5).trim();
+      if (onAI) onAI('grok', sys || null);
+      setValue('');
+      return;
+    }
+
+    // /ollama [system] → Ollama (local)
+    if (raw === '/ollama' || raw.startsWith('/ollama ')) {
+      const sys = raw.slice(7).trim();
+      if (onAI) onAI('ollama', sys || null);
+      setValue('');
+      return;
+    }
+
     // /cc — Claude Code PTY interactivo
     if (raw === '/cc') {
       onCommand('claude --dangerously-skip-permissions');
@@ -69,7 +85,7 @@ export default function CommandBar({ onCommand, onClaude, onAI }) {
       return;
     }
 
-    setError('Comandos: /new  /cmd <cmd>  /ai  /gemini  /openai  /cc');
+    setError('Comandos: /new  /cmd <cmd>  /ai  /gemini  /openai  /grok  /ollama  /cc');
   };
 
   return (
@@ -80,7 +96,7 @@ export default function CommandBar({ onCommand, onClaude, onAI }) {
         className="command-input"
         value={value.startsWith('/') ? value.slice(1) : value}
         onChange={(e) => setValue('/' + e.target.value)}
-        placeholder="new  |  cmd npm start  |  ai  |  gemini  |  openai  |  cc"
+        placeholder="new  |  cmd npm start  |  ai  |  gemini  |  openai  |  grok  |  ollama  |  cc"
         spellCheck={false}
         autoComplete="off"
       />

@@ -7,6 +7,8 @@ const PROVIDER_NAMES = {
   anthropic: 'Anthropic API',
   gemini: 'Google Gemini',
   openai: 'OpenAI',
+  grok: 'Grok (xAI)',
+  ollama: 'Ollama (local)',
 };
 
 export default function ProvidersPanel({ onClose }) {
@@ -105,13 +107,14 @@ export default function ProvidersPanel({ onClose }) {
               {p.label}
               <span style={{
                 padding: '1px 6px', borderRadius: 10, fontSize: 10,
-                background: p.configured ? '#1a3a1a' : '#3a1a1a',
-                color: p.configured ? '#7ec87e' : '#f38ba8',
+                background: (p.configured || p.name === 'ollama') ? '#1a3a1a' : '#3a1a1a',
+                color: (p.configured || p.name === 'ollama') ? '#7ec87e' : '#f38ba8',
               }}>
-                {p.configured ? '● configurado' : '○ sin key'}
+                {p.name === 'ollama' ? '● local' : p.configured ? '● configurado' : '○ sin key'}
               </span>
             </div>
 
+            {p.name !== 'ollama' && (<>
             <label style={{ fontSize: 11, color: '#6c7086', display: 'block', marginBottom: 3 }}>API Key</label>
             <input
               type="password"
@@ -120,6 +123,7 @@ export default function ProvidersPanel({ onClose }) {
               onChange={e => setKeys(k => ({ ...k, [p.name]: { ...k[p.name], apiKey: e.target.value } }))}
               style={{ width: '100%', marginBottom: 6, padding: '5px 8px', background: '#1e1e2e', color: '#cdd6f4', border: '1px solid #45475a', borderRadius: 4, fontSize: 12, boxSizing: 'border-box' }}
             />
+            </>)}
 
             <label style={{ fontSize: 11, color: '#6c7086', display: 'block', marginBottom: 3 }}>Modelo</label>
             <select

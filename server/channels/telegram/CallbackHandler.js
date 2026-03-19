@@ -9,7 +9,7 @@ const { getSystemStats }   = require('../../core/systemStats');
  *
  * Deps inyectadas:
  *   agents, skills, memory, reminders, mcps, consolidator,
- *   providers, providerConfig, chatSettings, logger
+ *   providers, providerConfig, chatSettings, voiceProviders, ttsConfig, logger
  */
 class CallbackHandler {
   constructor({
@@ -24,20 +24,24 @@ class CallbackHandler {
     chatSettings   = null,
     transcriber    = null,
     tts            = null,
+    voiceProviders = null,
+    ttsConfig      = null,
     logger         = console,
   }) {
-    this.agents        = agents;
-    this.skills        = skills;
-    this.memory        = memory;
-    this.reminders     = reminders;
-    this.mcps          = mcps;
-    this.consolidator  = consolidator;
-    this.providers     = providers;
+    this.agents         = agents;
+    this.skills         = skills;
+    this.memory         = memory;
+    this.reminders      = reminders;
+    this.mcps           = mcps;
+    this.consolidator   = consolidator;
+    this.providers      = providers;
     this.providerConfig = providerConfig;
-    this.chatSettings  = chatSettings;
-    this.transcriber   = transcriber;
-    this.tts           = tts;
-    this.logger        = logger;
+    this.chatSettings   = chatSettings;
+    this.transcriber    = transcriber;
+    this.tts            = tts;
+    this.voiceProviders = voiceProviders;
+    this.ttsConfig      = ttsConfig;
+    this.logger         = logger;
   }
 
   _getSystemStats() { return getSystemStats(); }
@@ -70,19 +74,51 @@ class CallbackHandler {
     return { text, buttons: [modelButtons, ...langRows] };
   }
 
-  _buildTtsUI() {
-    const enabled = this.tts.isEnabled();
-    const cfg = this.tts.getConfig();
-    const dtypeInfo = cfg.loadedDtype ? ` (${cfg.loadedDtype})` : '';
-    const text =
-      `🔊 *TTS — Text-to-Speech*\n\n` +
+  _buildVoiceUI() {
+    const ttsConfig = this.ttsConfig;
+    const voiceProviders = this.voiceProviders;
+    if (!ttsConfig || !voiceProviders) {
+      return { text: '🔊 *Voz* — módulo no disponible', buttons: [] };
+    }
+
+    const cfg     = ttsConfig.getConfig();
+    const enabled = cfg.enabled;
+    const current = cfg.default;
+    const provList = voiceProviders.list();
+    const currentProv = voiceProviders.get(current);
+    const provCfg = cfg.providers[current] || {};
+
+    let text =
+      `🔊 *Voz — Voice Providers*\n\n` +
       `• Estado: ${enabled ? '✅ Activado' : '❌ Desactivado'}\n` +
-      `• Modelo: \`${cfg.model}\`${dtypeInfo}\n` +
-      `• Máx texto: \`${cfg.maxTextLength}\` chars`;
-    const buttons = [[{
+      `• Provider: \`${currentProv.label}\`\n` +
+      `• Voz: \`${provCfg.voice || currentProv.defaultVoice || 'default'}\`\n` +
+      `• Modelo: \`${provCfg.model || currentProv.defaultModel}\``;
+
+    if (current === 'speecht5') {
+      const dtype = voiceProviders.get('speecht5').getLoadedDtype?.();
+      if (dtype) text += ` (${dtype})`;
+    }
+
+    const buttons = [];
+
+    // Toggle
+    buttons.push([{
       text: enabled ? '🔇 Desactivar' : '🔊 Activar',
-      callback_data: 'tts:toggle',
-    }]];
+      callback_data: 'voice:toggle',
+    }]);
+
+    // Lista de providers
+    const provButtons = provList.map(p => ({
+      text: `${current === p.name ? '✅ ' : ''}${p.label}`,
+      callback_data: `voice:provider:${p.name}`,
+    }));
+    // De a 2 por fila
+    for (let i = 0; i < provButtons.length; i += 2) {
+      buttons.push(provButtons.slice(i, i + 2));
+    }
+
+    buttons.push([{ text: '← Config', callback_data: 'menu:config' }]);
     return { text, buttons };
   }
 
@@ -291,7 +327,8 @@ class CallbackHandler {
         buttons: () => [
           [{ text: '🤖 Provider',  id: 'menu:config:provider'   },
            { text: '🧠 Modelo',    id: 'menu:config:modelo'     }],
-          [{ text: '👥 Whitelist', id: 'menu:config:whitelist'  }],
+          [{ text: '🔊 Voz',       id: 'menu:config:voz'        },
+           { text: '👥 Whitelist', id: 'menu:config:whitelist'  }],
           [{ text: '← Menú',       id: 'menu'                   }],
         ],
       },
@@ -354,6 +391,14 @@ class CallbackHandler {
               `🧠 *Modelo actual* (${provObj.label}): \`${current}\`\nElegí uno:`,
               modelButtons, msgId);
           }
+        },
+      },
+
+      // ── Voz (Voice Providers) ─────────────────────────────────────────────
+      'menu:config:voz': {
+        action: async ({ chatId, msgId, bot: b }) => {
+          const ui = this._buildVoiceUI();
+          await b.sendWithButtons(chatId, ui.text, ui.buttons, msgId);
         },
       },
 
@@ -578,12 +623,71 @@ class CallbackHandler {
     }
 
     if (data === 'tts:toggle' && this.tts) {
-      if (this.tts.isEnabled()) {
-        this.tts.disable();
+      if (this.tts.isEnabled()) { this.tts.disable(); } else { this.tts.enable(); }
+      const ui = this._buildVoiceUI();
+      await bot.sendWithButtons(chatId, ui.text, ui.buttons, msgId);
+      return;
+    }
+
+    if (data === 'voice:toggle' && this.ttsConfig) {
+      if (this.ttsConfig.isEnabled()) { this.ttsConfig.disable(); } else { this.ttsConfig.enable(); }
+      const ui = this._buildVoiceUI();
+      await bot.sendWithButtons(chatId, ui.text, ui.buttons, msgId);
+      return;
+    }
+
+    if (data.startsWith('voice:provider:') && this.ttsConfig && this.voiceProviders) {
+      const name = data.slice(15);
+      this.ttsConfig.setDefault(name);
+      const prov = this.voiceProviders.get(name);
+      // Si tiene voices, mostrar selector
+      if (prov.voices && prov.voices.length > 0) {
+        const cfg = this.ttsConfig.getConfig();
+        const currentVoice = cfg.providers[name]?.voice || prov.defaultVoice;
+        const voiceButtons = [];
+        for (let i = 0; i < prov.voices.length; i += 3) {
+          voiceButtons.push(prov.voices.slice(i, i + 3).map(v => ({
+            text: `${currentVoice === v ? '✅ ' : ''}${v}`,
+            callback_data: `voice:${name}:voice:${v}`,
+          })));
+        }
+        // Modelos
+        if (prov.models && prov.models.length > 1) {
+          const currentModel = cfg.providers[name]?.model || prov.defaultModel;
+          voiceButtons.push(prov.models.map(m => ({
+            text: `${currentModel === m ? '✅ ' : ''}${m}`,
+            callback_data: `voice:${name}:model:${m}`,
+          })));
+        }
+        voiceButtons.push([{ text: '← Voz', callback_data: 'menu:config:voz' }]);
+        await bot.sendWithButtons(chatId,
+          `🔊 *${prov.label}*\nElegí una voz:`,
+          voiceButtons, msgId);
       } else {
-        this.tts.enable();
+        const ui = this._buildVoiceUI();
+        await bot.sendWithButtons(chatId, ui.text, ui.buttons, msgId);
       }
-      const ui = this._buildTtsUI();
+      return;
+    }
+
+    if (data.match(/^voice:[^:]+:voice:/) && this.ttsConfig) {
+      const parts = data.split(':');
+      // voice:<provider>:voice:<voiceName>
+      const provName = parts[1];
+      const voiceName = parts.slice(3).join(':');
+      this.ttsConfig.setProvider(provName, { voice: voiceName });
+      const ui = this._buildVoiceUI();
+      await bot.sendWithButtons(chatId, ui.text, ui.buttons, msgId);
+      return;
+    }
+
+    if (data.match(/^voice:[^:]+:model:/) && this.ttsConfig) {
+      const parts = data.split(':');
+      // voice:<provider>:model:<modelName>
+      const provName = parts[1];
+      const modelName = parts.slice(3).join(':');
+      this.ttsConfig.setProvider(provName, { model: modelName });
+      const ui = this._buildVoiceUI();
       await bot.sendWithButtons(chatId, ui.text, ui.buttons, msgId);
       return;
     }

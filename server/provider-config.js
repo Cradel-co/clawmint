@@ -12,6 +12,7 @@ const DEFAULT_CONFIG = {
     gemini:    { apiKey: '', model: 'gemini-2.0-flash' },
     openai:    { apiKey: '', model: 'gpt-4o' },
     grok:      { apiKey: '', model: 'grok-3-fast' },
+    ollama:    { apiKey: '', model: 'llama3.2' },
   },
 };
 
@@ -43,6 +44,7 @@ function getApiKey(name) {
     gemini:    'GOOGLE_API_KEY',
     openai:    'OPENAI_API_KEY',
     grok:      'XAI_API_KEY',
+    ollama:    'OLLAMA_API_KEY',
   };
   const envKey = envMap[name];
   if (envKey && process.env[envKey]) return process.env[envKey];

@@ -79,6 +79,12 @@ function createContainer() {
     if (t.isEnabled()) t.preload();
   } catch {}
 
+  let voiceProviders = null;
+  try { voiceProviders = require('./voice-providers'); } catch {}
+
+  let ttsConfig = null;
+  try { ttsConfig = require('./tts-config'); } catch {}
+
   let mcps = null;
   try { mcps = require('./mcps'); } catch {}
 
@@ -114,6 +120,8 @@ function createContainer() {
     eventBus,
     transcriber,
     tts,
+    voiceProviders,
+    ttsConfig,
     logger,
   });
 
@@ -138,6 +146,8 @@ function createContainer() {
     mcps,
     transcriber,
     tts,
+    voiceProviders,
+    ttsConfig,
   };
 
   return _container;

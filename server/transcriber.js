@@ -188,23 +188,42 @@ function httpsDownload(url, destPath) {
 
 async function transcribe(filePath, opts = {}) {
   const cfg = { ...DEFAULTS, ...opts };
-
-  const pipe = await _loadModel(cfg.model);
   const audio = await _decodeOgg(filePath);
 
-  const result = await pipe(audio, {
-    language: cfg.language,
-    chunk_length_s: cfg.chunkLengthS,
-    return_timestamps: false,
-  });
+  const startIdx = MODEL_FALLBACK_CHAIN.indexOf(cfg.model);
+  const chain = startIdx >= 0 ? MODEL_FALLBACK_CHAIN.slice(startIdx) : [cfg.model];
 
-  _resetIdleTimer(cfg.model);
-
-  const text = result.text.trim();
-  if (!text) {
-    throw new Error('No se pudo extraer texto del audio');
+  for (let i = 0; i < chain.length; i++) {
+    try {
+      const pipe = await _loadModel(chain[i]);
+      const result = await pipe(audio, {
+        language: cfg.language,
+        chunk_length_s: cfg.chunkLengthS,
+        return_timestamps: false,
+      });
+      _resetIdleTimer(chain[i]);
+      const text = result.text.trim();
+      if (!text) throw new Error('No se pudo extraer texto del audio');
+      return text;
+    } catch (err) {
+      const isOom = err.message && (
+        err.message.includes('Failed to allocate memory') ||
+        err.message.includes('BFCArena') ||
+        err.message.includes('AllocateRawInternal')
+      );
+      if (isOom && i < chain.length - 1) {
+        console.log(`[transcriber] OOM con ${chain[i]}, bajando a ${chain[i + 1]}...`);
+        _unloadModel(chain[i]);
+        _pipeline = null;
+        _loadingPromise = null;
+        continue;
+      }
+      if (isOom) {
+        throw new Error(`Memoria insuficiente: ni el modelo más pequeño (${chain[i]}) pudo ejecutarse. Libera RAM e intenta de nuevo.`);
+      }
+      throw err;
+    }
   }
-  return text;
 }
 
 const VALID_MODELS = ['tiny', 'base', 'small', 'medium'];

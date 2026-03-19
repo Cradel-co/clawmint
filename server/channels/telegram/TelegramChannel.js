@@ -989,6 +989,8 @@ class TelegramChannel extends BaseChannel {
     eventBus          = null,
     transcriber       = null,
     tts               = null,
+    voiceProviders    = null,
+    ttsConfig         = null,
     logger            = console,
   } = {}) {
     super({ eventBus, logger });
@@ -1008,6 +1010,8 @@ class TelegramChannel extends BaseChannel {
     this._eventBus        = eventBus;
     this._transcriber     = transcriber;
     this._tts             = tts;
+    this._voiceProviders  = voiceProviders;
+    this._ttsConfig       = ttsConfig;
     this._logger          = logger;
 
     /** @type {Map<string, TelegramBot>} */
@@ -1039,9 +1043,11 @@ class TelegramChannel extends BaseChannel {
       providers:     this._providers,
       providerConfig: this._providerConfig,
       chatSettings:  this._chatSettings,
-      transcriber:   this._transcriber,
-      tts:           this._tts,
-      logger:        this._logger,
+      transcriber:     this._transcriber,
+      tts:             this._tts,
+      voiceProviders:  this._voiceProviders,
+      ttsConfig:       this._ttsConfig,
+      logger:          this._logger,
     });
     const pendingHandler = new PendingActionHandler({
       skills: this._skills,
