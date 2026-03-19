@@ -132,7 +132,22 @@ class ConversationService {
 
     csdbg('claude', `→ session.sendMessage() textLen=${messageText.length}`);
     const t0 = Date.now();
-    const rawResponse = await session.sendMessage(messageText, onChunk);
+    let rawResponse;
+    try {
+      rawResponse = await session.sendMessage(messageText, onChunk);
+    } catch (err) {
+      // Si falló con --resume (session_id viejo/inválido), reintentar como nueva sesión
+      if (session.claudeSessionId && session.messageCount > 0) {
+        csdbg('claude', `--resume falló (${err.message}), reintentando como nueva sesión`);
+        console.log(`[ConvSvc] --resume falló (${err.message}), reintentando sin resume`);
+        session.claudeSessionId = null;
+        session.messageCount = 0;
+        isNewSession = true;
+        rawResponse = await session.sendMessage(messageText, onChunk);
+      } else {
+        throw err;
+      }
+    }
     csdbg('claude', `← session.sendMessage() ${Date.now() - t0}ms responseLen=${rawResponse?.length || 0}`);
 
     // Extraer y aplicar operaciones de memoria

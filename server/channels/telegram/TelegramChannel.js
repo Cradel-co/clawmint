@@ -724,11 +724,13 @@ class TelegramBot {
       if (result.history)          chat.aiHistory     = result.history;
 
       // Persistir sesión de Claude en SQLite para sobrevivir reinicios
+      // Usar monitorCwd (directorio elegido por el usuario) en vez de claudeSession.cwd
+      // para no sobreescribir el cwd del usuario con el cwd interno de Claude
       if (chat.claudeSession?.claudeSessionId && this._chatSettings) {
         this._chatSettings.saveSession(this.key, chatId, {
           claudeSessionId: chat.claudeSession.claudeSessionId,
           messageCount:    chat.claudeSession.messageCount,
-          cwd:             chat.claudeSession.cwd,
+          cwd:             chat.monitorCwd || chat.claudeSession.cwd,
         });
       }
 
@@ -746,6 +748,13 @@ class TelegramBot {
       stopAnim();
       console.error(`[Telegram:${this.key}] Error en chat ${chatId}:`, err.message);
       tdbg('send', `CATCH ERROR: ${err.stack || err.message}`);
+      // Si Claude falló, limpiar sesión rota para que el próximo mensaje no reintente --resume
+      if (chat.claudeSession && err.message?.includes('código')) {
+        tdbg('send', `limpiando sesión rota`);
+        chat.claudeSession.claudeSessionId = null;
+        chat.claudeSession.messageCount = 0;
+        if (this._chatSettings) this._chatSettings.clearSession(this.key, chatId);
+      }
       const errMsg = `⚠️ Error: ${err.message}`;
       try {
         if (sentMsg) {
@@ -814,6 +823,7 @@ class TelegramBot {
       const target = trimmed.slice(2).trim();
       const result = session.changeDirectory(target);
       chat.monitorCwd = session.cwd;
+      if (chat.claudeSession) chat.claudeSession.cwd = session.cwd;
       if (this._chatSettings) this._chatSettings.saveCwd(this.key, chatId, session.cwd);
       const msg = result.ok ? '' : `❌ cd: ${result.error}`;
       await this._sendConsolePrompt(chatId, msg, chat);

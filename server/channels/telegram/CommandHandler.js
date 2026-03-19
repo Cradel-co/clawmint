@@ -414,6 +414,9 @@ class CommandHandler {
           const stat = fs.statSync(resolved);
           if (!stat.isDirectory()) throw new Error('no es un directorio');
           chat.monitorCwd = resolved;
+          // Sincronizar cwd de la sesión Claude activa para que el próximo
+          // mensaje use el directorio correcto
+          if (chat.claudeSession) chat.claudeSession.cwd = resolved;
           this._persistCwd(bot.key, chatId, resolved);
           const short = resolved.replace(process.env.HOME, '~');
           await bot.sendText(chatId, `📁 Directorio cambiado a \`${short}\``);

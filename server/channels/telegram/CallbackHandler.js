@@ -455,6 +455,7 @@ class CallbackHandler {
       } else if (action === 'new') {
         if (bot._isClaudeBased()) {
           chat.claudeSession = new ClaudePrintSession(bot._claudeSessionOpts(chat));
+          if (this.chatSettings) this.chatSettings.clearSession(bot.key, chatId);
           await bot.sendText(chatId, '✅ Nueva conversación iniciada.');
         } else {
           chat.aiHistory = [];
