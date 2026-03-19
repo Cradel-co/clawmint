@@ -125,6 +125,7 @@ class CommandHandler {
       case 'clear': {
         if (bot._isClaudeBased()) {
           chat.claudeSession = new ClaudePrintSession(bot._claudeSessionOpts(chat));
+          if (this.chatSettings) this.chatSettings.clearSession(bot.key, chatId);
           await bot.sendWithButtons(chatId,
             `✅ Nueva conversación *${bot.defaultAgent}* iniciada (\`${chat.claudeSession.id.slice(0,8)}…\`)`,
             [[{ text: '🤖 Menú', callback_data: 'menu' }]]
@@ -413,6 +414,9 @@ class CommandHandler {
           const stat = fs.statSync(resolved);
           if (!stat.isDirectory()) throw new Error('no es un directorio');
           chat.monitorCwd = resolved;
+          // Sincronizar cwd de la sesión Claude activa para que el próximo
+          // mensaje use el directorio correcto
+          if (chat.claudeSession) chat.claudeSession.cwd = resolved;
           this._persistCwd(bot.key, chatId, resolved);
           const short = resolved.replace(process.env.HOME, '~');
           await bot.sendText(chatId, `📁 Directorio cambiado a \`${short}\``);
@@ -785,6 +789,7 @@ class CommandHandler {
           chat.provider = newProvider;
           if (newProvider === 'claude-code') {
             chat.claudeSession = null;
+            if (this.chatSettings) this.chatSettings.clearSession(bot.key, chatId);
           } else {
             chat.aiHistory = [];
           }
