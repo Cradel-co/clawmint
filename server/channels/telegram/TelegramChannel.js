@@ -272,9 +272,9 @@ class TelegramBot {
     entry.count++;
     return true;
   }
-  _isClaudeBased(agentKey = this.defaultAgent) {
-    if (agentKey === 'claude') return true;
-    const def = this._agents ? this._agents.get(agentKey) : null;
+  _isClaudeBased(agentKeyOrProvider = this.defaultAgent) {
+    if (agentKeyOrProvider === 'claude' || agentKeyOrProvider === 'claude-code') return true;
+    const def = this._agents ? this._agents.get(agentKeyOrProvider) : null;
     return !!(def && def.command && def.command.includes('claude'));
   }
 
