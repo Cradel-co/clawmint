@@ -53,6 +53,58 @@ function httpsPost(urlPath, body, timeoutMs = 35000) {
   });
 }
 
+function httpsPostMultipart(urlPath, fields, file, timeoutMs = 35000) {
+  return new Promise((resolve, reject) => {
+    const boundary = '----FormBoundary' + Date.now().toString(36) + Math.random().toString(36).slice(2);
+    const parts = [];
+
+    // Campos de texto
+    for (const [key, value] of Object.entries(fields)) {
+      parts.push(
+        Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${value}\r\n`)
+      );
+    }
+
+    // Archivo binario
+    if (file) {
+      parts.push(
+        Buffer.from(
+          `--${boundary}\r\nContent-Disposition: form-data; name="${file.fieldName}"; filename="${file.filename}"\r\n` +
+          `Content-Type: ${file.contentType}\r\n\r\n`
+        )
+      );
+      parts.push(file.buffer);
+      parts.push(Buffer.from('\r\n'));
+    }
+
+    parts.push(Buffer.from(`--${boundary}--\r\n`));
+    const body = Buffer.concat(parts);
+
+    const options = {
+      hostname: TELEGRAM_HOST,
+      path: urlPath,
+      method: 'POST',
+      family: 4,
+      headers: {
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': body.length,
+      },
+    };
+    const req = https.request(options, (res) => {
+      let raw = '';
+      res.on('data', chunk => { raw += chunk; });
+      res.on('end', () => {
+        try { resolve(JSON.parse(raw)); }
+        catch (e) { reject(new Error('Respuesta no es JSON: ' + raw.slice(0, 200))); }
+      });
+    });
+    req.setTimeout(timeoutMs, () => { req.destroy(new Error('Timeout')); });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
 function cleanPtyOutput(raw) {
   let s = raw.replace(/\x1B\[(\d*)C/g, (_, n) => ' '.repeat(Number(n) || 1));
   s = s
@@ -113,6 +165,7 @@ class TelegramBot {
     chatSettings        = null,
     events              = null,
     transcriber         = null,
+    tts                 = null,
     logger              = console,
   } = {}) {
     this.key   = key;
@@ -147,6 +200,7 @@ class TelegramBot {
     this._chatSettings    = chatSettings;
     this._events          = events;
     this._transcriber     = transcriber;
+    this._tts             = tts;
     this._logger          = logger;
   }
 
@@ -711,6 +765,17 @@ class TelegramBot {
       tdbg('send', `→ _sendResult() textLen=${(result.text || '').length} hasSentMsg=${!!(animStopped ? sentMsg : null)}`);
       await this._sendResult(chatId, result.text || '', animStopped ? sentMsg : null);
       tdbg('send', `← _sendResult() OK`);
+
+      // TTS: enviar audio si está habilitado
+      if (this._tts && this._tts.isEnabled() && result.text) {
+        try {
+          const audioBuffer = await this._tts.synthesize(result.text);
+          if (audioBuffer) await this.sendVoice(chatId, audioBuffer);
+        } catch (err) {
+          tdbg('tts', `Error TTS: ${err.message}`);
+          // Fallo silencioso — el texto ya se envió
+        }
+      }
     } catch (err) {
       stopAnim();
       console.error(`[Telegram:${this.key}] Error en chat ${chatId}:`, err.message);
@@ -853,6 +918,20 @@ class TelegramBot {
     }
   }
 
+  async sendVoice(chatId, audioBuffer, replyToMessageId) {
+    const urlPath = `/bot${this.token}/sendVoice`;
+    const fields = { chat_id: String(chatId) };
+    if (replyToMessageId) fields.reply_to_message_id = String(replyToMessageId);
+    const data = await httpsPostMultipart(urlPath, fields, {
+      fieldName: 'voice',
+      buffer: audioBuffer,
+      filename: 'tts.wav',
+      contentType: 'audio/wav',
+    });
+    if (!data.ok) throw new Error(data.description || 'sendVoice error');
+    return data.result;
+  }
+
   // ── Menú ─────────────────────────────────────────────────────────────────
 
   async _sendMenu(chatId, editMsgId = null) {
@@ -909,6 +988,7 @@ class TelegramChannel extends BaseChannel {
     chatSettings      = null,   // legacy (chat-settings.js) — usado si chatSettingsRepo es null
     eventBus          = null,
     transcriber       = null,
+    tts               = null,
     logger            = console,
   } = {}) {
     super({ eventBus, logger });
@@ -927,6 +1007,7 @@ class TelegramChannel extends BaseChannel {
     this._chatSettings    = chatSettingsRepo || chatSettings;   // ChatSettingsRepository tiene la misma interfaz
     this._eventBus        = eventBus;
     this._transcriber     = transcriber;
+    this._tts             = tts;
     this._logger          = logger;
 
     /** @type {Map<string, TelegramBot>} */
@@ -945,6 +1026,7 @@ class TelegramChannel extends BaseChannel {
       providers:     this._providers,
       providerConfig: this._providerConfig,
       transcriber:   this._transcriber,
+      tts:           this._tts,
       logger:        this._logger,
     });
     const callbackHandler = new CallbackHandler({
@@ -958,6 +1040,7 @@ class TelegramChannel extends BaseChannel {
       providerConfig: this._providerConfig,
       chatSettings:  this._chatSettings,
       transcriber:   this._transcriber,
+      tts:           this._tts,
       logger:        this._logger,
     });
     const pendingHandler = new PendingActionHandler({
@@ -982,6 +1065,7 @@ class TelegramChannel extends BaseChannel {
       chatSettings:   this._chatSettings,
       events:         this._eventBus,
       transcriber:    this._transcriber,
+      tts:            this._tts,
       logger:         this._logger,
     });
   }

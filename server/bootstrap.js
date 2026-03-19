@@ -72,6 +72,13 @@ function createContainer() {
     t.preload();
   } catch {}
 
+  let tts = { synthesize: async () => null, isEnabled: () => false };
+  try {
+    const t = require('./tts');
+    tts = t;
+    if (t.isEnabled()) t.preload();
+  } catch {}
+
   let mcps = null;
   try { mcps = require('./mcps'); } catch {}
 
@@ -106,6 +113,7 @@ function createContainer() {
     providerConfig,
     eventBus,
     transcriber,
+    tts,
     logger,
   });
 
@@ -129,6 +137,7 @@ function createContainer() {
     providerConfig,
     mcps,
     transcriber,
+    tts,
   };
 
   return _container;

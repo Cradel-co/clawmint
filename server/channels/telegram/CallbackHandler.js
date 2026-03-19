@@ -23,6 +23,7 @@ class CallbackHandler {
     providerConfig = null,
     chatSettings   = null,
     transcriber    = null,
+    tts            = null,
     logger         = console,
   }) {
     this.agents        = agents;
@@ -35,6 +36,7 @@ class CallbackHandler {
     this.providerConfig = providerConfig;
     this.chatSettings  = chatSettings;
     this.transcriber   = transcriber;
+    this.tts           = tts;
     this.logger        = logger;
   }
 
@@ -66,6 +68,22 @@ class CallbackHandler {
     }
 
     return { text, buttons: [modelButtons, ...langRows] };
+  }
+
+  _buildTtsUI() {
+    const enabled = this.tts.isEnabled();
+    const cfg = this.tts.getConfig();
+    const dtypeInfo = cfg.loadedDtype ? ` (${cfg.loadedDtype})` : '';
+    const text =
+      `🔊 *TTS — Text-to-Speech*\n\n` +
+      `• Estado: ${enabled ? '✅ Activado' : '❌ Desactivado'}\n` +
+      `• Modelo: \`${cfg.model}\`${dtypeInfo}\n` +
+      `• Máx texto: \`${cfg.maxTextLength}\` chars`;
+    const buttons = [[{
+      text: enabled ? '🔇 Desactivar' : '🔊 Activar',
+      callback_data: 'tts:toggle',
+    }]];
+    return { text, buttons };
   }
 
   // ── Motor de menús declarativo ──────────────────────────────────────────────
@@ -555,6 +573,17 @@ class CallbackHandler {
       const lang = data.slice(12);
       this.transcriber.setLanguage(lang);
       const ui = this._buildWhisperUI();
+      await bot.sendWithButtons(chatId, ui.text, ui.buttons, msgId);
+      return;
+    }
+
+    if (data === 'tts:toggle' && this.tts) {
+      if (this.tts.isEnabled()) {
+        this.tts.disable();
+      } else {
+        this.tts.enable();
+      }
+      const ui = this._buildTtsUI();
       await bot.sendWithButtons(chatId, ui.text, ui.buttons, msgId);
       return;
     }
