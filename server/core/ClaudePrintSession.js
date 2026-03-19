@@ -11,7 +11,7 @@ function cpdbg(scope, ...args) { if (_cpDbg()) console.log(`[CPS:DBG:${scope}]`,
  * Extraído de telegram.js para reutilización por cualquier canal (Telegram, Discord, HTTP).
  */
 class ClaudePrintSession {
-  constructor({ model = null, permissionMode = 'ask' } = {}) {
+  constructor({ model = null, permissionMode = 'ask', cwd = null } = {}) {
     this.id = crypto.randomUUID();
     this.createdAt = Date.now();
     this.active = true;
@@ -22,7 +22,7 @@ class ClaudePrintSession {
     this.totalCostUsd = 0;        // costo acumulado de la sesión
     this.lastCostUsd = 0;         // costo del último mensaje
     this.claudeSessionId = null;  // session_id interno de claude
-    this.cwd = process.env.HOME;  // directorio de trabajo de la sesión
+    this.cwd = cwd || process.env.HOME;  // directorio de trabajo de la sesión
   }
 
   async sendMessage(text, onChunk = null) {
@@ -51,7 +51,7 @@ class ClaudePrintSession {
       delete env.CLAUDE_CODE_ENTRYPOINT;
 
       const child = spawn('claude', claudeArgs, {
-        cwd: process.env.HOME,
+        cwd: this.cwd,
         env,
         stdio: [isWin ? 'pipe' : 'ignore', 'pipe', 'ignore'],
         shell: isWin,

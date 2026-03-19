@@ -278,6 +278,14 @@ class TelegramBot {
     return !!(def && def.command && def.command.includes('claude'));
   }
 
+  _claudeSessionOpts(chat) {
+    return {
+      model: chat.claudeSession?.model || null,
+      permissionMode: chat.claudeMode || 'ask',
+      cwd: chat.monitorCwd || process.env.HOME,
+    };
+  }
+
   // ── Telegram API ─────────────────────────────────────────────────────────
 
   async _apiCall(method, body = {}) {
@@ -516,7 +524,7 @@ class TelegramBot {
         lastPreview:    '',
         rateLimited:    false,
         rateLimitedUntil: 0,
-        monitorCwd:     process.env.HOME,
+        monitorCwd:     saved?.cwd || process.env.HOME,
         busy:           false,
         provider:       saved?.provider || 'claude-code',
         model:          saved?.model    || null,
@@ -803,7 +811,7 @@ class TelegramBot {
     const agentKey = agentKeyOverride || this.defaultAgent;
     const agent    = this._agents ? this._agents.get(agentKey) : null;
     const command  = agent ? agent.command : agentKey === 'bash' ? null : agentKey;
-    const session  = this._sessionManager.create({ type: 'pty', command, cols: 80, rows: 24 });
+    const session  = this._sessionManager.create({ type: 'pty', command, cols: 80, rows: 24, cwd: chat.monitorCwd || process.env.HOME });
     chat.sessionId = session.id;
     return session;
   }
@@ -848,6 +856,7 @@ class TelegramBot {
       const target = trimmed.slice(2).trim();
       const result = session.changeDirectory(target);
       chat.monitorCwd = session.cwd;
+      if (this._chatSettings) this._chatSettings.saveCwd(this.key, chatId, session.cwd);
       const msg = result.ok ? '' : `❌ cd: ${result.error}`;
       await this._sendConsolePrompt(chatId, msg, chat);
       return;
@@ -1029,6 +1038,7 @@ class TelegramChannel extends BaseChannel {
       sessionManager: this._sessionManager,
       providers:     this._providers,
       providerConfig: this._providerConfig,
+      chatSettings:  this._chatSettings,
       transcriber:   this._transcriber,
       tts:           this._tts,
       logger:        this._logger,

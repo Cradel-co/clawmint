@@ -505,8 +505,7 @@ class CallbackHandler {
         await bot._sendToSession(chatId, 'continúa', chat);
       } else if (action === 'new') {
         if (bot._isClaudeBased()) {
-          const model = chat.claudeSession?.model || null;
-          chat.claudeSession = new ClaudePrintSession({ model, permissionMode: chat.claudeMode || 'ask' });
+          chat.claudeSession = new ClaudePrintSession(bot._claudeSessionOpts(chat));
           await bot.sendText(chatId, '✅ Nueva conversación iniciada.');
         } else {
           chat.aiHistory = [];
@@ -554,7 +553,7 @@ class CallbackHandler {
       const provider   = chat.provider || 'claude-code';
       if (provider === 'claude-code') {
         const model = newModel === 'default' ? null : newModel;
-        chat.claudeSession = new ClaudePrintSession({ model, permissionMode: chat.claudeMode || 'ask' });
+        chat.claudeSession = new ClaudePrintSession({ ...bot._claudeSessionOpts(chat), model });
         await bot.sendText(chatId, `✅ Modelo: \`${newModel}\`\n_Nueva sesión iniciada._`);
       } else {
         chat.model = newModel;
@@ -739,7 +738,7 @@ class CallbackHandler {
       const agentKey = data.slice(6);
       const agentDef = this.agents ? this.agents.get(agentKey) : null;
       if (agentDef?.prompt) {
-        chat.claudeSession = new ClaudePrintSession({ permissionMode: chat.claudeMode || 'ask' });
+        chat.claudeSession = new ClaudePrintSession(bot._claudeSessionOpts(chat));
         chat.activeAgent = { key: agentDef.key, prompt: agentDef.prompt };
         const fullPrompt = this.skills ? this.skills.buildAgentPrompt(agentDef) : agentDef.prompt;
         await bot._sendToSession(chatId, fullPrompt, chat);
@@ -793,8 +792,7 @@ class CallbackHandler {
       case 'nueva':
       case 'reset': {
         if (bot._isClaudeBased()) {
-          const model = chat.claudeSession?.model || null;
-          chat.claudeSession = new ClaudePrintSession({ model, permissionMode: chat.claudeMode || 'ask' });
+          chat.claudeSession = new ClaudePrintSession(bot._claudeSessionOpts(chat));
           await bot.sendWithButtons(chatId,
             `✅ Nueva conversación *${bot.defaultAgent}* iniciada (\`${chat.claudeSession.id.slice(0,8)}…\`)`,
             [[{ text: '🤖 Menú', callback_data: 'menu' }]]
@@ -867,7 +865,7 @@ class CallbackHandler {
 
       case 'basta_action': {
         chat.activeAgent = null;
-        chat.claudeSession = new ClaudePrintSession({ permissionMode: chat.claudeMode || 'ask' });
+        chat.claudeSession = new ClaudePrintSession({ ...bot._claudeSessionOpts(chat), model: null });
         const def = this.getMenuDef('menu:agentes', { bot });
         const text    = typeof def.text    === 'function' ? def.text(chat)    : def.text;
         const rawRows = typeof def.buttons === 'function' ? def.buttons(chat) : def.buttons;
