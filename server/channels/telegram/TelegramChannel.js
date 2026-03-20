@@ -499,8 +499,8 @@ class TelegramBot {
       msg._images = [{ base64, mediaType }];
       await this._handleMessage(msg);
     } catch (err) {
-      console.error(`[Telegram:${this.key}] Error procesando foto:`, err.message);
-      await this.sendText(chatId, `❌ Error al procesar la foto: ${err.message}`);
+      console.error(`[Telegram:${this.key}] Error procesando foto:`, err?.message || err?.stack || err);
+      await this.sendText(chatId, `❌ Error al procesar la foto: ${err?.message || String(err)}`);
     }
   }
 
