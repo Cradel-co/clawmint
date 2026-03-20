@@ -928,7 +928,14 @@ class TelegramBot {
         const result = await this._apiCall('editMessageText', { ...body, message_id: editMsgId });
         if (chat) chat.lastButtonsMsgId = editMsgId;
         return result;
-      } catch (e) { if (!e.message?.includes('not modified')) throw e; }
+      } catch (e) {
+        if (e.message?.includes('not modified')) return;
+        try {
+          const result = await this._apiCall('editMessageText', { ...body, message_id: editMsgId, parse_mode: undefined });
+          if (chat) chat.lastButtonsMsgId = editMsgId;
+          return result;
+        } catch (e2) { if (!e2.message?.includes('not modified')) console.error(`[Telegram] editMsg fallback FAIL: ${e2.message}`); }
+      }
       return;
     }
 
