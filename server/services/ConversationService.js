@@ -134,19 +134,19 @@ class ConversationService {
               continue;
             }
           } catch (ocrErr) {
-            csdbg('claude', `images: OCR falló para imagen ${i + 1}: ${ocrErr.message}`);
+            console.log(`[ConvSvc] OCR falló para imagen ${i + 1}: ${ocrErr.message || ocrErr.stderr || ocrErr}`);
           }
 
           // 2. Fallback: Ollama minicpm-v
           try {
             const ollama = require('../providers/ollama');
-            csdbg('claude', `images: fallback minicpm-v para imagen ${i + 1}`);
+            console.log(`[ConvSvc] Imagen ${i + 1}: OCR sin texto, intentando minicpm-v...`);
             const desc = await ollama.describeImage([images[i]], text);
             descriptions.push(`[Descripción IA imagen ${i + 1}:]\n${desc}`);
-            csdbg('claude', `images: minicpm-v OK para imagen ${i + 1} (${desc.length} chars)`);
+            console.log(`[ConvSvc] minicpm-v OK para imagen ${i + 1} (${desc.length} chars)`);
           } catch (ollamaErr) {
+            console.error(`[ConvSvc] minicpm-v falló para imagen ${i + 1}: ${ollamaErr.message || ollamaErr}`);
             descriptions.push(`[Imagen ${i + 1}: no se pudo analizar (OCR y visión fallaron)]`);
-            csdbg('claude', `images: ambos fallaron para imagen ${i + 1}`);
           }
         } finally {
           try { fs.unlinkSync(tmpPath); } catch {}
