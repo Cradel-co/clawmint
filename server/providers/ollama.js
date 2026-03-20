@@ -32,7 +32,7 @@ function ollamaNativeChat(baseUrl, model, messages) {
       res.on('error', reject);
     });
     req.on('error', reject);
-    req.setTimeout(120000, () => { req.destroy(); reject(new Error('Timeout: Ollama no respondió en 120s')); });
+    req.setTimeout(300000, () => { req.destroy(); reject(new Error('Timeout: Ollama no respondió en 300s')); });
     req.write(body);
     req.end();
   });
@@ -121,13 +121,32 @@ module.exports = {
 
   /**
    * Describe una imagen usando minicpm-v (usado como "ojos" para otros providers)
+   * Redimensiona a max 512px para evitar OOM en CPU
    */
   async describeImage(images, prompt = 'Describí detalladamente lo que ves en esta imagen.') {
     const baseUrl = getBaseUrl();
+    const resized = [];
+    for (const img of images) {
+      try {
+        const { execSync } = require('child_process');
+        const fs = require('fs');
+        const os = require('os');
+        const path = require('path');
+        const tmpIn  = path.join(os.tmpdir(), `ollama_in_${Date.now()}.jpg`);
+        const tmpOut = path.join(os.tmpdir(), `ollama_out_${Date.now()}.jpg`);
+        fs.writeFileSync(tmpIn, Buffer.from(img.base64, 'base64'));
+        execSync(`python3 -c "from PIL import Image; img=Image.open('${tmpIn}'); img.thumbnail((512,512)); img.save('${tmpOut}', 'JPEG', quality=80)"`, { timeout: 10000 });
+        resized.push(fs.readFileSync(tmpOut).toString('base64'));
+        try { fs.unlinkSync(tmpIn); } catch {}
+        try { fs.unlinkSync(tmpOut); } catch {}
+      } catch {
+        resized.push(img.base64);
+      }
+    }
     const messages = [{
       role: 'user',
       content: prompt,
-      images: images.map(img => img.base64),
+      images: resized,
     }];
     return ollamaNativeChat(baseUrl, 'minicpm-v', messages);
   },
