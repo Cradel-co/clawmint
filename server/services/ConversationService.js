@@ -76,6 +76,7 @@ class ConversationService {
     provider      = 'claude-code',
     model         = null,
     text,
+    images        = null,
     history       = [],
     claudeSession = null,
     claudeMode    = 'ask',
@@ -83,24 +84,30 @@ class ConversationService {
     shellId       = null,
   }) {
     const resolvedShellId = shellId || String(chatId);
-    csdbg('msg', `chatId=${chatId} provider=${provider} agent=${agentKey} model=${model} textLen=${text.length} histLen=${history.length} hasSession=${!!claudeSession}`);
+    csdbg('msg', `chatId=${chatId} provider=${provider} agent=${agentKey} model=${model} textLen=${text.length} images=${images?.length || 0} histLen=${history.length} hasSession=${!!claudeSession}`);
 
     if (provider !== 'claude-code' && this._providers) {
       csdbg('msg', `→ _processApiProvider`);
       return this._processApiProvider({
-        chatId, agentKey, provider, model, text, history, onChunk, shellId: resolvedShellId,
+        chatId, agentKey, provider, model, text, images, history, onChunk, shellId: resolvedShellId,
       });
     }
 
     csdbg('msg', `→ _processClaudeCode mode=${claudeMode}`);
     return this._processClaudeCode({
-      chatId, agentKey, text, claudeSession, claudeMode, onChunk,
+      chatId, agentKey, text, images, claudeSession, claudeMode, onChunk,
     });
   }
 
   // ── Proveedor claude-code (ClaudePrintSession) ────────────────────────────
 
-  async _processClaudeCode({ chatId, agentKey, text, claudeSession, claudeMode, onChunk }) {
+  async _processClaudeCode({ chatId, agentKey, text, images, claudeSession, claudeMode, onChunk }) {
+    // Claude Code CLI no soporta imágenes — avisar al usuario con contexto
+    if (images && images.length > 0) {
+      const imgNote = `[El usuario envió ${images.length} imagen(es) pero claude-code CLI no soporta visión. Respondé basándote solo en el texto.]`;
+      text = `${imgNote}\n\n${text}`;
+      csdbg('claude', `images fallback: ${images.length} imagen(es) no soportadas en CLI`);
+    }
     let session = claudeSession;
     let isNewSession = false;
     if (!session) {
@@ -181,7 +188,7 @@ class ConversationService {
 
   // ── Proveedores API (Anthropic, Gemini, OpenAI, …) ───────────────────────
 
-  async _processApiProvider({ chatId, agentKey, provider, model, text, history, onChunk, shellId }) {
+  async _processApiProvider({ chatId, agentKey, provider, model, text, images, history, onChunk, shellId }) {
     const provObj   = this._providers.get(provider);
     const apiKey    = this._providerConfig ? this._providerConfig.getApiKey(provider) : '';
     const cfg       = this._providerConfig ? this._providerConfig.getConfig() : {};
@@ -207,11 +214,42 @@ class ConversationService {
 
     const toolInstr    = (agentKey && shouldNudge && this._memory) ? this._memory.TOOL_INSTRUCTIONS : '';
     const systemPrompt = [basePrompt, memoryCtx, toolInstr].filter(Boolean).join('\n\n');
-    const userContent  = (shouldNudge && this._memory) ? text + this._memory.buildNudge(signals) : text;
+    const userText = (shouldNudge && this._memory) ? text + this._memory.buildNudge(signals) : text;
+
+    // Construir content con imágenes según el provider
+    let userContent;
+    if (images && images.length > 0) {
+      if (provider === 'anthropic') {
+        // Anthropic: { type: 'image', source: { type: 'base64', media_type, data } }
+        userContent = images.map(img => ({
+          type: 'image',
+          source: { type: 'base64', media_type: img.mediaType, data: img.base64 },
+        }));
+        userContent.push({ type: 'text', text: userText });
+      } else if (provider === 'gemini') {
+        // Gemini: se pasa como _images en el último mensaje, se convierte en el provider
+        userContent = userText;
+      } else {
+        // OpenAI / Grok: { type: 'image_url', image_url: { url: 'data:...' } }
+        userContent = images.map(img => ({
+          type: 'image_url',
+          image_url: { url: `data:${img.mediaType};base64,${img.base64}` },
+        }));
+        userContent.push({ type: 'text', text: userText });
+      }
+    } else {
+      userContent = userText;
+    }
 
     const updatedHistory = [...history, { role: 'user', content: userContent }];
 
-    const gen = provObj.chat({ systemPrompt, history: updatedHistory, apiKey, model: useModel, executeTool: execToolFn });
+    // Para Gemini: adjuntar imágenes raw para conversión en el provider
+    const extraOpts = {};
+    if (images && images.length > 0 && provider === 'gemini') {
+      extraOpts.images = images;
+    }
+
+    const gen = provObj.chat({ systemPrompt, history: updatedHistory, apiKey, model: useModel, executeTool: execToolFn, ...extraOpts });
     let accumulated = '';
 
     for await (const event of gen) {

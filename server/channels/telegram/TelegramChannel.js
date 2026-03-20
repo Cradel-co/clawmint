@@ -418,6 +418,10 @@ class TelegramBot {
       await this._handleVoiceMessage(msg);
       return;
     }
+    if (msg.photo) {
+      await this._handlePhotoMessage(msg);
+      return;
+    }
     if (!msg.text) return;
     await this._handleMessage(msg);
   }
@@ -456,6 +460,47 @@ class TelegramBot {
     } catch (err) {
       console.error(`[Telegram:${this.key}] Error procesando audio:`, err.message);
       await this.sendText(chatId, `❌ Error al procesar audio: ${err.message}`);
+    }
+  }
+
+  async _handlePhotoMessage(msg) {
+    const chatId = msg.chat.id;
+    if (!this._isAllowed(chatId, msg.chat.type)) {
+      await this.sendText(chatId, '⛔ No tenés acceso a este bot.', msg.message_id);
+      return;
+    }
+    try {
+      // Telegram envía array de resoluciones, tomar la más grande
+      const photo  = msg.photo[msg.photo.length - 1];
+      const fileInfo = await this._apiCall('getFile', { file_id: photo.file_id });
+      const fileUrl  = `https://api.telegram.org/file/bot${this.token}/${fileInfo.file_path}`;
+
+      // Descargar foto a buffer
+      const buffer = await new Promise((resolve, reject) => {
+        https.get(fileUrl, (res) => {
+          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            https.get(res.headers.location, (r2) => {
+              const chunks = []; r2.on('data', c => chunks.push(c)); r2.on('end', () => resolve(Buffer.concat(chunks))); r2.on('error', reject);
+            }).on('error', reject);
+            return;
+          }
+          const chunks = []; res.on('data', c => chunks.push(c)); res.on('end', () => resolve(Buffer.concat(chunks))); res.on('error', reject);
+        }).on('error', reject);
+      });
+
+      const ext = path.extname(fileInfo.file_path || '').replace('.', '') || 'jpg';
+      const mediaType = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+      const base64 = buffer.toString('base64');
+
+      console.log(`[Telegram:${this.key}] Foto recibida de ${chatId}: ${photo.width}x${photo.height}, ${Math.round(buffer.length / 1024)}KB`);
+
+      // Pasar al handler con la imagen adjunta
+      msg.text = msg.caption || 'Describe esta imagen';
+      msg._images = [{ base64, mediaType }];
+      await this._handleMessage(msg);
+    } catch (err) {
+      console.error(`[Telegram:${this.key}] Error procesando foto:`, err.message);
+      await this.sendText(chatId, `❌ Error al procesar la foto: ${err.message}`);
     }
   }
 
@@ -600,7 +645,7 @@ class TelegramBot {
       const args  = parts.slice(1);
       await this._handleCommand(msg, cmd, args, chat);
     } else {
-      await this._sendToSession(chatId, text, chat);
+      await this._sendToSession(chatId, text, chat, msg._images);
     }
   }
 
@@ -681,7 +726,7 @@ class TelegramBot {
 
   // ── Envío a sesión / provider ─────────────────────────────────────────────
 
-  async _sendToSession(chatId, text, chat) {
+  async _sendToSession(chatId, text, chat, images = null) {
     tdbg('send', `chatId=${chatId} text="${text.slice(0, 80)}" busy=${chat.busy}`);
     if (chat.busy) {
       tdbg('send', `SKIP — chat busy`);
@@ -763,6 +808,7 @@ class TelegramBot {
         provider:      chatProvider,
         model:         chat.model,
         text:          messageText,
+        images:        images || null,
         history:       chat.aiHistory || [],
         claudeSession: chat.claudeSession,
         claudeMode:    mode,
