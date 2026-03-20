@@ -124,21 +124,16 @@ module.exports = {
    * Redimensiona a max 512px para evitar OOM en CPU
    */
   async describeImage(images, prompt = 'Describí detalladamente lo que ves en esta imagen.') {
+    const sharp = require('sharp');
     const baseUrl = getBaseUrl();
     const resized = [];
     for (const img of images) {
       try {
-        const { execSync } = require('child_process');
-        const fs = require('fs');
-        const os = require('os');
-        const path = require('path');
-        const tmpIn  = path.join(os.tmpdir(), `ollama_in_${Date.now()}.jpg`);
-        const tmpOut = path.join(os.tmpdir(), `ollama_out_${Date.now()}.jpg`);
-        fs.writeFileSync(tmpIn, Buffer.from(img.base64, 'base64'));
-        execSync(`python3 -c "from PIL import Image; img=Image.open('${tmpIn}'); img.thumbnail((512,512)); img.save('${tmpOut}', 'JPEG', quality=80)"`, { timeout: 10000 });
-        resized.push(fs.readFileSync(tmpOut).toString('base64'));
-        try { fs.unlinkSync(tmpIn); } catch {}
-        try { fs.unlinkSync(tmpOut); } catch {}
+        const buf = await sharp(Buffer.from(img.base64, 'base64'))
+          .resize(512, 512, { fit: 'inside', withoutEnlargement: true })
+          .jpeg({ quality: 80 })
+          .toBuffer();
+        resized.push(buf.toString('base64'));
       } catch {
         resized.push(img.base64);
       }
