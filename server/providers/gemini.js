@@ -9,7 +9,7 @@ module.exports = {
   defaultModel: 'gemini-2.5-flash',
   models: ['gemini-2.5-flash', 'gemini-2.5-pro'],
 
-  async *chat({ systemPrompt, history, apiKey, model, executeTool: execToolFn }) {
+  async *chat({ systemPrompt, history, apiKey, model, executeTool: execToolFn, images }) {
     if (!apiKey) {
       yield { type: 'done', fullText: 'Error: API key de Gemini no configurada. Configurala en el panel ⚙️.' };
       return;
@@ -37,7 +37,15 @@ module.exports = {
     if (systemPrompt) config.systemInstruction = systemPrompt;
 
     let fullText = '';
-    let currentContents = [...contents, { role: 'user', parts: [{ text: userText }] }];
+    // Construir parts del último mensaje con imágenes si las hay
+    const lastParts = [];
+    if (images && images.length > 0) {
+      for (const img of images) {
+        lastParts.push({ inlineData: { mimeType: img.mediaType, data: img.base64 } });
+      }
+    }
+    lastParts.push({ text: userText });
+    let currentContents = [...contents, { role: 'user', parts: lastParts }];
 
     while (true) {
       let response;

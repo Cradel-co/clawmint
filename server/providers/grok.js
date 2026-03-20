@@ -25,7 +25,7 @@ module.exports = {
       messages.push({ role: 'system', content: systemPrompt });
     }
     for (const m of history) {
-      messages.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content || '' });
+      messages.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: Array.isArray(m.content) ? m.content : (m.content || '') });
     }
 
     let fullText = '';
