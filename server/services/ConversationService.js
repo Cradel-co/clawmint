@@ -102,18 +102,59 @@ class ConversationService {
   // ── Proveedor claude-code (ClaudePrintSession) ────────────────────────────
 
   async _processClaudeCode({ chatId, agentKey, text, images, claudeSession, claudeMode, onChunk }) {
-    // Claude Code CLI no soporta imágenes — usar minicpm-v (Ollama) como "ojos"
+    // Claude Code CLI no soporta imágenes — extraer texto con OCR (kheiron) + fallback Ollama visión
     if (images && images.length > 0) {
-      try {
-        const ollama = require('../providers/ollama');
-        csdbg('claude', `images: enviando ${images.length} imagen(es) a minicpm-v para descripción`);
-        const description = await ollama.describeImage(images, text);
-        text = `[El usuario envió ${images.length} imagen(es). Descripción generada por visión IA:]\n\n${description}\n\n[Mensaje original del usuario: "${text}"]`;
-        csdbg('claude', `images: descripción recibida (${description.length} chars)`);
-      } catch (err) {
-        csdbg('claude', `images: error en minicpm-v: ${err.message}`);
-        text = `[El usuario envió ${images.length} imagen(es) pero no se pudo analizar: ${err.message}]\n\n${text}`;
+      const { execSync } = require('child_process');
+      const fs = require('fs');
+      const path = require('path');
+      const descriptions = [];
+
+      for (let i = 0; i < images.length; i++) {
+        const tmpPath = path.join(require('os').tmpdir(), `clawmint_img_${Date.now()}_${i}.jpg`);
+        try {
+          // Guardar imagen en disco
+          fs.writeFileSync(tmpPath, Buffer.from(images[i].base64, 'base64'));
+
+          // 1. Intentar OCR con kheiron
+          try {
+            const rawOcr = execSync(`kheiron ocr "${tmpPath}" -l spa`, { timeout: 30000, encoding: 'utf-8' });
+            // Extraer texto entre marcadores, o tomar las últimas líneas limpias
+            let ocrText = '';
+            const startMark = rawOcr.indexOf('--- Texto extraído ---');
+            const endMark = rawOcr.indexOf('--- Fin ---');
+            if (startMark !== -1 && endMark !== -1) {
+              ocrText = rawOcr.slice(startMark + '--- Texto extraído ---'.length, endMark).trim();
+            } else {
+              // Fallback: limpiar banner y metadata
+              ocrText = rawOcr.replace(/╔[^╝]*╝/gs, '').replace(/[-─✔✖].*(OCR|Idioma|Confianza|Palabras|Líneas|Archivo).*/gi, '').trim();
+            }
+            if (ocrText && ocrText.length > 10) {
+              descriptions.push(`[OCR imagen ${i + 1}:]\n${ocrText}`);
+              csdbg('claude', `images: OCR exitoso para imagen ${i + 1} (${ocrText.length} chars)`);
+              continue;
+            }
+          } catch (ocrErr) {
+            csdbg('claude', `images: OCR falló para imagen ${i + 1}: ${ocrErr.message}`);
+          }
+
+          // 2. Fallback: Ollama minicpm-v
+          try {
+            const ollama = require('../providers/ollama');
+            csdbg('claude', `images: fallback minicpm-v para imagen ${i + 1}`);
+            const desc = await ollama.describeImage([images[i]], text);
+            descriptions.push(`[Descripción IA imagen ${i + 1}:]\n${desc}`);
+            csdbg('claude', `images: minicpm-v OK para imagen ${i + 1} (${desc.length} chars)`);
+          } catch (ollamaErr) {
+            descriptions.push(`[Imagen ${i + 1}: no se pudo analizar (OCR y visión fallaron)]`);
+            csdbg('claude', `images: ambos fallaron para imagen ${i + 1}`);
+          }
+        } finally {
+          try { fs.unlinkSync(tmpPath); } catch {}
+        }
       }
+
+      const imgContext = descriptions.join('\n\n');
+      text = `[El usuario envió ${images.length} imagen(es). Análisis:]\n\n${imgContext}\n\n[Mensaje original del usuario: "${text}"]`;
     }
     let session = claudeSession;
     let isNewSession = false;
