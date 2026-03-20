@@ -102,11 +102,18 @@ class ConversationService {
   // ── Proveedor claude-code (ClaudePrintSession) ────────────────────────────
 
   async _processClaudeCode({ chatId, agentKey, text, images, claudeSession, claudeMode, onChunk }) {
-    // Claude Code CLI no soporta imágenes — avisar al usuario con contexto
+    // Claude Code CLI no soporta imágenes — usar minicpm-v (Ollama) como "ojos"
     if (images && images.length > 0) {
-      const imgNote = `[El usuario envió ${images.length} imagen(es) pero claude-code CLI no soporta visión. Respondé basándote solo en el texto.]`;
-      text = `${imgNote}\n\n${text}`;
-      csdbg('claude', `images fallback: ${images.length} imagen(es) no soportadas en CLI`);
+      try {
+        const ollama = require('../providers/ollama');
+        csdbg('claude', `images: enviando ${images.length} imagen(es) a minicpm-v para descripción`);
+        const description = await ollama.describeImage(images, text);
+        text = `[El usuario envió ${images.length} imagen(es). Descripción generada por visión IA:]\n\n${description}\n\n[Mensaje original del usuario: "${text}"]`;
+        csdbg('claude', `images: descripción recibida (${description.length} chars)`);
+      } catch (err) {
+        csdbg('claude', `images: error en minicpm-v: ${err.message}`);
+        text = `[El usuario envió ${images.length} imagen(es) pero no se pudo analizar: ${err.message}]\n\n${text}`;
+      }
     }
     let session = claudeSession;
     let isNewSession = false;
@@ -243,9 +250,9 @@ class ConversationService {
 
     const updatedHistory = [...history, { role: 'user', content: userContent }];
 
-    // Para Gemini: adjuntar imágenes raw para conversión en el provider
+    // Para Gemini y Ollama: adjuntar imágenes raw para conversión en el provider
     const extraOpts = {};
-    if (images && images.length > 0 && provider === 'gemini') {
+    if (images && images.length > 0 && (provider === 'gemini' || provider === 'ollama')) {
       extraOpts.images = images;
     }
 
