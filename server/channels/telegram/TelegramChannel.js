@@ -499,8 +499,10 @@ class TelegramBot {
       msg._images = [{ base64, mediaType }];
       await this._handleMessage(msg);
     } catch (err) {
-      console.error(`[Telegram:${this.key}] Error procesando foto:`, err?.message || err?.stack || err);
-      await this.sendText(chatId, `❌ Error al procesar la foto: ${err?.message || String(err)}`);
+      const errDetail = err?.message || err?.stack || (err ? JSON.stringify(err) : 'error desconocido');
+      console.error(`[Telegram:${this.key}] Error procesando foto:`, errDetail);
+      if (err?.stack) console.error(`[Telegram:${this.key}] Stack:`, err.stack);
+      await this.sendText(chatId, `❌ Error al procesar la foto: ${errDetail.slice(0, 200)}`);
     }
   }
 
