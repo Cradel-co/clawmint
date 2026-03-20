@@ -117,7 +117,7 @@ class ConversationService {
 
           // 1. Intentar OCR con kheiron
           try {
-            const rawOcr = execSync(`kheiron ocr "${tmpPath}" -l spa`, { timeout: 30000, encoding: 'utf-8' });
+            const rawOcr = execSync(`kheiron ocr "${tmpPath}" -l spa 2>/dev/null`, { timeout: 30000, encoding: 'utf-8' });
             // Extraer texto entre marcadores, o tomar las últimas líneas limpias
             let ocrText = '';
             const startMark = rawOcr.indexOf('--- Texto extraído ---');
