@@ -117,7 +117,17 @@ class ConversationService {
 
           // 1. Intentar OCR con kheiron
           try {
-            const ocrText = execSync(`kheiron ocr "${tmpPath}" -l spa`, { timeout: 30000, encoding: 'utf-8' }).trim();
+            const rawOcr = execSync(`kheiron ocr "${tmpPath}" -l spa`, { timeout: 30000, encoding: 'utf-8' });
+            // Extraer texto entre marcadores, o tomar las últimas líneas limpias
+            let ocrText = '';
+            const startMark = rawOcr.indexOf('--- Texto extraído ---');
+            const endMark = rawOcr.indexOf('--- Fin ---');
+            if (startMark !== -1 && endMark !== -1) {
+              ocrText = rawOcr.slice(startMark + '--- Texto extraído ---'.length, endMark).trim();
+            } else {
+              // Fallback: limpiar banner y metadata
+              ocrText = rawOcr.replace(/╔[^╝]*╝/gs, '').replace(/[-─✔✖].*(OCR|Idioma|Confianza|Palabras|Líneas|Archivo).*/gi, '').trim();
+            }
             if (ocrText && ocrText.length > 10) {
               descriptions.push(`[OCR imagen ${i + 1}:]\n${ocrText}`);
               csdbg('claude', `images: OCR exitoso para imagen ${i + 1} (${ocrText.length} chars)`);
