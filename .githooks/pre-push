@@ -1,5 +1,5 @@
 #!/bin/bash
-# Bloquear push directo a main — usar ramas + PR
+# === Pre-push hook: proteger main + verificar que no se pushee a main sin PR ===
 
 protected_branch="main"
 current_branch=$(git symbolic-ref HEAD 2>/dev/null | sed 's|refs/heads/||')

@@ -1,6 +1,7 @@
 #!/bin/bash
-# Bloquear commits directos en main — usar ramas + PR
+# === Pre-commit hook: proteger main + bloquear archivos sensibles + validar JS ===
 
+# 1. Bloquear commits directos en main
 protected_branch="main"
 current_branch=$(git symbolic-ref HEAD 2>/dev/null | sed 's|refs/heads/||')
 
@@ -9,5 +10,56 @@ if [ "$current_branch" = "$protected_branch" ]; then
   echo "   Creá una rama primero: git checkout -b mi-rama"
   exit 1
 fi
+
+# 2. Bloquear archivos sensibles
+sensitive_patterns=('.env' 'credentials' '*.pem' '*.key' 'id_rsa' '*.secret' 'bots.json' 'agents.json')
+staged_files=$(git diff --cached --name-only)
+
+for file in $staged_files; do
+  for pattern in "${sensitive_patterns[@]}"; do
+    case "$file" in
+      *$pattern*)
+        # Permitir .env.example y bots.example.json
+        case "$file" in
+          *.example*) continue ;;
+        esac
+        echo "❌ Archivo sensible detectado: $file"
+        echo "   Si es intencional, usá: git commit --no-verify"
+        exit 1
+        ;;
+    esac
+  done
+done
+
+# 3. Detectar tokens/keys hardcodeados en archivos staged
+if git diff --cached --diff-filter=ACM -p | grep -qEi '(sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{36}|AKIA[0-9A-Z]{16}|xai-[a-zA-Z0-9]{20,}|AIzaSy[a-zA-Z0-9_-]{33})'; then
+  echo "❌ Posible API key/token detectado en los cambios."
+  echo "   Revisá los archivos staged antes de commitear."
+  exit 1
+fi
+
+# 4. Verificar sintaxis JS/JSON en archivos staged
+for file in $staged_files; do
+  if [ ! -f "$file" ]; then
+    continue
+  fi
+
+  case "$file" in
+    *.js)
+      node --check "$file" 2>/dev/null
+      if [ $? -ne 0 ]; then
+        echo "❌ Error de sintaxis JS: $file"
+        exit 1
+      fi
+      ;;
+    *.json)
+      node -e "JSON.parse(require('fs').readFileSync('$file','utf8'))" 2>/dev/null
+      if [ $? -ne 0 ]; then
+        echo "❌ JSON inválido: $file"
+        exit 1
+      fi
+      ;;
+  esac
+done
 
 exit 0
