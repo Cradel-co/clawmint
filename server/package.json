@@ -1,6 +1,6 @@
 {
   "name": "terminal-live-server",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Backend WebSocket + node-pty para terminal en tiempo real",
   "main": "index.js",
   "scripts": {

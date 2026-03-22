@@ -4,8 +4,9 @@ const bash     = require('./bash');
 const files    = require('./files');    // array
 const pty      = require('./pty');      // array
 const telegram = require('./telegram'); // array
+const memory   = require('./memory');   // array
 
-const ALL_TOOLS = [bash, ...files, ...pty, ...telegram];
+const ALL_TOOLS = [bash, ...files, ...pty, ...telegram, ...memory];
 
 const _byName = new Map(ALL_TOOLS.map(t => [t.name, t]));
 

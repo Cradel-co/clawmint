@@ -944,10 +944,33 @@ function spreadingActivation(agentKey, queryKeywords) {
 
   // ── Paso 1a: Nodos semilla por TAGS (match exacto en expanded set) ─────────
   const placeholders = expanded.map(() => '?').join(', ');
+
+  // Total de notas del agente (para cálculo IDF)
+  const totalNotes = Math.max(1, (db.prepare(
+    'SELECT COUNT(*) as cnt FROM notes WHERE agent_key = ?'
+  ).get(agentKey) || {}).cnt || 1);
+
+  // IDF por tag: log(totalNotes / notas_con_tag) — tags raros pesan más
+  const tagIdfMap = new Map();
+  const tagFreqs = db.prepare(`
+    SELECT t.name, COUNT(DISTINCT nt.note_id) as doc_count
+    FROM tags t
+    JOIN note_tags nt ON t.id = nt.tag_id
+    JOIN notes n      ON nt.note_id = n.id
+    WHERE n.agent_key = ? AND t.name IN (${placeholders})
+    GROUP BY t.name
+  `).all(agentKey, ...expanded);
+  for (const row of tagFreqs) {
+    tagIdfMap.set(row.name, Math.log(totalNotes / Math.max(1, row.doc_count)));
+  }
+
+  dbg('spread', `IDF tags (total=${totalNotes}): ${[...tagIdfMap].map(([t, w]) => `${t}=${w.toFixed(2)}`).join(', ')}`);
+
+  // Seeds: notas que tienen tags matcheados, con sus tags específicos
   const seeds = db.prepare(`
     SELECT n.id, n.title, n.content, n.importance, n.access_count,
            n.created_at, n.last_accessed, n.filename,
-           COUNT(*) as tag_hits
+           GROUP_CONCAT(t.name) as matched_tags
     FROM notes n
     JOIN note_tags nt ON n.id = nt.note_id
     JOIN tags t       ON nt.tag_id = t.id
@@ -961,7 +984,9 @@ function spreadingActivation(agentKey, queryKeywords) {
   dbg('spread', `seeds por tags: ${seeds.length}`);
 
   for (const seed of seeds) {
-    let activation = seed.tag_hits;
+    // Activación = suma de IDF de cada tag matcheado (tags raros aportan más)
+    const matchedTags = seed.matched_tags ? seed.matched_tags.split(',') : [];
+    let activation = matchedTags.reduce((sum, tag) => sum + (tagIdfMap.get(tag) || 1), 0);
     const titleNorm = _stripAccents(seed.title.toLowerCase());
     if (expanded.some(k => titleNorm.includes(_stripAccents(k)))) activation += 2;
     activation = Math.min(activation, 10);
