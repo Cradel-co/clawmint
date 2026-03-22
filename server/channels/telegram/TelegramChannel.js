@@ -748,31 +748,25 @@ class TelegramBot {
     tdbg('result', `chatId=${chatId} rawLen=${(text||'').length} cleanLen=${finalText.length} hasSentMsg=${!!sentMsg}`);
     if (!finalText) { tdbg('result', `SKIP — finalText vacío`); return; }
 
-    const postButtons = [
-      [{ text: '▶ Seguir',             callback_data: 'postreply:continue' },
-       { text: '🔄 Nueva conv',         callback_data: 'postreply:new' }],
-      [{ text: '💾 Guardar en memoria', callback_data: 'postreply:save' }],
-    ];
-
     const chunks = chunkText(finalText, 4096);
     const lastIdx = chunks.length - 1;
     tdbg('result', `${chunks.length} chunk(s), first=${chunks[0]?.slice(0, 80)}`);
 
     if (sentMsg) {
       if (chunks.length === 1) {
-        tdbg('result', `editando msg ${sentMsg.message_id} con botones`);
-        await this.sendWithButtons(chatId, chunks[0], postButtons, sentMsg.message_id);
+        tdbg('result', `editando msg ${sentMsg.message_id}`);
+        try {
+          await this._apiCall('editMessageText', { chat_id: chatId, message_id: sentMsg.message_id, text: chunks[0] });
+        } catch (e) { tdbg('result', `editMsg FAIL: ${e.message}`); await this.sendText(chatId, chunks[0]); }
       } else {
         try {
           await this._apiCall('editMessageText', { chat_id: chatId, message_id: sentMsg.message_id, text: chunks[0] });
         } catch (e) { tdbg('result', `editMsg FAIL: ${e.message}`); await this.sendText(chatId, chunks[0]); }
-        for (let i = 1; i < lastIdx; i++) await this.sendText(chatId, chunks[i]);
-        await this.sendWithButtons(chatId, chunks[lastIdx], postButtons);
+        for (let i = 1; i <= lastIdx; i++) await this.sendText(chatId, chunks[i]);
       }
     } else {
       tdbg('result', `enviando ${chunks.length} chunk(s) como mensajes nuevos`);
-      for (let i = 0; i < lastIdx; i++) await this.sendText(chatId, chunks[i]);
-      await this.sendWithButtons(chatId, chunks[lastIdx], postButtons);
+      for (let i = 0; i <= lastIdx; i++) await this.sendText(chatId, chunks[i]);
     }
     tdbg('result', `OK`);
   }

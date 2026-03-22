@@ -582,34 +582,6 @@ class CallbackHandler {
       return;
     }
 
-    // Botones post-respuesta
-    if (data.startsWith('postreply:')) {
-      const action = data.slice(10);
-      if (action === 'continue') {
-        await bot._sendToSession(chatId, 'continúa', chat);
-      } else if (action === 'new') {
-        if (bot._isClaudeBased()) {
-          chat.claudeSession = new ClaudePrintSession(bot._claudeSessionOpts(chat));
-          if (this.chatSettings) this.chatSettings.clearSession(bot.key, chatId);
-          await bot.sendText(chatId, '✅ Nueva conversación iniciada.');
-        } else {
-          chat.aiHistory = [];
-          await bot.sendText(chatId, '✅ Historial limpiado.');
-        }
-      } else if (action === 'save') {
-        const lastReply = cbq.message?.text;
-        if (lastReply && this.memory) {
-          const agentKey  = chat.activeAgent?.key || bot.defaultAgent;
-          const filename  = `telegram_${Date.now()}.md`;
-          this.memory.write(agentKey, filename, lastReply);
-          await bot.sendText(chatId, `💾 Guardado en memoria de *${agentKey}* → \`${filename}\``);
-        } else {
-          await bot.sendText(chatId, '❌ No hay texto para guardar.');
-        }
-      }
-      return;
-    }
-
     // Callbacks de consola
     if (data.startsWith('console:')) {
       const command = data.slice(8);

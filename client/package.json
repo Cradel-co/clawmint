@@ -1,6 +1,6 @@
 {
   "name": "terminal-live-client",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Frontend React + xterm.js para terminal en tiempo real",
   "scripts": {
     "dev": "vite",

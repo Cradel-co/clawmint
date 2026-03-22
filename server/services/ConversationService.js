@@ -176,14 +176,32 @@ class ConversationService {
     let isNewSession = false;
     const mcpPrompt = getMcpSystemPrompt();
     const channelCtx = (botKey && chatId)
-      ? `\n\n## Contexto del canal\n- Canal: ${channel || 'telegram'}\n- Bot key: ${botKey}\n- Chat ID: ${chatId}\nUsa estos valores cuando necesites enviar fotos, documentos o mensajes al usuario.`
+      ? `\n\n## Contexto del canal\n- Canal: ${channel || 'telegram'}\n- Bot key: ${botKey}\n- Chat ID: ${chatId}\n- Agente activo: ${agentKey || 'default'}\nUsa estos valores cuando necesites enviar fotos, documentos o mensajes al usuario.\nPara herramientas de memoria (memory_list, memory_read, memory_write, etc.), usa agent="${agentKey || 'default'}".`
       : '';
     const fullSystemPrompt = mcpPrompt ? (mcpPrompt + channelCtx) : '';
 
     // Auto-reset: si la sesión tiene demasiados mensajes, crear una nueva
+    // Antes de resetear, guardar resumen en memoria para continuidad
     if (session && session.messageCount >= MAX_SESSION_MESSAGES) {
       csdbg('claude', `auto-reset: session tiene ${session.messageCount} msgs (max ${MAX_SESSION_MESSAGES}), creando nueva`);
       console.log(`[ConvSvc] Auto-reset de sesión (${session.messageCount} mensajes)`);
+
+      // Guardar resumen de sesión en memoria para continuidad
+      if (agentKey && this._memory) {
+        try {
+          const ts = new Date().toISOString().slice(0, 16).replace('T', ' ');
+          const summaryFile = 'last-session-summary.md';
+          const existing = this._memory.read(agentKey, summaryFile);
+          const summary = `---\nSesión anterior (${ts}, ${session.messageCount} mensajes, chatId: ${chatId})\n---\n` +
+            `Último mensaje del usuario: ${text.slice(0, 500)}${text.length > 500 ? '...' : ''}\n` +
+            (existing ? `\nContexto previo:\n${existing.slice(0, 1000)}` : '');
+          this._memory.write(agentKey, summaryFile, summary);
+          csdbg('claude', `saved session summary to ${summaryFile}`);
+        } catch (err) {
+          csdbg('claude', `error saving session summary: ${err.message}`);
+        }
+      }
+
       session = null;
     }
 
@@ -213,9 +231,15 @@ class ConversationService {
       if (session.messageCount === 0) {
         const memCtx    = this._memory.buildMemoryContext(agentKey, text);
         const toolInstr = shouldNudge ? this._memory.TOOL_INSTRUCTIONS : '';
-        const parts     = [memCtx, toolInstr].filter(Boolean);
+        // Inyectar resumen de sesión anterior si existe (continuidad post-reset)
+        let sessionSummary = '';
+        try {
+          const summary = this._memory.read(agentKey, 'last-session-summary.md');
+          if (summary) sessionSummary = `## Resumen de sesión anterior\n${summary}`;
+        } catch {}
+        const parts = [sessionSummary, memCtx, toolInstr].filter(Boolean);
         if (parts.length > 0) messageText = `${parts.join('\n\n')}\n\n---\n\n${text}`;
-        csdbg('claude', `memCtx injected: ${memCtx?.length || 0} chars, toolInstr: ${toolInstr?.length || 0} chars`);
+        csdbg('claude', `memCtx injected: ${memCtx?.length || 0} chars, toolInstr: ${toolInstr?.length || 0} chars, sessionSummary: ${sessionSummary?.length || 0} chars`);
       }
     }
     if (shouldNudge && this._memory) messageText += this._memory.buildNudge(signals);
