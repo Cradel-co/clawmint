@@ -1,7 +1,10 @@
 'use strict';
 
 const crypto = require('crypto');
+const path = require('path');
 const { spawn } = require('child_process');
+
+const DEFAULT_MCP_CONFIG = path.join(__dirname, '..', 'mcp-config.json');
 
 function _cpDbg() { return process.env.DEBUG_TELEGRAM === '1'; }
 function cpdbg(scope, ...args) { if (_cpDbg()) console.log(`[CPS:DBG:${scope}]`, ...args); }
@@ -11,7 +14,7 @@ function cpdbg(scope, ...args) { if (_cpDbg()) console.log(`[CPS:DBG:${scope}]`,
  * Extraído de telegram.js para reutilización por cualquier canal (Telegram, Discord, HTTP).
  */
 class ClaudePrintSession {
-  constructor({ model = null, permissionMode = 'ask', cwd = null, claudeSessionId = null, messageCount = 0 } = {}) {
+  constructor({ model = null, permissionMode = 'ask', cwd = null, claudeSessionId = null, messageCount = 0, mcpConfig = null, appendSystemPrompt = null } = {}) {
     this.id = crypto.randomUUID();
     this.createdAt = Date.now();
     this.active = true;
@@ -23,9 +26,11 @@ class ClaudePrintSession {
     this.lastCostUsd = 0;         // costo del último mensaje
     this.claudeSessionId = claudeSessionId;  // session_id interno de claude (persistible)
     this.cwd = cwd || process.env.HOME;  // directorio de trabajo de la sesión
+    this.mcpConfig = mcpConfig || DEFAULT_MCP_CONFIG;  // ruta a mcp-config.json
+    this.appendSystemPrompt = appendSystemPrompt || null;  // prompt adicional de sistema
   }
 
-  async sendMessage(text, onChunk = null) {
+  async sendMessage(text, onChunk = null, onStatus = null) {
     const isWin = process.platform === 'win32';
     // En Windows: texto por stdin (cmd.exe rompe args largos con saltos de línea)
     // En Linux:   texto como argumento -p (comportamiento original, probado)
@@ -40,6 +45,8 @@ class ClaudePrintSession {
       claudeArgs.unshift('--permission-mode', modeMap[this.permissionMode] || 'default');
     }
     if (this.model) claudeArgs.push('--model', this.model);
+    if (this.mcpConfig) claudeArgs.push('--mcp-config', this.mcpConfig);
+    if (this.appendSystemPrompt) claudeArgs.push('--append-system-prompt', this.appendSystemPrompt);
     if (this.messageCount > 0 && this.claudeSessionId) {
       claudeArgs.push('--resume', this.claudeSessionId);
     } else if (this.messageCount > 0) {
@@ -75,6 +82,14 @@ class ClaudePrintSession {
       let killed = false;
       let exited = false;
       let eventCount = 0;
+      let usedMcpTools = false;
+      const TELEGRAM_TOOLS = ['telegram_send_message', 'telegram_send_photo', 'telegram_send_document'];
+
+      const emitStatus = (status, detail = null) => {
+        if (onStatus) onStatus(status, detail);
+      };
+
+      emitStatus('thinking');
 
       const killTimer = setTimeout(() => {
         killed = true;
@@ -93,6 +108,23 @@ class ClaudePrintSession {
           if (event.type === 'stream_event' && event.event) {
             const raw = event.event;
             const inner = typeof raw === 'string' ? JSON.parse(raw) : raw;
+
+            // Detectar inicio de tool_use para status
+            if (inner.type === 'content_block_start' && inner.content_block?.type === 'tool_use') {
+              const toolName = inner.content_block.name || 'herramienta';
+              if (TELEGRAM_TOOLS.includes(toolName)) usedMcpTools = true;
+              cpdbg('event', `#${eventCount} tool_use start: ${toolName} isTelegramTool=${TELEGRAM_TOOLS.includes(toolName)}`);
+              emitStatus('tool_use', toolName);
+            }
+            // Detectar inicio de bloque de texto
+            else if (inner.type === 'content_block_start' && inner.content_block?.type === 'text') {
+              emitStatus('thinking');
+            }
+            // Detectar fin de tool_use
+            else if (inner.type === 'content_block_stop') {
+              cpdbg('event', `#${eventCount} content_block_stop`);
+            }
+
             if (inner.type === 'content_block_delta' && inner.delta?.type === 'text_delta') {
               fullText += inner.delta.text;
               cpdbg('delta', `#${eventCount} +${inner.delta.text.length}chars total=${fullText.length}`);
@@ -105,6 +137,10 @@ class ClaudePrintSession {
             const content = event.message?.content;
             cpdbg('event', `#${eventCount} assistant content=${Array.isArray(content) ? content.length + ' blocks' : 'none'} fullText=${fullText.length}`);
             if (Array.isArray(content)) {
+              // Detectar tool_use de telegram en bloques de assistant
+              const hasTelegramTool = content.some(b => b.type === 'tool_use' && TELEGRAM_TOOLS.includes(b.name));
+              if (hasTelegramTool) usedMcpTools = true;
+
               const textBlock = content.find(b => b.type === 'text');
               if (textBlock?.text && !fullText) {
                 fullText = textBlock.text;
@@ -127,6 +163,7 @@ class ClaudePrintSession {
               this.lastCostUsd = event.total_cost_usd - this.totalCostUsd;
               this.totalCostUsd = event.total_cost_usd;
             }
+            emitStatus('done');
           } else {
             cpdbg('event', `#${eventCount} type=${event.type}`);
           }
@@ -160,8 +197,8 @@ class ClaudePrintSession {
           return reject(new Error(`claude salió con código ${exitCode}`));
         }
         this.messageCount++;
-        cpdbg('close', `OK msgCount=${this.messageCount} text="${fullText.slice(0, 100)}"`);
-        resolve(fullText.trim());
+        cpdbg('close', `OK msgCount=${this.messageCount} text="${fullText.slice(0, 100)}" usedMcpTools=${usedMcpTools}`);
+        resolve({ text: fullText.trim(), usedMcpTools });
       });
     });
   }

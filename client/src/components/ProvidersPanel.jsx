@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
+import { API_BASE } from '../config.js';
 
-const API = 'http://localhost:3001';
+const API = API_BASE;
 
 const PROVIDER_NAMES = {
   'claude-code': 'Claude Code',

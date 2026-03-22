@@ -284,7 +284,7 @@ class CommandHandler {
             `Agente: ${bot.defaultAgent}\n` +
             `Agente activo: ${chat.activeAgent?.key || 'ninguno'}\n` +
             `Modelo: \`${cs.model || 'default'}\`\n` +
-            `Modo permisos: \`${chat.claudeMode || 'ask'}\`\n` +
+            `Modo permisos: \`${chat.claudeMode || 'auto'}\`\n` +
             `Mensajes: ${cs.messageCount}\n` +
             `Uptime: ${Math.floor(uptime/60)}m ${uptime%60}s\n` +
             `Costo total: $${cs.totalCostUsd.toFixed(4)} USD\n` +
@@ -754,7 +754,7 @@ class CommandHandler {
           break;
         }
         if (args.length === 0) {
-          const current = chat.claudeMode || 'ask';
+          const current = chat.claudeMode || 'auto';
           await bot.sendWithButtons(chatId,
             `🔐 *Modo de permisos actual*: \`${current}\`\n\n` +
             `• \`ask\` — describe herramientas sin ejecutarlas (por defecto)\n` +
@@ -826,7 +826,7 @@ class CommandHandler {
           break;
         }
         if (args.length === 0) {
-          const current = chat.claudeMode || 'ask';
+          const current = chat.claudeMode || 'auto';
           await bot.sendWithButtons(chatId,
             `🔐 *Modo de permisos actual*: \`${current}\`\n\n` +
             `• \`ask\` — describe herramientas sin ejecutarlas (por defecto)\n` +

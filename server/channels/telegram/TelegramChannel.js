@@ -281,7 +281,7 @@ class TelegramBot {
   _claudeSessionOpts(chat) {
     return {
       model: chat.claudeSession?.model || null,
-      permissionMode: chat.claudeMode || 'ask',
+      permissionMode: chat.claudeMode || 'auto',
       cwd: chat.monitorCwd || process.env.HOME,
     };
   }
@@ -308,21 +308,72 @@ class TelegramBot {
     try { await this._apiCall('answerCallbackQuery', { callback_query_id: id, text }); } catch {}
   }
 
+  /**
+   * Enviar una imagen a un chat.
+   * @param {number|string} chatId
+   * @param {Buffer} photoBuffer - imagen como Buffer
+   * @param {object} [opts]
+   * @param {string} [opts.caption] - texto debajo de la imagen
+   * @param {string} [opts.filename] - nombre del archivo (default: photo.png)
+   * @param {string} [opts.contentType] - MIME type (default: image/png)
+   * @param {string} [opts.parse_mode] - 'HTML' | 'Markdown' | 'MarkdownV2'
+   */
+  async sendPhoto(chatId, photoBuffer, opts = {}) {
+    const urlPath = `/bot${this.token}/sendPhoto`;
+    const fields = { chat_id: String(chatId) };
+    if (opts.caption) fields.caption = opts.caption;
+    if (opts.parse_mode) fields.parse_mode = opts.parse_mode;
+    const file = {
+      fieldName: 'photo',
+      filename: opts.filename || 'photo.png',
+      contentType: opts.contentType || 'image/png',
+      buffer: photoBuffer,
+    };
+    const data = await httpsPostMultipart(urlPath, fields, file);
+    if (!data.ok) throw new Error(data.description || 'sendPhoto error');
+    return data.result;
+  }
+
+  /**
+   * Enviar un documento/archivo a un chat.
+   * @param {number|string} chatId
+   * @param {Buffer} docBuffer
+   * @param {object} [opts]
+   * @param {string} [opts.caption]
+   * @param {string} [opts.filename]
+   * @param {string} [opts.contentType]
+   */
+  async sendDocument(chatId, docBuffer, opts = {}) {
+    const urlPath = `/bot${this.token}/sendDocument`;
+    const fields = { chat_id: String(chatId) };
+    if (opts.caption) fields.caption = opts.caption;
+    if (opts.parse_mode) fields.parse_mode = opts.parse_mode;
+    const file = {
+      fieldName: 'document',
+      filename: opts.filename || 'file.bin',
+      contentType: opts.contentType || 'application/octet-stream',
+      buffer: docBuffer,
+    };
+    const data = await httpsPostMultipart(urlPath, fields, file);
+    if (!data.ok) throw new Error(data.description || 'sendDocument error');
+    return data.result;
+  }
+
   // ── Start / Stop / Poll ──────────────────────────────────────────────────
 
   async start() {
     if (this.running) return { username: this.botInfo?.username };
+    this.running = true;
 
     const me = await this._apiCall('getMe');
     this.botInfo = { id: me.id, username: me.username, firstName: me.first_name };
-    this.running = true;
 
     try {
       await this._apiCall('setMyCommands', {
         commands: [
           { command: 'nueva',        description: 'Nueva conversación' },
           { command: 'modelo',       description: 'Ver o cambiar modelo' },
-          { command: 'permisos',     description: 'Modo: auto/ask/plan' },
+          { command: 'modo',         description: 'Modo: auto/ask/plan' },
           { command: 'costo',        description: 'Costo de la sesión' },
           { command: 'estado',       description: 'Estado detallado' },
           { command: 'agentes',      description: 'Listar agentes' },
@@ -570,9 +621,9 @@ class TelegramBot {
           messageCount:    saved.message_count,
           cwd:             saved.cwd || process.env.HOME,
           model:           saved.model || null,
-          permissionMode:  saved.claude_mode || 'ask',
+          permissionMode:  saved.claude_mode || 'auto',
         });
-        tdbg('init', `restored session ${saved.claude_session_id.slice(0,8)}… msgCount=${saved.message_count} cwd=${saved.cwd} mode=${saved.claude_mode || 'ask'}`);
+        tdbg('init', `restored session ${saved.claude_session_id.slice(0,8)}… msgCount=${saved.message_count} cwd=${saved.cwd} mode=${saved.claude_mode || 'auto'}`);
       }
 
       chat = {
@@ -590,9 +641,9 @@ class TelegramBot {
         monitorCwd:     saved?.cwd || process.env.HOME,
         busy:           false,
         provider:       saved?.provider || 'claude-code',
-        model:          saved?.model    || null,
+        model:          saved?.model    || 'sonnet',
         aiHistory:      [],
-        claudeMode:     saved?.claude_mode || 'ask',
+        claudeMode:     saved?.claude_mode || 'auto',
         consoleMode:    false,
         lastButtonsMsgId: null,
       };
@@ -769,8 +820,9 @@ class TelegramBot {
 
     // ── Ruta ConversationService: claude-code y providers API ────────────────
     tdbg('send', `→ ruta ConvSvc`);
-    const mode = chat.claudeMode || 'ask';
-    tdbg('send', `mode=${mode} model=${chat.model} hasClaudeSession=${!!chat.claudeSession} msgCount=${chat.claudeSession?.messageCount || 0}`);
+    const mode = chat.claudeMode || 'auto';
+    const isMcpMode = chatProvider === 'claude-code' && mode === 'auto';
+    tdbg('send', `mode=${mode} model=${chat.model} isMcpMode=${isMcpMode} hasClaudeSession=${!!chat.claudeSession} msgCount=${chat.claudeSession?.messageCount || 0}`);
     const { sentMsg, stop: stopAnim } = await this._startDotAnimation(chatId, mode);
     tdbg('send', `dotAnim sentMsg=${sentMsg?.message_id || 'null'}`);
 
@@ -779,7 +831,33 @@ class TelegramBot {
     let animStopped = false;
     let chunkCount  = 0;
 
-    const onChunk = async (partial) => {
+    // Status icons para modo MCP
+    const STATUS_MAP = {
+      thinking:  '🧠 Pensando...',
+      tool_use:  '⚡ Ejecutando',
+      done:      '✅ Listo',
+    };
+
+    let lastStatus = null;
+
+    // En modo MCP: mostrar status en vez de texto
+    const onStatus = isMcpMode ? async (status, detail) => {
+      if (!sentMsg) return;
+      if (!animStopped) { animStopped = true; stopAnim(); }
+      const now = Date.now();
+      if (now - lastEditAt < THROTTLE && status === lastStatus) return;
+      lastEditAt = now;
+      lastStatus = status;
+      let statusText = STATUS_MAP[status] || `⏳ ${status}`;
+      if (status === 'tool_use' && detail) statusText = `⚡ ${detail}...`;
+      try {
+        await this._apiCall('editMessageText', { chat_id: chatId, message_id: sentMsg.message_id, text: statusText });
+        tdbg('status', `${status} ${detail || ''}`);
+      } catch (e) { tdbg('status', `editMsg FAIL: ${e.message}`); }
+    } : null;
+
+    // En modo normal: streaming de texto (comportamiento original)
+    const onChunk = isMcpMode ? null : async (partial) => {
       chunkCount++;
       if (!partial.trim() || !sentMsg) { tdbg('chunk', `#${chunkCount} SKIP empty=${!partial.trim()} noMsg=${!sentMsg}`); return; }
       if (!animStopped) { animStopped = true; stopAnim(); tdbg('chunk', `#${chunkCount} anim stopped`); }
@@ -815,22 +893,19 @@ class TelegramBot {
         claudeSession: chat.claudeSession,
         claudeMode:    mode,
         onChunk,
+        onStatus,
         shellId:       String(chatId),
+        botKey:        this.key,
+        channel:       'telegram',
       });
-      tdbg('send', `← convSvc.processMessage() ${Date.now() - t0}ms chunks=${chunkCount} resultText=${(result.text || '').length} chars newSession=${!!result.newSession} savedFiles=${result.savedMemoryFiles?.length || 0}`);
+      tdbg('send', `← convSvc.processMessage() ${Date.now() - t0}ms chunks=${chunkCount} resultText=${(result.text || '').length} chars usedMcpTools=${result.usedMcpTools} newSession=${!!result.newSession} savedFiles=${result.savedMemoryFiles?.length || 0}`);
 
       stopAnim();
-      if (!animStopped && sentMsg) {
-        tdbg('send', `deleting dot msg (no chunks received)`);
-        try { await this._apiCall('deleteMessage', { chat_id: chatId, message_id: sentMsg.message_id }); } catch (e) { tdbg('send', `deleteMsg FAIL: ${e.message}`); }
-      }
 
       if (result.newSession)       chat.claudeSession = result.newSession;
       if (result.history)          chat.aiHistory     = result.history;
 
       // Persistir sesión de Claude en SQLite para sobrevivir reinicios
-      // Usar monitorCwd (directorio elegido por el usuario) en vez de claudeSession.cwd
-      // para no sobreescribir el cwd del usuario con el cwd interno de Claude
       if (chat.claudeSession?.claudeSessionId && this._chatSettings) {
         this._chatSettings.saveSession(this.key, chatId, {
           claudeSessionId: chat.claudeSession.claudeSessionId,
@@ -846,25 +921,40 @@ class TelegramBot {
         }
       }
 
-      tdbg('send', `→ _sendResult() textLen=${(result.text || '').length} hasSentMsg=${!!(animStopped ? sentMsg : null)}`);
-      await this._sendResult(chatId, result.text || '', animStopped ? sentMsg : null);
-      tdbg('send', `← _sendResult() OK`);
+      // En modo MCP: borrar status msg y enviar respuesta como mensaje nuevo
+      // Claude puede haber enviado fotos/archivos via MCP, pero el texto lo envía el servidor
+      if (isMcpMode) {
+        if (sentMsg) {
+          try { await this._apiCall('deleteMessage', { chat_id: chatId, message_id: sentMsg.message_id }); } catch (e) { tdbg('send', `deleteStatusMsg FAIL: ${e.message}`); }
+        }
+        if (result.text) {
+          tdbg('send', `MCP mode: enviando texto (${result.text.length} chars) usedMcpTools=${result.usedMcpTools}`);
+          await this._sendResult(chatId, result.text, null);
+        }
+      } else {
+        // Modo normal: streaming de texto
+        if (!animStopped && sentMsg) {
+          tdbg('send', `deleting dot msg (no chunks received)`);
+          try { await this._apiCall('deleteMessage', { chat_id: chatId, message_id: sentMsg.message_id }); } catch (e) { tdbg('send', `deleteMsg FAIL: ${e.message}`); }
+        }
+        tdbg('send', `→ _sendResult() textLen=${(result.text || '').length} hasSentMsg=${!!(animStopped ? sentMsg : null)}`);
+        await this._sendResult(chatId, result.text || '', animStopped ? sentMsg : null);
+        tdbg('send', `← _sendResult() OK`);
+      }
 
-      // TTS: enviar audio si está habilitado
-      if (this._tts && this._tts.isEnabled() && result.text) {
+      // TTS: enviar audio si está habilitado (solo en modo normal)
+      if (!isMcpMode && this._tts && this._tts.isEnabled() && result.text) {
         try {
           const audioBuffer = await this._tts.synthesize(result.text);
           if (audioBuffer) await this.sendVoice(chatId, audioBuffer);
         } catch (err) {
           tdbg('tts', `Error TTS: ${err.message}`);
-          // Fallo silencioso — el texto ya se envió
         }
       }
     } catch (err) {
       stopAnim();
       console.error(`[Telegram:${this.key}] Error en chat ${chatId}:`, err.message);
       tdbg('send', `CATCH ERROR: ${err.stack || err.message}`);
-      // Si Claude falló, limpiar sesión rota para que el próximo mensaje no reintente --resume
       if (chat.claudeSession && err.message?.includes('código')) {
         tdbg('send', `limpiando sesión rota`);
         chat.claudeSession.claudeSessionId = null;

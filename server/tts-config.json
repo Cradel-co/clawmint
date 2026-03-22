@@ -1,6 +1,6 @@
 {
-  "enabled": true,
-  "default": "piper-tts",
+  "enabled": false,
+  "default": "edge-tts",
   "providers": {
     "speecht5": {
       "voice": null,
@@ -22,7 +22,7 @@
       "model": "standard"
     },
     "edge-tts": {
-      "voice": "es-MX-JorgeNeural",
+      "voice": "es-AR-ElenaNeural",
       "model": "default"
     },
     "piper-tts": {

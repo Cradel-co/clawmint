@@ -5,13 +5,13 @@ import TerminalPanel from './components/TerminalPanel.jsx';
 import TelegramPanel from './components/TelegramPanel.jsx';
 import AgentsPanel from './components/AgentsPanel.jsx';
 import ProvidersPanel from './components/ProvidersPanel.jsx';
+import WebChatPanel from './components/WebChatPanel.jsx';
+import { API_BASE, WS_URL } from './config.js';
 import './App.css';
-
-const WS_URL = 'ws://localhost:3001';
-let nextId = 1;
+let nextId = 0;
 
 function createSession(command = null, type = 'pty', httpSessionId = null, provider = null) {
-  const id = nextId++;
+  const id = ++nextId;
   let title;
   if (provider === 'gemini') {
     title = `Gemini ${id}`;
@@ -28,12 +28,16 @@ function createSession(command = null, type = 'pty', httpSessionId = null, provi
 }
 
 export default function App() {
-  const [sessions, setSessions] = useState(() => [createSession()]);
-  const [activeId, setActiveId] = useState(1);
+  const [sessions, setSessions] = useState(() => {
+    const initial = createSession();
+    return [initial];
+  });
+  const [activeId, setActiveId] = useState(() => nextId);
   const [telegramOpen, setTelegramOpen] = useState(false);
   const [telegramChatsCount, setTelegramChatsCount] = useState(0);
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [providersOpen, setProvidersOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
   // Mapa: httpSessionId → frontendTabId
   const httpIdToTabId = useRef(new Map());
@@ -72,7 +76,7 @@ export default function App() {
     if (!telegramOpen) {
       const interval = setInterval(async () => {
         try {
-          const res = await fetch('http://localhost:3001/api/telegram/bots');
+          const res = await fetch(`${API_BASE}/api/telegram/bots`);
           const bots = await res.json();
           const chats = Array.isArray(bots)
             ? bots.reduce((n, b) => n + (b.chats?.length || 0), 0)
@@ -134,22 +138,29 @@ export default function App() {
 
         <div className="header-right">
           <button
+            className={`telegram-btn ${chatOpen ? 'active' : ''}`}
+            onClick={() => { setChatOpen(v => !v); setProvidersOpen(false); setAgentsOpen(false); setTelegramOpen(false); }}
+            title="Chat con IA"
+          >
+            💬
+          </button>
+          <button
             className={`telegram-btn ${providersOpen ? 'active' : ''}`}
-            onClick={() => { setProvidersOpen(v => !v); setAgentsOpen(false); setTelegramOpen(false); }}
+            onClick={() => { setProvidersOpen(v => !v); setAgentsOpen(false); setTelegramOpen(false); setChatOpen(false); }}
             title="Providers de IA"
           >
             ⚙️
           </button>
           <button
             className={`telegram-btn ${agentsOpen ? 'active' : ''}`}
-            onClick={() => { setAgentsOpen(v => !v); setTelegramOpen(false); setProvidersOpen(false); }}
+            onClick={() => { setAgentsOpen(v => !v); setTelegramOpen(false); setProvidersOpen(false); setChatOpen(false); }}
             title="Agentes personalizados"
           >
             🎭
           </button>
           <button
             className={`telegram-btn ${telegramOpen ? 'active' : ''}`}
-            onClick={() => { setTelegramOpen(v => !v); setAgentsOpen(false); setProvidersOpen(false); }}
+            onClick={() => { setTelegramOpen(v => !v); setAgentsOpen(false); setProvidersOpen(false); setChatOpen(false); }}
             title="Panel de Telegram"
           >
             🤖
@@ -201,6 +212,10 @@ export default function App() {
 
         {providersOpen && (
           <ProvidersPanel onClose={() => setProvidersOpen(false)} />
+        )}
+
+        {chatOpen && (
+          <WebChatPanel onClose={() => setChatOpen(false)} />
         )}
       </div>
     </div>

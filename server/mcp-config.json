@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "kheiron-tools": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["/home/usuario/.marcos/kheiron-tool/src/mcp-server.js"]
+    },
+    "clawmint": {
+      "type": "http",
+      "url": "http://localhost:3002/mcp"
+    }
+  }
+}

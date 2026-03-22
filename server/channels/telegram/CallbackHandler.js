@@ -3,6 +3,8 @@
 const ClaudePrintSession   = require('../../core/ClaudePrintSession');
 const os                   = require('os');
 const { getSystemStats }   = require('../../core/systemStats');
+const dynamicRegistry      = require('./DynamicCallbackRegistry');
+const { exec }             = require('child_process');
 
 /**
  * CallbackHandler — maneja _handleCallbackQuery y el motor de menús declarativo.
@@ -122,6 +124,66 @@ class CallbackHandler {
     return { text, buttons };
   }
 
+  // ── Ejecución de callbacks dinámicos ────────────────────────────────────────
+
+  async _executeDynamicAction(bot, chatId, msgId, chat, action) {
+    try {
+      switch (action.type) {
+        case 'message': {
+          // Registrar sub-callbacks si vienen anidados
+          if (action.callbacks) {
+            dynamicRegistry.registerMany(action.callbacks);
+          }
+          const body = { chat_id: chatId, text: action.text };
+          if (action.parse_mode) body.parse_mode = action.parse_mode;
+          if (action.reply_markup) {
+            body.reply_markup = typeof action.reply_markup === 'string'
+              ? action.reply_markup : JSON.stringify(action.reply_markup);
+          }
+          if (action.edit && msgId) {
+            body.message_id = msgId;
+            await bot._apiCall('editMessageText', body);
+          } else {
+            await bot._apiCall('sendMessage', body);
+          }
+          break;
+        }
+
+        case 'command': {
+          const cmd = action.cmd;
+          if (!cmd) { await bot.sendText(chatId, '❌ Comando vacío.'); break; }
+          const timeout = action.timeout || 15000;
+          const output = await new Promise((resolve) => {
+            exec(cmd, { timeout, maxBuffer: 1024 * 512 }, (err, stdout, stderr) => {
+              if (err) resolve(`❌ Error: ${err.message}\n${stderr || ''}`);
+              else resolve(stdout || stderr || '(sin output)');
+            });
+          });
+          const truncated = output.length > 4000 ? output.slice(0, 4000) + '\n…(truncado)' : output;
+          await bot._apiCall('sendMessage', {
+            chat_id: chatId,
+            text: `<pre>${truncated}</pre>`,
+            parse_mode: 'HTML',
+          });
+          break;
+        }
+
+        case 'prompt': {
+          if (!action.text) { await bot.sendText(chatId, '❌ Prompt vacío.'); break; }
+          await bot._sendToSession(chatId, action.text, chat);
+          break;
+        }
+
+        default:
+          this.logger.warn(`[DynCallback] Tipo desconocido: ${action.type}`);
+          await bot.sendText(chatId, `❌ Tipo de acción desconocido: ${action.type}`);
+      }
+    } catch (err) {
+      this.logger.error(`[DynCallback] Error: ${err.message}`);
+      await bot.sendText(chatId, `❌ Error ejecutando acción: ${err.message}`);
+    }
+  }
+
   // ── Motor de menús declarativo ──────────────────────────────────────────────
 
   _resolveButtons(rawRows, back = null) {
@@ -165,7 +227,7 @@ class CallbackHandler {
       'menu:sesion': {
         text: (chat) => {
           const cs = chat?.claudeSession;
-          return `💬 *Sesión*\nAgente: \`${bot?.defaultAgent || '—'}\` | Modo: \`${chat?.claudeMode||'ask'}\`` +
+          return `💬 *Sesión*\nAgente: \`${bot?.defaultAgent || '—'}\` | Modo: \`${chat?.claudeMode||'auto'}\`` +
             (cs ? `\nMensajes: ${cs.messageCount} | Costo: $${cs.totalCostUsd.toFixed(4)}` : '');
         },
         buttons: () => [
@@ -183,7 +245,7 @@ class CallbackHandler {
           const text = cs
             ? `📊 *Estado de sesión*\n\nID: \`${cs.id.slice(0,8)}…\`\n` +
               `Agente: ${b.defaultAgent}\nModelo: \`${cs.model||'default'}\`\n` +
-              `Modo permisos: \`${chat.claudeMode||'ask'}\`\nMensajes: ${cs.messageCount}\n` +
+              `Modo permisos: \`${chat.claudeMode||'auto'}\`\nMensajes: ${cs.messageCount}\n` +
               `Uptime: ${Math.floor(uptime/60)}m ${uptime%60}s\n` +
               `Costo: $${cs.totalCostUsd.toFixed(4)} USD`
             : '📊 Sin sesión activa.';
@@ -350,7 +412,7 @@ class CallbackHandler {
       },
       'menu:config:permisos': {
         action: async ({ chatId, msgId, chat, bot: b }) => {
-          const current = chat.claudeMode || 'ask';
+          const current = chat.claudeMode || 'auto';
           await b.sendWithButtons(chatId,
             `🔐 *Modo de permisos*: \`${current}\`\n\n• \`ask\` — describe sin ejecutar\n• \`auto\` — ejecuta todo\n• \`plan\` — solo planifica`,
             [[
@@ -459,8 +521,8 @@ class CallbackHandler {
           claudeSessionId: saved.claude_session_id,
           messageCount:    saved.message_count,
           cwd:             saved.cwd || process.env.HOME,
-          model:           saved.model || null,
-          permissionMode:  saved.claude_mode || 'ask',
+          model:           saved.model || 'sonnet',
+          permissionMode:  saved.claude_mode || 'auto',
         });
       }
 
@@ -479,9 +541,9 @@ class CallbackHandler {
         monitorCwd: saved?.cwd || process.env.HOME,
         busy: false,
         provider: saved?.provider || 'claude-code',
-        model: saved?.model || null,
+        model: saved?.model || 'sonnet',
         aiHistory: [],
-        claudeMode: saved?.claude_mode || 'ask',
+        claudeMode: saved?.claude_mode || 'auto',
         consoleMode: false,
       };
       bot.chats.set(chatId, chat);
@@ -489,6 +551,15 @@ class CallbackHandler {
 
     await bot._answerCallback(cbq.id);
     const data = cbq.data || '';
+
+    // ── Callbacks dinámicos (registrados en runtime) ──────────────────────────
+    if (dynamicRegistry.has(data)) {
+      const action = dynamicRegistry.get(data);
+      if (action) {
+        await this._executeDynamicAction(bot, chatId, msgId, chat, action);
+        return;
+      }
+    }
 
     // Whitelist: agregar / eliminar
     if (data === 'whitelist:add') {
@@ -910,6 +981,11 @@ class CallbackHandler {
       }
 
       case 'noop':
+        break;
+
+      default:
+        // Fallback: enviar callback_data como prompt al AI activo
+        await bot._sendToSession(chatId, data, chat);
         break;
     }
   }

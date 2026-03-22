@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
+import { API_BASE } from '../config.js';
 
-const API = 'http://localhost:3001/api/mcps';
+const API = `${API_BASE}/api/mcps`;
 
 // Parsea "KEY=VALUE\nKEY2=VALUE2" → { KEY: "VALUE", KEY2: "VALUE2" }
 function parseEnv(text) {

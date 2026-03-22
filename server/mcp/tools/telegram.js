@@ -1,0 +1,176 @@
+'use strict';
+
+const http = require('http');
+const fs   = require('fs');
+
+const API_BASE = `http://localhost:${process.env.PORT || 3002}`;
+
+// Helper: HTTP request a la API local
+function apiGet(path) {
+  return new Promise((resolve, reject) => {
+    http.get(`${API_BASE}${path}`, (res) => {
+      let raw = '';
+      res.on('data', c => { raw += c; });
+      res.on('end', () => {
+        try { resolve(JSON.parse(raw)); }
+        catch { resolve(raw); }
+      });
+    }).on('error', reject);
+  });
+}
+
+function apiPost(path, body, contentType = 'application/json') {
+  return new Promise((resolve, reject) => {
+    const url = new URL(`${API_BASE}${path}`);
+    const isJson = contentType === 'application/json';
+    const data = isJson ? JSON.stringify(body) : body;
+
+    const options = {
+      hostname: url.hostname,
+      port: url.port,
+      path: url.pathname + url.search,
+      method: 'POST',
+      headers: {
+        'Content-Type': contentType,
+        'Content-Length': Buffer.byteLength(data),
+      },
+    };
+
+    const req = http.request(options, (res) => {
+      let raw = '';
+      res.on('data', c => { raw += c; });
+      res.on('end', () => {
+        try { resolve(JSON.parse(raw)); }
+        catch { resolve(raw); }
+      });
+    });
+    req.on('error', reject);
+    req.write(data);
+    req.end();
+  });
+}
+
+// ── Tools ────────────────────────────────────────────────────────────────────
+
+const telegramListBots = {
+  name: 'telegram_list_bots',
+  description: 'Lista los bots de Telegram configurados con sus chats activos.',
+  params: {},
+
+  async execute() {
+    const bots = await apiGet('/api/telegram/bots');
+    if (!Array.isArray(bots)) return 'No hay bots configurados.';
+    const lines = bots.map(b => {
+      const status = b.running ? '🟢' : '🔴';
+      const chats = (b.chats || []).map(c =>
+        `    chat ${c.chatId} (${c.firstName || c.username || 'sin nombre'})`
+      ).join('\n');
+      return `${status} ${b.key} (${b.botInfo?.username || '?'})\n${chats || '    (sin chats)'}`;
+    });
+    return lines.join('\n\n');
+  },
+};
+
+const telegramSendMessage = {
+  name: 'telegram_send_message',
+  description: 'Enviar un mensaje de texto a un chat de Telegram. Soporta botones inline con callbacks dinámicos.',
+  params: {
+    bot: 'string — key del bot (ej: chibi2026_bot)',
+    chat_id: 'string — ID del chat destino',
+    text: 'string — texto del mensaje',
+    'parse_mode?': '?string — HTML, Markdown o MarkdownV2 (opcional)',
+    'reply_markup?': '?object — Telegram reply_markup (inline_keyboard, etc.)',
+    'callbacks?': '?object — Callbacks dinámicos: { "callback_data": { type: "message"|"command"|"prompt", ...params, ttl?, once? } }. ' +
+      'type "message": { text, parse_mode? } responde con texto. ' +
+      'type "command": { cmd, timeout? } ejecuta bash y envía output. ' +
+      'type "prompt": { text } envía como prompt al AI activo. ' +
+      'ttl: ms de vida (default 300000=5min). once: true para single-use.',
+  },
+
+  async execute({ bot, chat_id, text, parse_mode, reply_markup, callbacks }) {
+    if (!bot || !chat_id || !text) return 'Error: bot, chat_id y text son requeridos.';
+    const bots = await apiGet('/api/telegram/bots');
+    const botInfo = Array.isArray(bots) && bots.find(b => b.key === bot);
+    if (!botInfo) return `Error: bot "${bot}" no encontrado.`;
+
+    // MCP envía todos los params como strings — parsear JSON si es necesario
+    const parseIfString = (v) => {
+      if (typeof v === 'string') { try { return JSON.parse(v); } catch { return v; } }
+      return v;
+    };
+
+    const body = { text, parse_mode };
+    if (reply_markup) body.reply_markup = parseIfString(reply_markup);
+    if (callbacks) body.callbacks = parseIfString(callbacks);
+    const result = await apiPost(`/api/telegram/bots/${bot}/chats/${chat_id}/message`, body);
+    if (result.error) return `Error: ${result.error}`;
+    return `Mensaje enviado (message_id: ${result.message_id})`;
+  },
+};
+
+const telegramSendPhoto = {
+  name: 'telegram_send_photo',
+  description: 'Enviar una imagen a un chat de Telegram. La imagen debe existir en disco.',
+  params: {
+    bot: 'string — key del bot (ej: chibi2026_bot)',
+    chat_id: 'string — ID del chat destino',
+    file_path: 'string — ruta absoluta de la imagen en disco',
+    'caption?': '?string — texto debajo de la imagen (opcional)',
+  },
+
+  async execute({ bot, chat_id, file_path, caption }) {
+    if (!bot || !chat_id || !file_path) return 'Error: bot, chat_id y file_path son requeridos.';
+
+    if (!fs.existsSync(file_path)) return `Error: archivo no encontrado: ${file_path}`;
+    const buffer = fs.readFileSync(file_path);
+    const ext = file_path.split('.').pop().toLowerCase();
+    const mimeMap = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
+    const contentType = mimeMap[ext] || 'image/png';
+    const filename = file_path.split('/').pop();
+
+    const qs = new URLSearchParams();
+    if (caption) qs.set('caption', caption);
+    qs.set('filename', filename);
+
+    const result = await apiPost(
+      `/api/telegram/bots/${bot}/chats/${chat_id}/photo?${qs.toString()}`,
+      buffer,
+      contentType
+    );
+    if (result.error) return `Error: ${result.error}`;
+    return `Foto enviada (message_id: ${result.message_id})`;
+  },
+};
+
+const telegramSendDocument = {
+  name: 'telegram_send_document',
+  description: 'Enviar un archivo/documento a un chat de Telegram.',
+  params: {
+    bot: 'string — key del bot (ej: chibi2026_bot)',
+    chat_id: 'string — ID del chat destino',
+    file_path: 'string — ruta absoluta del archivo en disco',
+    'caption?': '?string — texto debajo del archivo (opcional)',
+  },
+
+  async execute({ bot, chat_id, file_path, caption }) {
+    if (!bot || !chat_id || !file_path) return 'Error: bot, chat_id y file_path son requeridos.';
+
+    if (!fs.existsSync(file_path)) return `Error: archivo no encontrado: ${file_path}`;
+    const buffer = fs.readFileSync(file_path);
+    const filename = file_path.split('/').pop();
+
+    const qs = new URLSearchParams();
+    if (caption) qs.set('caption', caption);
+    qs.set('filename', filename);
+
+    const result = await apiPost(
+      `/api/telegram/bots/${bot}/chats/${chat_id}/document?${qs.toString()}`,
+      buffer,
+      'application/octet-stream'
+    );
+    if (result.error) return `Error: ${result.error}`;
+    return `Documento enviado (message_id: ${result.message_id})`;
+  },
+};
+
+module.exports = [telegramListBots, telegramSendMessage, telegramSendPhoto, telegramSendDocument];

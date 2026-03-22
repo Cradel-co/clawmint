@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { API_BASE } from '../config.js';
 import './TelegramPanel.css';
 
-const API = 'http://localhost:3001/api/telegram';
+const API = `${API_BASE}/api/telegram`;
 
 function timeAgo(ts) {
   const secs = Math.floor((Date.now() - ts) / 1000);
@@ -18,7 +19,7 @@ function ChatRow({ botKey, chat, onOpenSession, onRefresh }) {
   const handleLink = async () => {
     if (linking) { setLinking(false); return; }
     try {
-      const res = await fetch('http://localhost:3001/api/sessions');
+      const res = await fetch(`${API_BASE}/api/sessions`);
       const data = await res.json();
       setSessions(Array.isArray(data) ? data.filter(s => s.active) : []);
     } catch { setSessions([]); }
@@ -167,7 +168,7 @@ function BotCard({ bot, onOpenSession, onRefresh }) {
   const [allAgents, setAllAgents] = useState([]);
 
   useEffect(() => {
-    fetch('http://localhost:3001/api/agents')
+    fetch(`${API_BASE}/api/agents`)
       .then(r => r.json())
       .then(data => setAllAgents(Array.isArray(data) ? data : []))
       .catch(() => {});
