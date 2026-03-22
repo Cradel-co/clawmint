@@ -498,15 +498,22 @@ class TelegramBot {
       const fileUrl  = `https://api.telegram.org/file/bot${this.token}/${fileInfo.file_path}`;
       const tmpFile  = path.join(os.tmpdir(), `clawmint_voice_${Date.now()}.ogg`);
       await this._transcriber.httpsDownload(fileUrl, tmpFile);
-      await this.sendText(chatId, '🎙️ Transcribiendo audio...');
+      // Enviar status de transcripción — se reutiliza como sentMsg para los status posteriores
+      let statusMsg = null;
+      try { statusMsg = await this._apiCall('sendMessage', { chat_id: chatId, text: '🎙️ Transcribiendo audio...' }); } catch {}
       const text = await this._transcriber.transcribe(tmpFile);
       try { fs.unlinkSync(tmpFile); } catch {}
       if (!text || !text.trim()) {
-        await this.sendText(chatId, '⚠️ No se pudo extraer texto del audio.');
+        if (statusMsg) {
+          try { await this._apiCall('editMessageText', { chat_id: chatId, message_id: statusMsg.message_id, text: '⚠️ No se pudo extraer texto del audio.' }); } catch {}
+        } else {
+          await this.sendText(chatId, '⚠️ No se pudo extraer texto del audio.');
+        }
         return;
       }
       console.log(`[Telegram:${this.key}] Audio transcrito de ${chatId}: ${text.slice(0, 60)}`);
       msg.text = text;
+      msg._statusMsg = statusMsg; // Pasar el mensaje de status para reutilizar
       await this._handleMessage(msg);
     } catch (err) {
       console.error(`[Telegram:${this.key}] Error procesando audio:`, err.message);
@@ -698,7 +705,7 @@ class TelegramBot {
       const args  = parts.slice(1);
       await this._handleCommand(msg, cmd, args, chat);
     } else {
-      await this._sendToSession(chatId, text, chat, msg._images);
+      await this._sendToSession(chatId, text, chat, msg._images, msg._statusMsg);
     }
   }
 
@@ -773,7 +780,7 @@ class TelegramBot {
 
   // ── Envío a sesión / provider ─────────────────────────────────────────────
 
-  async _sendToSession(chatId, text, chat, images = null) {
+  async _sendToSession(chatId, text, chat, images = null, existingStatusMsg = null) {
     tdbg('send', `chatId=${chatId} text="${text.slice(0, 80)}" busy=${chat.busy}`);
     if (chat.busy) {
       tdbg('send', `SKIP — chat busy`);
@@ -817,8 +824,16 @@ class TelegramBot {
     const mode = chat.claudeMode || 'auto';
     const isMcpMode = chatProvider === 'claude-code' && mode === 'auto';
     tdbg('send', `mode=${mode} model=${chat.model} isMcpMode=${isMcpMode} hasClaudeSession=${!!chat.claudeSession} msgCount=${chat.claudeSession?.messageCount || 0}`);
-    const { sentMsg, stop: stopAnim } = await this._startDotAnimation(chatId, mode);
-    tdbg('send', `dotAnim sentMsg=${sentMsg?.message_id || 'null'}`);
+    // Reutilizar mensaje de status existente (ej: transcripción de audio) o crear animación nueva
+    let sentMsg, stopAnim;
+    if (existingStatusMsg) {
+      sentMsg = existingStatusMsg;
+      stopAnim = () => {};
+      tdbg('send', `reusing statusMsg=${sentMsg.message_id}`);
+    } else {
+      ({ sentMsg, stop: stopAnim } = await this._startDotAnimation(chatId, mode));
+      tdbg('send', `dotAnim sentMsg=${sentMsg?.message_id || 'null'}`);
+    }
 
     let lastEditAt  = 0;
     const THROTTLE  = 1500;
@@ -827,9 +842,10 @@ class TelegramBot {
 
     // Status icons para modo MCP
     const STATUS_MAP = {
-      thinking:  '🧠 Pensando...',
-      tool_use:  '⚡ Ejecutando',
-      done:      '✅ Listo',
+      transcribing: '🎙️ Transcribiendo audio...',
+      thinking:     '🧠 Pensando...',
+      tool_use:     '⚡ Ejecutando',
+      done:         '✅ Listo',
     };
 
     let lastStatus = null;
