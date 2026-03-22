@@ -22,6 +22,7 @@ const ChatSettingsRepository   = require('./storage/ChatSettingsRepository');
 const BotsRepository           = require('./storage/BotsRepository');
 const ConversationService      = require('./services/ConversationService');
 const { TelegramChannel }      = require('./channels/telegram/TelegramChannel');
+const WebChannel               = require('./channels/web/WebChannel');
 const ClaudePrintSession       = require('./core/ClaudePrintSession');
 
 let _container = null;
@@ -136,6 +137,20 @@ function createContainer() {
     logger,
   });
 
+  // ── WebChannel ─────────────────────────────────────────────────────────────
+
+  const webChannel = new WebChannel({
+    convSvc,
+    providers,
+    providerConfig,
+    agents,
+    chatSettingsRepo,
+    eventBus,
+    logger,
+    transcriber,
+    tts,
+  });
+
   // ── Container ─────────────────────────────────────────────────────────────
 
   _container = {
@@ -148,6 +163,7 @@ function createContainer() {
     botsRepo,
     convSvc,
     telegramChannel,
+    webChannel,
     sessionManager,
     agents,
     skills,
