@@ -68,18 +68,37 @@ El 70-80% de las interacciones no necesitan un modelo frontier. El router local 
 
 [Ollama](https://ollama.ai) es el runtime recomendado. Expone una API compatible con el SDK de OpenAI, lo que simplifica la integración.
 
+**Estado actual:** Desplegado en Docker (`~/marcos/Ollama/docker-compose.yml`), modelo `llama3.2` instalado.
+
 ```bash
-# Instalar en cualquier nodo Linux
-curl -fsSL https://ollama.ai/install.sh | sh
+# Gestionar
+cd ~/marcos/Ollama && docker compose up -d
+cd ~/marcos/Ollama && docker compose down
 
-# O con Docker
-docker run -d --name ollama -p 11434:11434 ollama/ollama
-
-# Descargar un modelo
-ollama pull llama3.1:8b
+# Descargar modelos
+docker exec ollama ollama pull llama3.2
+docker exec ollama ollama list
 ```
 
-API disponible en `http://localhost:11434/v1` (compatible OpenAI).
+### Endpoints disponibles
+
+| Endpoint | URL (tailnet) | Uso |
+|----------|---------------|-----|
+| API OpenAI-compatible | `http://100.64.0.1:11434/v1` | SDK de OpenAI, Clawmint provider |
+| API nativa Ollama | `http://100.64.0.1:11434/api` | `ollama` CLI remoto, scripts |
+| Open WebUI | `http://100.64.0.1:8081` | Interfaz web tipo ChatGPT |
+
+### Configuración de red
+
+Para que Ollama sea accesible desde otros nodos de la tailnet, el contenedor requiere:
+
+```yaml
+environment:
+  - OLLAMA_HOST=0.0.0.0:11434    # Escucha en todas las interfaces
+  - OLLAMA_ORIGINS=*              # Permite CORS desde cualquier origen
+```
+
+Sin estas variables, Ollama solo escucha en `localhost` y rechaza requests externos.
 
 ---
 

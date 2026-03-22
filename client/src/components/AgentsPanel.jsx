@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
+import { API_BASE } from '../config.js';
 import './AgentsPanel.css';
 
-const API = 'http://localhost:3001/api/agents';
-const SKILLS_API = 'http://localhost:3001/api/skills';
+const API = `${API_BASE}/api/agents`;
+const SKILLS_API = `${API_BASE}/api/skills`;
 
 function AgentForm({ initial, onSave, onCancel }) {
   const isEdit = !!initial;

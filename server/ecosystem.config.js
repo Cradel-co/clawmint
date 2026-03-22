@@ -16,10 +16,18 @@ function loadEnv() {
 }
 
 module.exports = {
-  apps: [{
-    name: 'clawmint',
-    script: 'index.js',
-    node_args: '--stack-size=65536',
-    env: loadEnv(),
-  }],
+  apps: [
+    {
+      name: 'clawmint',
+      script: 'index.js',
+      node_args: '--stack-size=65536',
+      env: loadEnv(),
+    },
+    {
+      name: 'clawmint-client',
+      script: 'node_modules/.bin/vite',
+      cwd: path.join(__dirname, '..', 'client'),
+      args: '--host 100.64.0.2 --port 5173',
+    },
+  ],
 };

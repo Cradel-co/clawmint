@@ -201,6 +201,71 @@ POST /api/nodriza/reconnect — forzar reconexión
 
 `NodrizaConnection` se instancia en `bootstrap.js` si `isEnabled()` es true y se expone como `_container.nodriza`. Se inicia en `index.js` después de que el server HTTP esté escuchando.
 
+## Telegram: envío de imágenes y documentos
+
+El bot puede enviar fotos y archivos a cualquier chat via API REST.
+
+### Endpoints
+
+```
+POST /api/telegram/bots/:key/chats/:chatId/photo
+POST /api/telegram/bots/:key/chats/:chatId/document
+```
+
+- Body: imagen/archivo como binary raw (`Content-Type: image/png`, etc.)
+- Query params: `caption`, `filename`, `contentType`
+
+### Flujo para enviar una imagen (ej: screenshot)
+
+```bash
+# 1. Generar imagen (screenshot, gráfico, etc.)
+#    → archivo en disco: /tmp/screenshot.png
+
+# 2. Identificar bot y chat
+curl -s http://localhost:3002/api/telegram/bots
+#    → bot key: chibi2026_bot, chatId: 7874537448
+
+# 3. Enviar
+curl -X POST \
+  "http://localhost:3002/api/telegram/bots/chibi2026_bot/chats/7874537448/photo?caption=Mi%20imagen&filename=screenshot.png" \
+  --data-binary @/tmp/screenshot.png \
+  -H "Content-Type: image/png"
+#    → {"ok":true,"message_id":1234}
+```
+
+### Flujo interno
+
+```
+API REST (index.js)
+  → telegram.getBot(key) → TelegramBot
+  → bot.sendPhoto(chatId, buffer, opts)
+    → httpsPostMultipart(urlPath, fields, file)
+      → api.telegram.org/bot<TOKEN>/sendPhoto (multipart/form-data)
+        → Telegram entrega al chat
+```
+
+### Métodos disponibles en TelegramBot
+
+- `sendPhoto(chatId, buffer, { caption, filename, contentType, parse_mode })`
+- `sendDocument(chatId, buffer, { caption, filename, contentType, parse_mode })`
+- `_apiCall('sendMessage', { chat_id, text, parse_mode, reply_markup })` — texto
+
+## Health check
+
+```
+GET /api/health → { ok, uptime, startedAt, pid, node }
+```
+
+Usar para verificar reinicios: comparar `pid` antes y después del restart.
+
+## WebChat
+
+Panel de chat web (`WebChatPanel.jsx`) que usa `ConversationService` — mismo motor que Telegram.
+
+- **WebSocket**: tipo `webchat` — envía `{ type: 'chat', text, provider, agent }`
+- **Comandos**: `/provider`, `/agente`, `/modelo`, `/cd`, `/nueva`, `/modo`, `/estado`, `/ayuda`
+- **Streaming**: chunks via `{ type: 'chat_chunk', text }`, fin con `{ type: 'chat_done', text }`
+
 ## Arquitectura detallada
 
 Ver `implementar/ARQUITECTURA.md` para documentación completa de módulos, API REST, protocolo WebSocket, plan multi-proveedor y notas de implementación.

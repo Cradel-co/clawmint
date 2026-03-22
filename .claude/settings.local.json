@@ -20,6 +20,7 @@
       "Bash(pm2 describe:*)",
       "Bash(pm2 logs:*)",
       "Bash(pm2 list:*)",
+      "Bash(pm2:*)",
       "WebSearch",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:rhasspy.github.io)",

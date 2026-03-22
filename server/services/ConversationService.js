@@ -1,5 +1,17 @@
 'use strict';
 
+const path = require('path');
+const fs = require('fs');
+
+const MCP_SYSTEM_PROMPT_PATH = path.join(__dirname, '..', 'mcp-system-prompt.txt');
+let _mcpSystemPrompt = null;
+function getMcpSystemPrompt() {
+  if (_mcpSystemPrompt === null) {
+    try { _mcpSystemPrompt = fs.readFileSync(MCP_SYSTEM_PROMPT_PATH, 'utf-8'); } catch { _mcpSystemPrompt = ''; }
+  }
+  return _mcpSystemPrompt;
+}
+
 function _csDbg() { return process.env.DEBUG_TELEGRAM === '1'; }
 function csdbg(scope, ...args) { if (_csDbg()) console.log(`[ConvSvc:DBG:${scope}]`, ...args); }
 
@@ -76,38 +88,134 @@ class ConversationService {
     provider      = 'claude-code',
     model         = null,
     text,
+    images        = null,
     history       = [],
     claudeSession = null,
-    claudeMode    = 'ask',
+    claudeMode    = 'auto',
     onChunk       = null,
+    onStatus      = null,
     shellId       = null,
+    botKey        = null,
+    channel       = null,
   }) {
     const resolvedShellId = shellId || String(chatId);
-    csdbg('msg', `chatId=${chatId} provider=${provider} agent=${agentKey} model=${model} textLen=${text.length} histLen=${history.length} hasSession=${!!claudeSession}`);
+    csdbg('msg', `chatId=${chatId} provider=${provider} agent=${agentKey} model=${model} textLen=${text.length} images=${images?.length || 0} histLen=${history.length} hasSession=${!!claudeSession}`);
 
     if (provider !== 'claude-code' && this._providers) {
       csdbg('msg', `→ _processApiProvider`);
       return this._processApiProvider({
-        chatId, agentKey, provider, model, text, history, onChunk, shellId: resolvedShellId,
+        chatId, agentKey, provider, model, text, images, history, onChunk, shellId: resolvedShellId,
       });
     }
 
     csdbg('msg', `→ _processClaudeCode mode=${claudeMode}`);
     return this._processClaudeCode({
-      chatId, agentKey, text, claudeSession, claudeMode, onChunk,
+      chatId, agentKey, text, images, claudeSession, claudeMode, onChunk, onStatus, botKey, channel,
     });
   }
 
   // ── Proveedor claude-code (ClaudePrintSession) ────────────────────────────
 
-  async _processClaudeCode({ chatId, agentKey, text, claudeSession, claudeMode, onChunk }) {
+  async _processClaudeCode({ chatId, agentKey, text, images, claudeSession, claudeMode, onChunk, onStatus, botKey, channel }) {
+    // Claude Code CLI no soporta imágenes — extraer texto con OCR (kheiron) + fallback Ollama visión
+    if (images && images.length > 0) {
+      const { execSync } = require('child_process');
+      const fs = require('fs');
+      const path = require('path');
+      const descriptions = [];
+
+      for (let i = 0; i < images.length; i++) {
+        const tmpPath = path.join(require('os').tmpdir(), `clawmint_img_${Date.now()}_${i}.jpg`);
+        try {
+          // Guardar imagen en disco
+          fs.writeFileSync(tmpPath, Buffer.from(images[i].base64, 'base64'));
+
+          // 1. Intentar OCR con kheiron
+          try {
+            const rawOcr = execSync(`kheiron ocr "${tmpPath}" -l spa 2>/dev/null`, { timeout: 30000, encoding: 'utf-8' });
+            // Extraer texto entre marcadores, o tomar las últimas líneas limpias
+            let ocrText = '';
+            const startMark = rawOcr.indexOf('--- Texto extraído ---');
+            const endMark = rawOcr.indexOf('--- Fin ---');
+            if (startMark !== -1 && endMark !== -1) {
+              ocrText = rawOcr.slice(startMark + '--- Texto extraído ---'.length, endMark).trim();
+            } else {
+              // Fallback: limpiar banner y metadata
+              ocrText = rawOcr.replace(/╔[^╝]*╝/gs, '').replace(/[-─✔✖].*(OCR|Idioma|Confianza|Palabras|Líneas|Archivo).*/gi, '').trim();
+            }
+            if (ocrText && ocrText.length > 10) {
+              descriptions.push(`[OCR imagen ${i + 1}:]\n${ocrText}`);
+              csdbg('claude', `images: OCR exitoso para imagen ${i + 1} (${ocrText.length} chars)`);
+              continue;
+            }
+          } catch (ocrErr) {
+            console.log(`[ConvSvc] OCR falló para imagen ${i + 1}: ${ocrErr.message || ocrErr.stderr || ocrErr}`);
+          }
+
+          // 2. Fallback: Ollama minicpm-v
+          try {
+            const ollama = require('../providers/ollama');
+            console.log(`[ConvSvc] Imagen ${i + 1}: OCR sin texto, intentando minicpm-v...`);
+            const desc = await ollama.describeImage([images[i]], text);
+            descriptions.push(`[Descripción IA imagen ${i + 1}:]\n${desc}`);
+            console.log(`[ConvSvc] minicpm-v OK para imagen ${i + 1} (${desc.length} chars)`);
+          } catch (ollamaErr) {
+            console.error(`[ConvSvc] minicpm-v falló para imagen ${i + 1}: ${ollamaErr.message || ollamaErr}`);
+            descriptions.push(`[Imagen ${i + 1}: no se pudo analizar (OCR y visión fallaron)]`);
+          }
+        } finally {
+          try { fs.unlinkSync(tmpPath); } catch {}
+        }
+      }
+
+      const imgContext = descriptions.join('\n\n');
+      text = `[El usuario envió ${images.length} imagen(es). Análisis:]\n\n${imgContext}\n\n[Mensaje original del usuario: "${text}"]`;
+    }
+    const MAX_SESSION_MESSAGES = 10;
     let session = claudeSession;
     let isNewSession = false;
+    const mcpPrompt = getMcpSystemPrompt();
+    const channelCtx = (botKey && chatId)
+      ? `\n\n## Contexto del canal\n- Canal: ${channel || 'telegram'}\n- Bot key: ${botKey}\n- Chat ID: ${chatId}\n- Agente activo: ${agentKey || 'default'}\nUsa estos valores cuando necesites enviar fotos, documentos o mensajes al usuario.\nPara herramientas de memoria (memory_list, memory_read, memory_write, etc.), usa agent="${agentKey || 'default'}".`
+      : '';
+    const fullSystemPrompt = mcpPrompt ? (mcpPrompt + channelCtx) : '';
+
+    // Auto-reset: si la sesión tiene demasiados mensajes, crear una nueva
+    // Antes de resetear, guardar resumen en memoria para continuidad
+    if (session && session.messageCount >= MAX_SESSION_MESSAGES) {
+      csdbg('claude', `auto-reset: session tiene ${session.messageCount} msgs (max ${MAX_SESSION_MESSAGES}), creando nueva`);
+      console.log(`[ConvSvc] Auto-reset de sesión (${session.messageCount} mensajes)`);
+
+      // Guardar resumen de sesión en memoria para continuidad
+      if (agentKey && this._memory) {
+        try {
+          const ts = new Date().toISOString().slice(0, 16).replace('T', ' ');
+          const summaryFile = 'last-session-summary.md';
+          const existing = this._memory.read(agentKey, summaryFile);
+          const summary = `---\nSesión anterior (${ts}, ${session.messageCount} mensajes, chatId: ${chatId})\n---\n` +
+            `Último mensaje del usuario: ${text.slice(0, 500)}${text.length > 500 ? '...' : ''}\n` +
+            (existing ? `\nContexto previo:\n${existing.slice(0, 1000)}` : '');
+          this._memory.write(agentKey, summaryFile, summary);
+          csdbg('claude', `saved session summary to ${summaryFile}`);
+        } catch (err) {
+          csdbg('claude', `error saving session summary: ${err.message}`);
+        }
+      }
+
+      session = null;
+    }
+
     if (!session) {
-      session = new this._ClaudePrintSession({ permissionMode: claudeMode || 'ask' });
+      session = new this._ClaudePrintSession({
+        permissionMode: claudeMode || 'auto',
+        appendSystemPrompt: fullSystemPrompt || undefined,
+      });
       isNewSession = true;
-      csdbg('claude', `nueva ClaudePrintSession mode=${claudeMode}`);
+      csdbg('claude', `nueva ClaudePrintSession mode=${claudeMode} mcpPrompt=${!!mcpPrompt} botKey=${botKey}`);
     } else {
+      if (fullSystemPrompt && !session.appendSystemPrompt) {
+        session.appendSystemPrompt = fullSystemPrompt;
+      }
       csdbg('claude', `reutilizando session msgCount=${session.messageCount}`);
     }
 
@@ -123,18 +231,24 @@ class ConversationService {
       if (session.messageCount === 0) {
         const memCtx    = this._memory.buildMemoryContext(agentKey, text);
         const toolInstr = shouldNudge ? this._memory.TOOL_INSTRUCTIONS : '';
-        const parts     = [memCtx, toolInstr].filter(Boolean);
+        // Inyectar resumen de sesión anterior si existe (continuidad post-reset)
+        let sessionSummary = '';
+        try {
+          const summary = this._memory.read(agentKey, 'last-session-summary.md');
+          if (summary) sessionSummary = `## Resumen de sesión anterior\n${summary}`;
+        } catch {}
+        const parts = [sessionSummary, memCtx, toolInstr].filter(Boolean);
         if (parts.length > 0) messageText = `${parts.join('\n\n')}\n\n---\n\n${text}`;
-        csdbg('claude', `memCtx injected: ${memCtx?.length || 0} chars, toolInstr: ${toolInstr?.length || 0} chars`);
+        csdbg('claude', `memCtx injected: ${memCtx?.length || 0} chars, toolInstr: ${toolInstr?.length || 0} chars, sessionSummary: ${sessionSummary?.length || 0} chars`);
       }
     }
     if (shouldNudge && this._memory) messageText += this._memory.buildNudge(signals);
 
     csdbg('claude', `→ session.sendMessage() textLen=${messageText.length}`);
     const t0 = Date.now();
-    let rawResponse;
+    let result;
     try {
-      rawResponse = await session.sendMessage(messageText, onChunk);
+      result = await session.sendMessage(messageText, onChunk, onStatus);
     } catch (err) {
       // Si falló con --resume (session_id viejo/inválido), reintentar como nueva sesión
       if (session.claudeSessionId && session.messageCount > 0) {
@@ -143,12 +257,16 @@ class ConversationService {
         session.claudeSessionId = null;
         session.messageCount = 0;
         isNewSession = true;
-        rawResponse = await session.sendMessage(messageText, onChunk);
+        result = await session.sendMessage(messageText, onChunk, onStatus);
       } else {
         throw err;
       }
     }
-    csdbg('claude', `← session.sendMessage() ${Date.now() - t0}ms responseLen=${rawResponse?.length || 0}`);
+
+    // sendMessage ahora devuelve { text, usedMcpTools } o string (backward compat)
+    const rawResponse = typeof result === 'string' ? result : (result?.text || '');
+    const usedMcpTools = typeof result === 'object' ? result.usedMcpTools : false;
+    csdbg('claude', `← session.sendMessage() ${Date.now() - t0}ms responseLen=${rawResponse.length} usedMcpTools=${usedMcpTools}`);
 
     // Extraer y aplicar operaciones de memoria
     let response = rawResponse;
@@ -171,9 +289,10 @@ class ConversationService {
       }
     }
 
-    csdbg('claude', `DONE responseLen=${(response || '').length} savedFiles=${savedMemoryFiles.length} isNew=${isNewSession}`);
+    csdbg('claude', `DONE responseLen=${(response || '').length} savedFiles=${savedMemoryFiles.length} isNew=${isNewSession} usedMcpTools=${usedMcpTools}`);
     return {
       text: response || '',
+      usedMcpTools,
       savedMemoryFiles,
       ...(isNewSession ? { newSession: session } : {}),
     };
@@ -181,7 +300,7 @@ class ConversationService {
 
   // ── Proveedores API (Anthropic, Gemini, OpenAI, …) ───────────────────────
 
-  async _processApiProvider({ chatId, agentKey, provider, model, text, history, onChunk, shellId }) {
+  async _processApiProvider({ chatId, agentKey, provider, model, text, images, history, onChunk, shellId }) {
     const provObj   = this._providers.get(provider);
     const apiKey    = this._providerConfig ? this._providerConfig.getApiKey(provider) : '';
     const cfg       = this._providerConfig ? this._providerConfig.getConfig() : {};
@@ -207,11 +326,42 @@ class ConversationService {
 
     const toolInstr    = (agentKey && shouldNudge && this._memory) ? this._memory.TOOL_INSTRUCTIONS : '';
     const systemPrompt = [basePrompt, memoryCtx, toolInstr].filter(Boolean).join('\n\n');
-    const userContent  = (shouldNudge && this._memory) ? text + this._memory.buildNudge(signals) : text;
+    const userText = (shouldNudge && this._memory) ? text + this._memory.buildNudge(signals) : text;
+
+    // Construir content con imágenes según el provider
+    let userContent;
+    if (images && images.length > 0) {
+      if (provider === 'anthropic') {
+        // Anthropic: { type: 'image', source: { type: 'base64', media_type, data } }
+        userContent = images.map(img => ({
+          type: 'image',
+          source: { type: 'base64', media_type: img.mediaType, data: img.base64 },
+        }));
+        userContent.push({ type: 'text', text: userText });
+      } else if (provider === 'gemini') {
+        // Gemini: se pasa como _images en el último mensaje, se convierte en el provider
+        userContent = userText;
+      } else {
+        // OpenAI / Grok: { type: 'image_url', image_url: { url: 'data:...' } }
+        userContent = images.map(img => ({
+          type: 'image_url',
+          image_url: { url: `data:${img.mediaType};base64,${img.base64}` },
+        }));
+        userContent.push({ type: 'text', text: userText });
+      }
+    } else {
+      userContent = userText;
+    }
 
     const updatedHistory = [...history, { role: 'user', content: userContent }];
 
-    const gen = provObj.chat({ systemPrompt, history: updatedHistory, apiKey, model: useModel, executeTool: execToolFn });
+    // Para Gemini y Ollama: adjuntar imágenes raw para conversión en el provider
+    const extraOpts = {};
+    if (images && images.length > 0 && (provider === 'gemini' || provider === 'ollama')) {
+      extraOpts.images = images;
+    }
+
+    const gen = provObj.chat({ systemPrompt, history: updatedHistory, apiKey, model: useModel, executeTool: execToolFn, ...extraOpts });
     let accumulated = '';
 
     for await (const event of gen) {

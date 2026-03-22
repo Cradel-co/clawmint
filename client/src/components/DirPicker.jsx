@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
+import { API_BASE } from '../config.js';
 import './DirPicker.css';
 
-const API = 'http://localhost:3001';
+const API = API_BASE;
 
 export default function DirPicker({ value, onChange, onClose }) {
   const [currentPath, setCurrentPath] = useState(value || '');

@@ -63,7 +63,7 @@ logger.info('HOME:', process.env.HOME);
 
 // ── Carga de módulos (async por sql.js WASM) ─────────────────────────────────
 
-let sessionManager, telegram, agents, skills, events, memory, providerConfig, providersModule, consolidator;
+let sessionManager, telegram, agents, skills, events, memory, providerConfig, providersModule, consolidator, convSvc;
 let mcpRouter = null;
 let nodrizaInstance = null;
 
@@ -90,6 +90,7 @@ const _modulesReady = (async function loadModules() {
     telegram     = _c.telegramChannel;
     consolidator = _c.consolidator;
     nodrizaInstance = _c.nodriza || null;
+    convSvc      = _c.convSvc;
     // MCP router (embebido en Express)
     try {
       const { createMcpRouter } = require('./mcp');
@@ -106,6 +107,18 @@ const _modulesReady = (async function loadModules() {
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// ── Health check ─────────────────────────────────────────────────────────────
+const SERVER_START_TIME = Date.now();
+app.get('/api/health', (_req, res) => {
+  res.json({
+    ok: true,
+    uptime: Math.floor((Date.now() - SERVER_START_TIME) / 1000),
+    startedAt: new Date(SERVER_START_TIME).toISOString(),
+    pid: process.pid,
+    node: process.version,
+  });
+});
 
 // ── MCP endpoint (montado después de inicializar mcpRouter) ──────────────────
 // Se registra con app.use('/mcp', ...) luego de que mcpRouter esté disponible.
@@ -570,6 +583,165 @@ app.delete('/api/telegram/bots/:key/chats/:chatId', (req, res) => {
   res.json({ ok });
 });
 
+// POST /api/telegram/bots/:key/chats/:chatId/message — enviar texto a un chat
+app.post('/api/telegram/bots/:key/chats/:chatId/message', async (req, res) => {
+  try {
+    const bot = telegram.getBot(req.params.key);
+    if (!bot) return res.status(404).json({ error: 'Bot no encontrado' });
+    const chatId = Number(req.params.chatId);
+    const { text, parse_mode, reply_markup, callbacks } = req.body || {};
+    if (!text) return res.status(400).json({ error: 'Se requiere text' });
+
+    // Registrar callbacks dinámicos si vienen
+    if (callbacks && typeof callbacks === 'object') {
+      const dynamicRegistry = require('./channels/telegram/DynamicCallbackRegistry');
+      dynamicRegistry.registerMany(callbacks);
+    }
+
+    const body = { chat_id: chatId, text };
+    if (parse_mode) body.parse_mode = parse_mode;
+    if (reply_markup) body.reply_markup = typeof reply_markup === 'string' ? reply_markup : JSON.stringify(reply_markup);
+    const result = await bot._apiCall('sendMessage', body);
+    res.json({ ok: true, message_id: result.message_id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/telegram/bots/:key/chats/:chatId/photo — enviar imagen a un chat
+app.post('/api/telegram/bots/:key/chats/:chatId/photo', express.raw({ type: '*/*', limit: '20mb' }), async (req, res) => {
+  try {
+    const bot = telegram.getBot(req.params.key);
+    if (!bot) return res.status(404).json({ error: 'Bot no encontrado' });
+    const chatId = Number(req.params.chatId);
+    const caption = req.query.caption || '';
+    const filename = req.query.filename || 'photo.png';
+
+    // Aceptar body raw (Buffer) o base64 en JSON
+    let photoBuffer;
+    if (Buffer.isBuffer(req.body) && req.body.length > 0) {
+      photoBuffer = req.body;
+    } else if (typeof req.body === 'string') {
+      photoBuffer = Buffer.from(req.body, 'base64');
+    } else {
+      return res.status(400).json({ error: 'Se requiere imagen como body raw o base64' });
+    }
+
+    const result = await bot.sendPhoto(chatId, photoBuffer, { caption, filename });
+    res.json({ ok: true, message_id: result.message_id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/telegram/bots/:key/chats/:chatId/document — enviar archivo a un chat
+app.post('/api/telegram/bots/:key/chats/:chatId/document', express.raw({ type: '*/*', limit: '50mb' }), async (req, res) => {
+  try {
+    const bot = telegram.getBot(req.params.key);
+    if (!bot) return res.status(404).json({ error: 'Bot no encontrado' });
+    const chatId = Number(req.params.chatId);
+    const caption = req.query.caption || '';
+    const filename = req.query.filename || 'file.bin';
+    const contentType = req.query.contentType || 'application/octet-stream';
+
+    let docBuffer;
+    if (Buffer.isBuffer(req.body) && req.body.length > 0) {
+      docBuffer = req.body;
+    } else if (typeof req.body === 'string') {
+      docBuffer = Buffer.from(req.body, 'base64');
+    } else {
+      return res.status(400).json({ error: 'Se requiere archivo como body raw o base64' });
+    }
+
+    const result = await bot.sendDocument(chatId, docBuffer, { caption, filename, contentType });
+    res.json({ ok: true, message_id: result.message_id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/telegram/bots/:key/chats/:chatId/voice — enviar audio/voz a un chat
+app.post('/api/telegram/bots/:key/chats/:chatId/voice', express.raw({ type: '*/*', limit: '20mb' }), async (req, res) => {
+  try {
+    const bot = telegram.getBot(req.params.key);
+    if (!bot) return res.status(404).json({ error: 'Bot no encontrado' });
+    const chatId = Number(req.params.chatId);
+
+    let audioBuffer;
+    if (Buffer.isBuffer(req.body) && req.body.length > 0) {
+      audioBuffer = req.body;
+    } else if (typeof req.body === 'string') {
+      audioBuffer = Buffer.from(req.body, 'base64');
+    } else {
+      return res.status(400).json({ error: 'Se requiere audio como body raw o base64' });
+    }
+
+    const result = await bot.sendVoice(chatId, audioBuffer);
+    res.json({ ok: true, message_id: result.message_id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/telegram/bots/:key/chats/:chatId/video — enviar video a un chat
+app.post('/api/telegram/bots/:key/chats/:chatId/video', express.raw({ type: '*/*', limit: '50mb' }), async (req, res) => {
+  try {
+    const bot = telegram.getBot(req.params.key);
+    if (!bot) return res.status(404).json({ error: 'Bot no encontrado' });
+    const chatId = Number(req.params.chatId);
+    const caption = req.query.caption || '';
+    const filename = req.query.filename || 'video.mp4';
+
+    let videoBuffer;
+    if (Buffer.isBuffer(req.body) && req.body.length > 0) {
+      videoBuffer = req.body;
+    } else if (typeof req.body === 'string') {
+      videoBuffer = Buffer.from(req.body, 'base64');
+    } else {
+      return res.status(400).json({ error: 'Se requiere video como body raw o base64' });
+    }
+
+    const result = await bot.sendVideo(chatId, videoBuffer, { caption, filename });
+    res.json({ ok: true, message_id: result.message_id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/telegram/bots/:key/chats/:chatId/edit — editar mensaje de texto
+app.post('/api/telegram/bots/:key/chats/:chatId/edit', async (req, res) => {
+  try {
+    const bot = telegram.getBot(req.params.key);
+    if (!bot) return res.status(404).json({ error: 'Bot no encontrado' });
+    const chatId = Number(req.params.chatId);
+    const { message_id, text, parse_mode } = req.body || {};
+    if (!message_id || !text) return res.status(400).json({ error: 'Se requieren message_id y text' });
+
+    const body = { chat_id: chatId, message_id, text };
+    if (parse_mode) body.parse_mode = parse_mode;
+    const result = await bot._apiCall('editMessageText', body);
+    res.json({ ok: true, message_id: result.message_id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/telegram/bots/:key/chats/:chatId/delete — borrar mensaje
+app.post('/api/telegram/bots/:key/chats/:chatId/delete', async (req, res) => {
+  try {
+    const bot = telegram.getBot(req.params.key);
+    if (!bot) return res.status(404).json({ error: 'Bot no encontrado' });
+    const chatId = Number(req.params.chatId);
+    const { message_id } = req.body || {};
+    if (!message_id) return res.status(400).json({ error: 'Se requiere message_id' });
+
+    await bot._apiCall('deleteMessage', { chat_id: chatId, message_id });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── WebSocket ────────────────────────────────────────────────────────────────
 
 wss.on('connection', (ws) => {
@@ -598,6 +770,11 @@ wss.on('connection', (ws) => {
 
         // Listener puro: solo recibe broadcasts, sin PTY
         if (msg.sessionType === 'listener') {
+          return;
+        }
+
+        if (msg.sessionType === 'webchat') {
+          startWebChatSession(ws, msg);
           return;
         }
 
@@ -1048,6 +1225,251 @@ function startAISessionForDataChannel(dcAdapter, peerId) {
   dcAdapter.on('close', () => {
     logger.info(`[nodriza] DataChannel cerrado con peer ${peerId}`);
   });
+}
+
+// ─── WebChat Session (chat con burbujas, usa ConversationService) ─────────────
+
+function startWebChatSession(ws, opts) {
+  const sessionId = crypto.randomUUID();
+  ws.send(JSON.stringify({ type: 'session_id', id: sessionId }));
+
+  // Estado del chat (similar al estado por chat de Telegram)
+  const state = {
+    provider: opts.provider || providerConfig?.getConfig()?.default || 'anthropic',
+    agent: opts.agent || null,
+    model: null,
+    history: [],
+    claudeSession: null,
+    claudeMode: 'auto',
+    cwd: process.env.HOME || '~',
+    processing: false,
+  };
+
+  // Enviar status inicial
+  sendStatus();
+
+  ws.on('message', async (raw) => {
+    try {
+      const msg = JSON.parse(raw);
+      if (msg.type !== 'chat') return;
+      if (state.processing) return;
+
+      const text = (msg.text || '').trim();
+      if (!text) return;
+
+      // Actualizar provider/agent desde el cliente si lo envía
+      if (msg.provider) state.provider = msg.provider;
+      if (msg.agent !== undefined) state.agent = msg.agent || null;
+
+      // Comandos
+      if (text.startsWith('/')) {
+        handleCommand(text);
+        return;
+      }
+
+      // Mensaje normal → enviar a ConversationService
+      await sendToAI(text);
+    } catch (err) {
+      sendJson({ type: 'chat_error', error: err.message || 'Error interno' });
+      state.processing = false;
+    }
+  });
+
+  function handleCommand(text) {
+    const parts = text.split(/\s+/);
+    const cmd = parts[0].toLowerCase();
+    const arg = parts.slice(1).join(' ').trim();
+
+    switch (cmd) {
+      case '/provider': {
+        if (!arg) {
+          const list = providersModule.list().map(p => `${p.name === state.provider ? '→ ' : '  '}${p.name} (${p.label})`).join('\n');
+          sendJson({ type: 'command_result', text: `Providers disponibles:\n${list}` });
+          return;
+        }
+        const p = providersModule.get(arg);
+        if (!p) {
+          sendJson({ type: 'command_result', text: `Provider "${arg}" no encontrado.` });
+          return;
+        }
+        state.provider = arg;
+        state.history = [];
+        sendJson({ type: 'command_result', text: `Provider cambiado a ${p.label || arg}`, provider: arg });
+        return;
+      }
+
+      case '/agente': {
+        if (!arg) {
+          const list = agents.list().map(a => `${a.key === state.agent ? '→ ' : '  '}${a.key}: ${a.description || ''}`).join('\n');
+          sendJson({ type: 'command_result', text: list || 'No hay agentes configurados.', agent: state.agent });
+          return;
+        }
+        if (arg === 'ninguno' || arg === 'none') {
+          state.agent = null;
+          sendJson({ type: 'command_result', text: 'Agente desactivado.', agent: null });
+          return;
+        }
+        const a = agents.get(arg);
+        if (!a) {
+          sendJson({ type: 'command_result', text: `Agente "${arg}" no encontrado.` });
+          return;
+        }
+        state.agent = arg;
+        sendJson({ type: 'command_result', text: `Agente activo: ${arg}`, agent: arg });
+        return;
+      }
+
+      case '/modelo':
+      case '/model': {
+        if (!arg) {
+          sendJson({ type: 'command_result', text: `Modelo actual: ${state.model || '(default del provider)'}` });
+          return;
+        }
+        state.model = arg;
+        sendJson({ type: 'command_result', text: `Modelo: ${arg}` });
+        return;
+      }
+
+      case '/cd': {
+        if (!arg) {
+          sendJson({ type: 'command_result', text: `Directorio actual: ${state.cwd}`, cwd: state.cwd });
+          return;
+        }
+        const resolved = require('path').resolve(state.cwd, arg);
+        try {
+          const stat = require('fs').statSync(resolved);
+          if (!stat.isDirectory()) {
+            sendJson({ type: 'command_result', text: `"${resolved}" no es un directorio.` });
+            return;
+          }
+          state.cwd = resolved;
+          sendJson({ type: 'command_result', text: `Directorio: ${resolved}`, cwd: resolved });
+        } catch {
+          sendJson({ type: 'command_result', text: `Directorio no encontrado: ${resolved}` });
+        }
+        return;
+      }
+
+      case '/nueva':
+      case '/reset':
+      case '/clear': {
+        state.history = [];
+        state.claudeSession = null;
+        sendJson({ type: 'command_result', text: 'Conversación reiniciada.' });
+        return;
+      }
+
+      case '/modo':
+      case '/mode': {
+        const modes = ['ask', 'auto', 'plan'];
+        if (!arg || !modes.includes(arg)) {
+          sendJson({ type: 'command_result', text: `Modo actual: ${state.claudeMode}. Opciones: ${modes.join(', ')}` });
+          return;
+        }
+        state.claudeMode = arg;
+        sendJson({ type: 'command_result', text: `Modo: ${arg}` });
+        return;
+      }
+
+      case '/estado':
+      case '/status': {
+        const info = [
+          `Provider: ${state.provider}`,
+          `Agente: ${state.agent || '(ninguno)'}`,
+          `Modelo: ${state.model || '(default)'}`,
+          `Modo: ${state.claudeMode}`,
+          `Directorio: ${state.cwd}`,
+          `Historial: ${state.history.length} mensajes`,
+        ].join('\n');
+        sendJson({ type: 'command_result', text: info });
+        return;
+      }
+
+      case '/ayuda':
+      case '/help': {
+        const help = [
+          '/provider [nombre] — cambiar provider de IA',
+          '/agente [nombre] — seleccionar agente',
+          '/modelo [nombre] — cambiar modelo',
+          '/cd [ruta] — cambiar directorio',
+          '/nueva — nueva conversación',
+          '/modo [ask|auto|plan] — modo de permisos (Claude Code)',
+          '/estado — ver estado actual',
+          '/ayuda — esta ayuda',
+        ].join('\n');
+        sendJson({ type: 'command_result', text: help });
+        return;
+      }
+
+      default:
+        sendJson({ type: 'command_result', text: `Comando desconocido: ${cmd}. Usá /ayuda.` });
+    }
+  }
+
+  async function sendToAI(text) {
+    state.processing = true;
+
+    try {
+      if (!convSvc) {
+        sendJson({ type: 'chat_error', error: 'ConversationService no disponible.' });
+        state.processing = false;
+        return;
+      }
+
+      const onChunk = (partial) => {
+        sendJson({ type: 'chat_chunk', text: partial });
+      };
+
+      const result = await convSvc.processMessage({
+        chatId: sessionId,
+        agentKey: state.agent,
+        provider: state.provider,
+        model: state.model,
+        text,
+        history: state.history,
+        claudeSession: state.claudeSession,
+        claudeMode: state.claudeMode,
+        onChunk,
+        shellId: sessionId,
+      });
+
+      // Actualizar estado con resultado
+      if (result.history) state.history = result.history;
+      if (result.newSession) state.claudeSession = result.newSession;
+
+      // Para claude-code que no devuelve history, mantener historial manual
+      if (!result.history && state.provider === 'claude-code') {
+        // Claude Code mantiene su propio historial en la session
+      } else if (!result.history) {
+        state.history.push({ role: 'user', content: text });
+        state.history.push({ role: 'assistant', content: result.text });
+      }
+
+      sendJson({ type: 'chat_done', text: result.text });
+
+      if (result.savedMemoryFiles?.length > 0) {
+        sendJson({ type: 'command_result', text: `💾 Memoria guardada: ${result.savedMemoryFiles.join(', ')}` });
+      }
+    } catch (err) {
+      logger.error('WebChat error:', err.stack || err.message);
+      sendJson({ type: 'chat_error', error: err.message || 'Error procesando mensaje' });
+    }
+
+    state.processing = false;
+  }
+
+  function sendStatus() {
+    sendJson({
+      type: 'status',
+      provider: state.provider,
+      agent: state.agent,
+      cwd: state.cwd,
+    });
+  }
+
+  function sendJson(obj) {
+    if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(obj));
+  }
 }
 
 // ─── Providers API ────────────────────────────────────────────────────────────

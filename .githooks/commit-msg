@@ -1,0 +1,31 @@
+#!/bin/bash
+# === Commit-msg hook: validar conventional commits ===
+
+commit_msg_file="$1"
+commit_msg=$(head -1 "$commit_msg_file")
+
+# Patrón: type(scope): message  o  type: message
+# Types válidos: feat, fix, docs, chore, refactor, test, style, perf, ci, build, revert, release, merge
+pattern='^(feat|fix|docs|chore|refactor|test|style|perf|ci|build|revert|release|merge)(\(.+\))?: .{3,}'
+
+if ! echo "$commit_msg" | grep -qE "$pattern"; then
+  echo "❌ Formato de commit inválido: $commit_msg"
+  echo ""
+  echo "   Formato esperado: type(scope): mensaje"
+  echo "   Tipos válidos: feat, fix, docs, chore, refactor, test, style, perf, ci, build, revert, release, merge"
+  echo ""
+  echo "   Ejemplos:"
+  echo "     feat(telegram): soporte para fotos"
+  echo "     fix: corregir crash en memory.js"
+  echo "     docs: actualizar README"
+  exit 1
+fi
+
+# Verificar largo del mensaje (max 72 chars en primera línea)
+if [ ${#commit_msg} -gt 72 ]; then
+  echo "⚠️  Primera línea del commit muy larga (${#commit_msg} chars, max 72)."
+  echo "   Usá el body para detalles adicionales."
+  exit 1
+fi
+
+exit 0
