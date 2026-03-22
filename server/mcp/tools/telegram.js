@@ -173,4 +173,100 @@ const telegramSendDocument = {
   },
 };
 
-module.exports = [telegramListBots, telegramSendMessage, telegramSendPhoto, telegramSendDocument];
+const telegramSendVoice = {
+  name: 'telegram_send_voice',
+  description: 'Enviar un audio/voz a un chat de Telegram. El archivo debe existir en disco.',
+  params: {
+    bot: 'string — key del bot (ej: chibi2026_bot)',
+    chat_id: 'string — ID del chat destino',
+    file_path: 'string — ruta absoluta del archivo de audio en disco',
+  },
+
+  async execute({ bot, chat_id, file_path }) {
+    if (!bot || !chat_id || !file_path) return 'Error: bot, chat_id y file_path son requeridos.';
+
+    if (!fs.existsSync(file_path)) return `Error: archivo no encontrado: ${file_path}`;
+    const buffer = fs.readFileSync(file_path);
+
+    const result = await apiPost(
+      `/api/telegram/bots/${bot}/chats/${chat_id}/voice`,
+      buffer,
+      'audio/ogg'
+    );
+    if (result.error) return `Error: ${result.error}`;
+    return `Audio enviado (message_id: ${result.message_id})`;
+  },
+};
+
+const telegramSendVideo = {
+  name: 'telegram_send_video',
+  description: 'Enviar un video a un chat de Telegram. El archivo debe existir en disco.',
+  params: {
+    bot: 'string — key del bot (ej: chibi2026_bot)',
+    chat_id: 'string — ID del chat destino',
+    file_path: 'string — ruta absoluta del video en disco',
+    'caption?': '?string — texto debajo del video (opcional)',
+  },
+
+  async execute({ bot, chat_id, file_path, caption }) {
+    if (!bot || !chat_id || !file_path) return 'Error: bot, chat_id y file_path son requeridos.';
+
+    if (!fs.existsSync(file_path)) return `Error: archivo no encontrado: ${file_path}`;
+    const buffer = fs.readFileSync(file_path);
+    const filename = file_path.split('/').pop();
+
+    const qs = new URLSearchParams();
+    if (caption) qs.set('caption', caption);
+    qs.set('filename', filename);
+
+    const result = await apiPost(
+      `/api/telegram/bots/${bot}/chats/${chat_id}/video?${qs.toString()}`,
+      buffer,
+      'video/mp4'
+    );
+    if (result.error) return `Error: ${result.error}`;
+    return `Video enviado (message_id: ${result.message_id})`;
+  },
+};
+
+const telegramEditMessage = {
+  name: 'telegram_edit_message',
+  description: 'Editar el texto de un mensaje ya enviado en Telegram.',
+  params: {
+    bot: 'string — key del bot (ej: chibi2026_bot)',
+    chat_id: 'string — ID del chat',
+    message_id: 'string — ID del mensaje a editar',
+    text: 'string — nuevo texto del mensaje',
+    'parse_mode?': '?string — HTML, Markdown o MarkdownV2 (opcional)',
+  },
+
+  async execute({ bot, chat_id, message_id, text, parse_mode }) {
+    if (!bot || !chat_id || !message_id || !text) return 'Error: bot, chat_id, message_id y text son requeridos.';
+
+    const body = { message_id: Number(message_id), text };
+    if (parse_mode) body.parse_mode = parse_mode;
+    const result = await apiPost(`/api/telegram/bots/${bot}/chats/${chat_id}/edit`, body);
+    if (result.error) return `Error: ${result.error}`;
+    return `Mensaje editado (message_id: ${result.message_id})`;
+  },
+};
+
+const telegramDeleteMessage = {
+  name: 'telegram_delete_message',
+  description: 'Borrar un mensaje de Telegram por su ID.',
+  params: {
+    bot: 'string — key del bot (ej: chibi2026_bot)',
+    chat_id: 'string — ID del chat',
+    message_id: 'string — ID del mensaje a borrar',
+  },
+
+  async execute({ bot, chat_id, message_id }) {
+    if (!bot || !chat_id || !message_id) return 'Error: bot, chat_id y message_id son requeridos.';
+
+    const result = await apiPost(`/api/telegram/bots/${bot}/chats/${chat_id}/delete`, { message_id: Number(message_id) });
+    if (result.error) return `Error: ${result.error}`;
+    return 'Mensaje borrado.';
+  },
+};
+
+module.exports = [telegramListBots, telegramSendMessage, telegramSendPhoto, telegramSendDocument, telegramSendVoice, telegramSendVideo, telegramEditMessage, telegramDeleteMessage];

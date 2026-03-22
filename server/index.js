@@ -658,6 +658,88 @@ app.post('/api/telegram/bots/:key/chats/:chatId/document', express.raw({ type: '
   }
 });
 
+// POST /api/telegram/bots/:key/chats/:chatId/voice — enviar audio/voz a un chat
+app.post('/api/telegram/bots/:key/chats/:chatId/voice', express.raw({ type: '*/*', limit: '20mb' }), async (req, res) => {
+  try {
+    const bot = telegram.getBot(req.params.key);
+    if (!bot) return res.status(404).json({ error: 'Bot no encontrado' });
+    const chatId = Number(req.params.chatId);
+
+    let audioBuffer;
+    if (Buffer.isBuffer(req.body) && req.body.length > 0) {
+      audioBuffer = req.body;
+    } else if (typeof req.body === 'string') {
+      audioBuffer = Buffer.from(req.body, 'base64');
+    } else {
+      return res.status(400).json({ error: 'Se requiere audio como body raw o base64' });
+    }
+
+    const result = await bot.sendVoice(chatId, audioBuffer);
+    res.json({ ok: true, message_id: result.message_id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/telegram/bots/:key/chats/:chatId/video — enviar video a un chat
+app.post('/api/telegram/bots/:key/chats/:chatId/video', express.raw({ type: '*/*', limit: '50mb' }), async (req, res) => {
+  try {
+    const bot = telegram.getBot(req.params.key);
+    if (!bot) return res.status(404).json({ error: 'Bot no encontrado' });
+    const chatId = Number(req.params.chatId);
+    const caption = req.query.caption || '';
+    const filename = req.query.filename || 'video.mp4';
+
+    let videoBuffer;
+    if (Buffer.isBuffer(req.body) && req.body.length > 0) {
+      videoBuffer = req.body;
+    } else if (typeof req.body === 'string') {
+      videoBuffer = Buffer.from(req.body, 'base64');
+    } else {
+      return res.status(400).json({ error: 'Se requiere video como body raw o base64' });
+    }
+
+    const result = await bot.sendVideo(chatId, videoBuffer, { caption, filename });
+    res.json({ ok: true, message_id: result.message_id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/telegram/bots/:key/chats/:chatId/edit — editar mensaje de texto
+app.post('/api/telegram/bots/:key/chats/:chatId/edit', async (req, res) => {
+  try {
+    const bot = telegram.getBot(req.params.key);
+    if (!bot) return res.status(404).json({ error: 'Bot no encontrado' });
+    const chatId = Number(req.params.chatId);
+    const { message_id, text, parse_mode } = req.body || {};
+    if (!message_id || !text) return res.status(400).json({ error: 'Se requieren message_id y text' });
+
+    const body = { chat_id: chatId, message_id, text };
+    if (parse_mode) body.parse_mode = parse_mode;
+    const result = await bot._apiCall('editMessageText', body);
+    res.json({ ok: true, message_id: result.message_id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/telegram/bots/:key/chats/:chatId/delete — borrar mensaje
+app.post('/api/telegram/bots/:key/chats/:chatId/delete', async (req, res) => {
+  try {
+    const bot = telegram.getBot(req.params.key);
+    if (!bot) return res.status(404).json({ error: 'Bot no encontrado' });
+    const chatId = Number(req.params.chatId);
+    const { message_id } = req.body || {};
+    if (!message_id) return res.status(400).json({ error: 'Se requiere message_id' });
+
+    await bot._apiCall('deleteMessage', { chat_id: chatId, message_id });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── WebSocket ────────────────────────────────────────────────────────────────
 
 wss.on('connection', (ws) => {
