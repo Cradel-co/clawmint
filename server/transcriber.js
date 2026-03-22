@@ -259,4 +259,41 @@ async function preload() {
   }
 }
 
-module.exports = { httpsDownload, transcribe, preload, DEFAULTS, VALID_MODELS, VALID_LANGUAGES, getConfig, setModel, setLanguage };
+/**
+ * Transcribir PCM Float32 16kHz directamente (sin decodificar archivo).
+ * Usado por P2P cuando deskcritter envía audio ya decodificado.
+ */
+async function transcribePCM(pcmFloat32, opts = {}) {
+  const cfg = { ...DEFAULTS, ...opts };
+  const startIdx = MODEL_FALLBACK_CHAIN.indexOf(cfg.model);
+  const chain = startIdx >= 0 ? MODEL_FALLBACK_CHAIN.slice(startIdx) : [cfg.model];
+
+  for (let i = 0; i < chain.length; i++) {
+    try {
+      const pipe = await _loadModel(chain[i]);
+      const result = await pipe(pcmFloat32, {
+        language: cfg.language,
+        chunk_length_s: cfg.chunkLengthS,
+        return_timestamps: false,
+      });
+      _resetIdleTimer(chain[i]);
+      const text = result.text.trim();
+      if (!text) throw new Error('No se pudo extraer texto del audio');
+      return text;
+    } catch (err) {
+      const isOom = err.message && (
+        err.message.includes('Failed to allocate memory') ||
+        err.message.includes('BFCArena') ||
+        err.message.includes('AllocateRawInternal')
+      );
+      if (isOom && i < chain.length - 1) {
+        console.log(`[transcriber] OOM con ${chain[i]}, bajando a ${chain[i + 1]}...`);
+        continue;
+      }
+      throw err;
+    }
+  }
+  return '';
+}
+
+module.exports = { httpsDownload, transcribe, transcribePCM, preload, DEFAULTS, VALID_MODELS, VALID_LANGUAGES, getConfig, setModel, setLanguage };
