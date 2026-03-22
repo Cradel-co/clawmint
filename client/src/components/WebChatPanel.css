@@ -166,8 +166,49 @@
   padding: 8px 12px;
   font-size: 13px;
   line-height: 1.5;
-  white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* Markdown dentro de mensajes del asistente */
+.wc-msg-assistant .wc-msg-content p { margin: 0 0 8px 0; }
+.wc-msg-assistant .wc-msg-content p:last-child { margin-bottom: 0; }
+.wc-msg-assistant .wc-msg-content ul,
+.wc-msg-assistant .wc-msg-content ol { margin: 4px 0; padding-left: 20px; }
+.wc-msg-assistant .wc-msg-content li { margin: 2px 0; }
+.wc-msg-assistant .wc-msg-content h1,
+.wc-msg-assistant .wc-msg-content h2,
+.wc-msg-assistant .wc-msg-content h3 { margin: 12px 0 6px; color: #f0f0f0; }
+.wc-msg-assistant .wc-msg-content h1 { font-size: 16px; }
+.wc-msg-assistant .wc-msg-content h2 { font-size: 14px; }
+.wc-msg-assistant .wc-msg-content h3 { font-size: 13px; }
+.wc-msg-assistant .wc-msg-content blockquote {
+  border-left: 3px solid #555;
+  margin: 4px 0;
+  padding: 2px 8px;
+  color: #aaa;
+}
+.wc-msg-assistant .wc-msg-content table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 12px;
+  width: 100%;
+}
+.wc-msg-assistant .wc-msg-content th,
+.wc-msg-assistant .wc-msg-content td {
+  border: 1px solid #444;
+  padding: 4px 8px;
+  text-align: left;
+}
+.wc-msg-assistant .wc-msg-content th {
+  background: #333;
+  color: #ddd;
+}
+.wc-msg-assistant .wc-msg-content a {
+  color: #58a6ff;
+  text-decoration: none;
+}
+.wc-msg-assistant .wc-msg-content a:hover {
+  text-decoration: underline;
 }
 
 .wc-msg-system {
@@ -274,4 +315,139 @@
 }
 .wc-messages::-webkit-scrollbar-thumb:hover {
   background: #666;
+}
+
+/* ─── Code blocks ──────────────────────────────────────────────────────────── */
+.wc-code-block {
+  margin: 8px 0;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #333;
+}
+.wc-code-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 10px;
+  background: #1e1e1e;
+  border-bottom: 1px solid #333;
+  font-size: 11px;
+}
+.wc-code-lang {
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.wc-code-copy {
+  background: none;
+  border: 1px solid #444;
+  color: #aaa;
+  border-radius: 4px;
+  padding: 1px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.wc-code-copy:hover {
+  background: #333;
+  color: #fff;
+}
+.wc-inline-code {
+  background: #333;
+  color: #e06c75;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 12px;
+}
+
+/* ─── Inline buttons ───────────────────────────────────────────────────────── */
+.wc-msg-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.wc-inline-btn {
+  background: #2a2a2a;
+  color: #58a6ff;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.wc-inline-btn:hover {
+  background: #333;
+  border-color: #58a6ff;
+}
+
+/* ─── Input area: media buttons ────────────────────────────────────────────── */
+.wc-file-input {
+  display: none;
+}
+.wc-attach-btn,
+.wc-mic-btn,
+.wc-tts-btn {
+  font-size: 16px;
+  padding: 4px 6px;
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+.wc-attach-btn:hover:not(:disabled),
+.wc-mic-btn:hover:not(:disabled),
+.wc-tts-btn:hover:not(:disabled) {
+  opacity: 1;
+}
+.wc-attach-btn:disabled,
+.wc-mic-btn:disabled,
+.wc-tts-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+/* Recording state */
+.wc-recording {
+  opacity: 1 !important;
+  color: #ff5f57;
+  animation: wc-pulse 1s infinite;
+}
+@keyframes wc-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Status text en barra */
+.wc-status-text {
+  color: #58a6ff;
+  font-style: italic;
+}
+
+/* Drag over feedback */
+.wc-panel.dragover {
+  outline: 2px dashed #007aff;
+  outline-offset: -4px;
+}
+
+/* ─── Typing indicator ─────────────────────────────────────────────────────── */
+.wc-typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 14px !important;
+  min-height: auto !important;
+}
+.wc-typing-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #888;
+  animation: wc-typing-bounce 1.4s infinite ease-in-out both;
+}
+.wc-typing-dot:nth-child(1) { animation-delay: 0s; }
+.wc-typing-dot:nth-child(2) { animation-delay: 0.16s; }
+.wc-typing-dot:nth-child(3) { animation-delay: 0.32s; }
+@keyframes wc-typing-bounce {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
 }

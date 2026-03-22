@@ -174,11 +174,21 @@ class ConversationService {
     const MAX_SESSION_MESSAGES = 10;
     let session = claudeSession;
     let isNewSession = false;
-    const mcpPrompt = getMcpSystemPrompt();
+    const isWebChannel = channel === 'web' || botKey === 'web';
+    const mcpPrompt = isWebChannel ? null : getMcpSystemPrompt();
     const channelCtx = (botKey && chatId)
       ? `\n\n## Contexto del canal\n- Canal: ${channel || 'telegram'}\n- Bot key: ${botKey}\n- Chat ID: ${chatId}\n- Agente activo: ${agentKey || 'default'}\nUsa estos valores cuando necesites enviar fotos, documentos o mensajes al usuario.\nPara herramientas de memoria (memory_list, memory_read, memory_write, etc.), usa agent="${agentKey || 'default'}".`
       : '';
-    const fullSystemPrompt = mcpPrompt ? (mcpPrompt + channelCtx) : '';
+    const webChannelPrompt = isWebChannel
+      ? 'Estás respondiendo a un usuario a través del WebChat de Clawmint.\n' +
+        'Responde siempre en texto plano (se renderiza como Markdown en el cliente).\n' +
+        'NO uses herramientas de Telegram (telegram_send_message, telegram_send_photo, etc.) — tu respuesta llega directamente al usuario por WebSocket.\n' +
+        'Responde siempre en español. Sé conciso y directo.\n' +
+        'Tienes acceso a herramientas MCP de memoria (memory_list, memory_read, memory_write, memory_append, memory_delete), bash, read_file, write_file, y kheiron-tools.'
+      : '';
+    const fullSystemPrompt = isWebChannel
+      ? (webChannelPrompt + channelCtx)
+      : (mcpPrompt ? (mcpPrompt + channelCtx) : '');
 
     // Auto-reset: si la sesión tiene demasiados mensajes, crear una nueva
     // Antes de resetear, guardar resumen en memoria para continuidad
