@@ -12,3 +12,8 @@ server/memory/
 server/models-cache/
 server/voice-providers/piper/
 server/mcps/
+ecosystem.config.js
+logs/
+server/logs/
+server/scripts/
+*.traineddata
