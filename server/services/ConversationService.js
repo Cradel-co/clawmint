@@ -1,5 +1,17 @@
 'use strict';
 
+const path = require('path');
+const fs = require('fs');
+
+const MCP_SYSTEM_PROMPT_PATH = path.join(__dirname, '..', 'mcp-system-prompt.txt');
+let _mcpSystemPrompt = null;
+function getMcpSystemPrompt() {
+  if (_mcpSystemPrompt === null) {
+    try { _mcpSystemPrompt = fs.readFileSync(MCP_SYSTEM_PROMPT_PATH, 'utf-8'); } catch { _mcpSystemPrompt = ''; }
+  }
+  return _mcpSystemPrompt;
+}
+
 function _csDbg() { return process.env.DEBUG_TELEGRAM === '1'; }
 function csdbg(scope, ...args) { if (_csDbg()) console.log(`[ConvSvc:DBG:${scope}]`, ...args); }
 
@@ -79,9 +91,12 @@ class ConversationService {
     images        = null,
     history       = [],
     claudeSession = null,
-    claudeMode    = 'ask',
+    claudeMode    = 'auto',
     onChunk       = null,
+    onStatus      = null,
     shellId       = null,
+    botKey        = null,
+    channel       = null,
   }) {
     const resolvedShellId = shellId || String(chatId);
     csdbg('msg', `chatId=${chatId} provider=${provider} agent=${agentKey} model=${model} textLen=${text.length} images=${images?.length || 0} histLen=${history.length} hasSession=${!!claudeSession}`);
@@ -95,13 +110,13 @@ class ConversationService {
 
     csdbg('msg', `→ _processClaudeCode mode=${claudeMode}`);
     return this._processClaudeCode({
-      chatId, agentKey, text, images, claudeSession, claudeMode, onChunk,
+      chatId, agentKey, text, images, claudeSession, claudeMode, onChunk, onStatus, botKey, channel,
     });
   }
 
   // ── Proveedor claude-code (ClaudePrintSession) ────────────────────────────
 
-  async _processClaudeCode({ chatId, agentKey, text, images, claudeSession, claudeMode, onChunk }) {
+  async _processClaudeCode({ chatId, agentKey, text, images, claudeSession, claudeMode, onChunk, onStatus, botKey, channel }) {
     // Claude Code CLI no soporta imágenes — extraer texto con OCR (kheiron) + fallback Ollama visión
     if (images && images.length > 0) {
       const { execSync } = require('child_process');
@@ -156,13 +171,33 @@ class ConversationService {
       const imgContext = descriptions.join('\n\n');
       text = `[El usuario envió ${images.length} imagen(es). Análisis:]\n\n${imgContext}\n\n[Mensaje original del usuario: "${text}"]`;
     }
+    const MAX_SESSION_MESSAGES = 10;
     let session = claudeSession;
     let isNewSession = false;
+    const mcpPrompt = getMcpSystemPrompt();
+    const channelCtx = (botKey && chatId)
+      ? `\n\n## Contexto del canal\n- Canal: ${channel || 'telegram'}\n- Bot key: ${botKey}\n- Chat ID: ${chatId}\nUsa estos valores cuando necesites enviar fotos, documentos o mensajes al usuario.`
+      : '';
+    const fullSystemPrompt = mcpPrompt ? (mcpPrompt + channelCtx) : '';
+
+    // Auto-reset: si la sesión tiene demasiados mensajes, crear una nueva
+    if (session && session.messageCount >= MAX_SESSION_MESSAGES) {
+      csdbg('claude', `auto-reset: session tiene ${session.messageCount} msgs (max ${MAX_SESSION_MESSAGES}), creando nueva`);
+      console.log(`[ConvSvc] Auto-reset de sesión (${session.messageCount} mensajes)`);
+      session = null;
+    }
+
     if (!session) {
-      session = new this._ClaudePrintSession({ permissionMode: claudeMode || 'ask' });
+      session = new this._ClaudePrintSession({
+        permissionMode: claudeMode || 'auto',
+        appendSystemPrompt: fullSystemPrompt || undefined,
+      });
       isNewSession = true;
-      csdbg('claude', `nueva ClaudePrintSession mode=${claudeMode}`);
+      csdbg('claude', `nueva ClaudePrintSession mode=${claudeMode} mcpPrompt=${!!mcpPrompt} botKey=${botKey}`);
     } else {
+      if (fullSystemPrompt && !session.appendSystemPrompt) {
+        session.appendSystemPrompt = fullSystemPrompt;
+      }
       csdbg('claude', `reutilizando session msgCount=${session.messageCount}`);
     }
 
@@ -187,9 +222,9 @@ class ConversationService {
 
     csdbg('claude', `→ session.sendMessage() textLen=${messageText.length}`);
     const t0 = Date.now();
-    let rawResponse;
+    let result;
     try {
-      rawResponse = await session.sendMessage(messageText, onChunk);
+      result = await session.sendMessage(messageText, onChunk, onStatus);
     } catch (err) {
       // Si falló con --resume (session_id viejo/inválido), reintentar como nueva sesión
       if (session.claudeSessionId && session.messageCount > 0) {
@@ -198,12 +233,16 @@ class ConversationService {
         session.claudeSessionId = null;
         session.messageCount = 0;
         isNewSession = true;
-        rawResponse = await session.sendMessage(messageText, onChunk);
+        result = await session.sendMessage(messageText, onChunk, onStatus);
       } else {
         throw err;
       }
     }
-    csdbg('claude', `← session.sendMessage() ${Date.now() - t0}ms responseLen=${rawResponse?.length || 0}`);
+
+    // sendMessage ahora devuelve { text, usedMcpTools } o string (backward compat)
+    const rawResponse = typeof result === 'string' ? result : (result?.text || '');
+    const usedMcpTools = typeof result === 'object' ? result.usedMcpTools : false;
+    csdbg('claude', `← session.sendMessage() ${Date.now() - t0}ms responseLen=${rawResponse.length} usedMcpTools=${usedMcpTools}`);
 
     // Extraer y aplicar operaciones de memoria
     let response = rawResponse;
@@ -226,9 +265,10 @@ class ConversationService {
       }
     }
 
-    csdbg('claude', `DONE responseLen=${(response || '').length} savedFiles=${savedMemoryFiles.length} isNew=${isNewSession}`);
+    csdbg('claude', `DONE responseLen=${(response || '').length} savedFiles=${savedMemoryFiles.length} isNew=${isNewSession} usedMcpTools=${usedMcpTools}`);
     return {
       text: response || '',
+      usedMcpTools,
       savedMemoryFiles,
       ...(isNewSession ? { newSession: session } : {}),
     };

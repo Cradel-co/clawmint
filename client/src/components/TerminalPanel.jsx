@@ -166,8 +166,9 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
   return (
     <div
       style={{
-        height: '100%',
-        width: '100%',
+        position: 'absolute',
+        inset: 0,
+        padding: 8,
         display: active ? 'flex' : 'none',
         flexDirection: 'column',
       }}
