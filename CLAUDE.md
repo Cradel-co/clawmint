@@ -36,6 +36,7 @@ clawmint/
 │   │       ├── TelegramChannel.js     # TelegramBot + manejo de mensajes
 │   │       ├── CommandHandler.js      # Comandos /start, /cd, /consola, etc.
 │   │       ├── CallbackHandler.js     # Callbacks de botones inline
+│   │       ├── DynamicCallbackRegistry.js # Callbacks dinámicos con TTL
 │   │       └── PendingActionHandler.js # Acciones pendientes (whitelist, etc.)
 │   ├── core/
 │   │   ├── ClaudePrintSession.js # Sesión Claude CLI con persistencia
@@ -68,7 +69,14 @@ clawmint/
 │   │   └── BotsRepository.js    # Persistencia de configuración de bots
 │   ├── mcp/
 │   │   ├── index.js             # Router MCP (herramientas expuestas)
-│   │   └── ShellSession.js      # Sesión shell para MCP
+│   │   ├── ShellSession.js      # Sesión shell para MCP
+│   │   └── tools/
+│   │       ├── index.js         # Registry de herramientas MCP
+│   │       ├── bash.js          # Herramienta bash para MCP
+│   │       ├── files.js         # Operaciones de archivos para MCP
+│   │       ├── pty.js           # Herramientas PTY para MCP
+│   │       ├── memory.js        # Gestión de memoria para MCP
+│   │       └── telegram.js      # Integración Telegram para MCP
 │   ├── mcps.js                  # Gestión de servidores MCP externos
 │   ├── tts.js                   # Módulo TTS central
 │   ├── tts-config.js            # Configuración de proveedores TTS
@@ -84,19 +92,25 @@ clawmint/
 │   ├── nodriza.js               # Conexión a nodriza (señalización P2P + WebRTC)
 │   ├── nodriza-config.js        # Configuración de nodriza (env + JSON)
 │   ├── nodriza-config.json      # Config nodriza persistida (auto-generado)
+│   ├── mcp-config.json          # Config de servidores MCP externos
+│   ├── mcp-system-prompt.txt    # System prompt para respuestas via Telegram/WebChat
 │   ├── events.js                # EventEmitter global (legacy)
 │   ├── ecosystem.config.js      # Configuración PM2
 │   └── test/                    # Tests unitarios
-└── client/
-    └── src/
-        ├── App.jsx
-        └── components/
-            ├── TerminalPanel.jsx
-            ├── TabBar.jsx
-            ├── AgentsPanel.jsx
-            ├── ProvidersPanel.jsx
-            ├── CommandBar.jsx
-            └── TelegramPanel.jsx
+├── client/
+│   └── src/
+│       ├── App.jsx
+│       ├── config.js              # Config centralizada (SERVER_HOST, API_BASE, WS_URL)
+│       └── components/
+│           ├── TerminalPanel.jsx
+│           ├── TabBar.jsx
+│           ├── AgentsPanel.jsx
+│           ├── ProvidersPanel.jsx
+│           ├── CommandBar.jsx
+│           ├── TelegramPanel.jsx
+│           ├── WebChatPanel.jsx   # Chat web con ConversationService
+│           └── WebChatPanel.css
+└── docs/                          # Documentación del proyecto
 ```
 
 ## Comandos
@@ -135,7 +149,11 @@ pm2 save             # guardar estado para auto-arranque
 - **Persistencia de modo de permisos**: `claudeMode` (`ask`/`auto`/`plan`) se guarda en `chat_settings` y se restaura al reconectar.
 - **TTS multi-proveedor**: configurado en `tts-config.js`/`tts-config.json`. Cada proveedor implementa `synthesize(text, opts)` → `Buffer`. Edge TTS y Piper funcionan offline.
 - **Providers IA**: 6 proveedores (Anthropic, Claude Code, Gemini, OpenAI, Grok, Ollama). Cada uno implementa `sendMessage(messages, opts)` con streaming. Se seleccionan por chat desde Telegram.
-- **MCP**: servidor MCP integrado (`mcp/index.js`) que expone herramientas del sistema. `mcps.js` gestiona conexiones a MCPs externos.
+- **MCP**: servidor MCP integrado (`mcp/index.js`) con herramientas modulares en `mcp/tools/` (bash, files, pty, memory, telegram). `mcps.js` gestiona conexiones a MCPs externos. `mcp-config.json` configura MCPs externos y `mcp-system-prompt.txt` define el system prompt para respuestas con herramientas.
+- **ConversationService**: motor unificado de conversación con IA, usado por Telegram y WebChat. Soporta streaming, agentes, memoria y múltiples proveedores.
+- **WebChat**: panel de chat web (`WebChatPanel.jsx`) conectado via WebSocket tipo `webchat`. Mismos comandos que Telegram (`/provider`, `/agente`, `/modelo`, etc.).
+- **DynamicCallbackRegistry**: registro de callbacks dinámicos con TTL para botones inline en Telegram.
+- **Config centralizada del client**: `client/src/config.js` expone `SERVER_HOST`, `API_BASE`, `WS_URL` desde variables de entorno Vite.
 - **PM2**: el servidor se gestiona con PM2 en producción. `ecosystem.config.js` carga `.env` automáticamente y usa `--stack-size=65536`. Auto-arranque con systemd.
 
 ## Nodriza (P2P con deskcritter)
