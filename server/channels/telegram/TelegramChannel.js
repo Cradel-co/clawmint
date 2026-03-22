@@ -512,8 +512,13 @@ class TelegramBot {
         return;
       }
       console.log(`[Telegram:${this.key}] Audio transcrito de ${chatId}: ${text.slice(0, 60)}`);
+      // Actualizar el mensaje de transcripción con el texto reconocido (ya no se reutiliza para status posteriores)
+      if (statusMsg) {
+        const preview = text.length > 200 ? text.slice(0, 200) + '…' : text;
+        try { await this._apiCall('editMessageText', { chat_id: chatId, message_id: statusMsg.message_id, text: `🎙️ ${preview}` }); } catch {}
+      }
       msg.text = text;
-      msg._statusMsg = statusMsg; // Pasar el mensaje de status para reutilizar
+      // No pasar _statusMsg — _sendToSession creará su propio mensaje de status
       await this._handleMessage(msg);
     } catch (err) {
       console.error(`[Telegram:${this.key}] Error procesando audio:`, err.message);
@@ -1129,6 +1134,32 @@ class TelegramBot {
       contentType: 'audio/wav',
     });
     if (!data.ok) throw new Error(data.description || 'sendVoice error');
+    return data.result;
+  }
+
+  /**
+   * Enviar un video a un chat.
+   * @param {number|string} chatId
+   * @param {Buffer} videoBuffer
+   * @param {object} [opts]
+   * @param {string} [opts.caption]
+   * @param {string} [opts.filename]
+   * @param {string} [opts.contentType]
+   * @param {string} [opts.parse_mode]
+   */
+  async sendVideo(chatId, videoBuffer, opts = {}) {
+    const urlPath = `/bot${this.token}/sendVideo`;
+    const fields = { chat_id: String(chatId) };
+    if (opts.caption) fields.caption = opts.caption;
+    if (opts.parse_mode) fields.parse_mode = opts.parse_mode;
+    const file = {
+      fieldName: 'video',
+      filename: opts.filename || 'video.mp4',
+      contentType: opts.contentType || 'video/mp4',
+      buffer: videoBuffer,
+    };
+    const data = await httpsPostMultipart(urlPath, fields, file);
+    if (!data.ok) throw new Error(data.description || 'sendVideo error');
     return data.result;
   }
 
