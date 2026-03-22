@@ -4,7 +4,8 @@ const crypto = require('crypto');
 const path   = require('path');
 const fs     = require('fs');
 const os     = require('os');
-const BaseChannel = require('../BaseChannel');
+const BaseChannel    = require('../BaseChannel');
+const parseButtons   = require('../parseButtons');
 
 /** Tiempo que una sesión desconectada se mantiene en memoria (30 min) */
 const PARK_TTL_MS = 30 * 60 * 1000;
@@ -131,9 +132,10 @@ class WebChannel extends BaseChannel {
               return;
             }
 
-            // Imágenes adjuntas al mensaje
+            // Archivos adjuntos al mensaje
             const images = Array.isArray(msg.images) ? msg.images : null;
-            await this._sendToAI(ws, sessionId, state, text, images);
+            const files  = Array.isArray(msg.files) ? msg.files : null;
+            await this._sendToAI(ws, sessionId, state, text, images, files);
             break;
           }
 
@@ -443,6 +445,19 @@ class WebChannel extends BaseChannel {
         return;
       }
 
+      case '/test-buttons': {
+        this._sendJson(ws, {
+          type: 'chat:message',
+          text: '¿Qué querés hacer?',
+          buttons: [
+            { text: '📋 Ver estado', callback_data: '/estado' },
+            { text: '🆕 Nueva conversación', callback_data: '/nueva' },
+            { text: '❓ Ayuda', callback_data: '/ayuda' },
+          ],
+        });
+        return;
+      }
+
       default:
         this._sendJson(ws, { type: 'command_result', text: `Comando desconocido: ${cmd}. Usá /ayuda.` });
     }
@@ -450,7 +465,7 @@ class WebChannel extends BaseChannel {
 
   // ── IA ─────────────────────────────────────────────────────────────────────
 
-  async _sendToAI(ws, sessionId, state, text, images = null) {
+  async _sendToAI(ws, sessionId, state, text, images = null, files = null) {
     state.processing = true;
 
     try {
@@ -471,6 +486,7 @@ class WebChannel extends BaseChannel {
         model: state.model,
         text,
         images,
+        files,
         history: state.history,
         claudeSession: state.claudeSession,
         claudeMode: state.claudeMode,
@@ -490,7 +506,15 @@ class WebChannel extends BaseChannel {
         state.history.push({ role: 'assistant', content: result.text });
       }
 
-      this._sendJson(ws, { type: 'chat_done', text: result.text });
+      // Parsear botones inline del AI response
+      const { text: cleanText, buttons } = parseButtons(result.text);
+      if (buttons) {
+        // Aplanar filas a array simple para el cliente web
+        const flatButtons = buttons.flat();
+        this._sendJson(ws, { type: 'chat_done', text: cleanText, buttons: flatButtons });
+      } else {
+        this._sendJson(ws, { type: 'chat_done', text: cleanText });
+      }
       this._saveSettings(sessionId, state);
 
       if (result.savedMemoryFiles?.length > 0) {
