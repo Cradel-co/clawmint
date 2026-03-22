@@ -1,0 +1,6 @@
+{
+  "enabled": false,
+  "url": "ws://localhost:3000/signaling",
+  "serverId": "",
+  "apiKey": ""
+}
