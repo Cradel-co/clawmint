@@ -48,7 +48,9 @@
       "Bash(tar -tf \"C:/Users/padil/Documents/wsl/terminal-live/server/voice-providers/piper/piper_windows_amd64.zip\")",
       "Bash(tar -tf piper_windows_amd64.zip)",
       "Bash(unzip -l piper_windows_amd64.zip)",
-      "Bash(git fetch:*)"
+      "Bash(git fetch:*)",
+      "Bash(git merge:*)",
+      "Bash(echo \"EXIT: $?\")"
     ]
   }
 }

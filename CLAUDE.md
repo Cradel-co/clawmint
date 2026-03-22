@@ -30,6 +30,8 @@ clawmint/
 │   ├── sessionManager.js       # PtySession + pool de sesiones
 │   ├── channels/
 │   │   ├── BaseChannel.js      # Clase base para canales de mensajería
+│   │   ├── p2p/
+│   │   │   └── P2PBotAdapter.js # Adaptador DataChannel → interfaz TelegramBot
 │   │   └── telegram/
 │   │       ├── TelegramChannel.js     # TelegramBot + manejo de mensajes
 │   │       ├── CommandHandler.js      # Comandos /start, /cd, /consola, etc.
@@ -79,6 +81,9 @@ clawmint/
 │   ├── reminders.js             # Recordatorios/alarmas programadas
 │   ├── transcriber.js           # Transcripción audio con Whisper
 │   ├── provider-config.js       # Configuración de proveedores IA
+│   ├── nodriza.js               # Conexión a nodriza (señalización P2P + WebRTC)
+│   ├── nodriza-config.js        # Configuración de nodriza (env + JSON)
+│   ├── nodriza-config.json      # Config nodriza persistida (auto-generado)
 │   ├── events.js                # EventEmitter global (legacy)
 │   ├── ecosystem.config.js      # Configuración PM2
 │   └── test/                    # Tests unitarios
@@ -132,6 +137,69 @@ pm2 save             # guardar estado para auto-arranque
 - **Providers IA**: 6 proveedores (Anthropic, Claude Code, Gemini, OpenAI, Grok, Ollama). Cada uno implementa `sendMessage(messages, opts)` con streaming. Se seleccionan por chat desde Telegram.
 - **MCP**: servidor MCP integrado (`mcp/index.js`) que expone herramientas del sistema. `mcps.js` gestiona conexiones a MCPs externos.
 - **PM2**: el servidor se gestiona con PM2 en producción. `ecosystem.config.js` carga `.env` automáticamente y usa `--stack-size=65536`. Auto-arranque con systemd.
+
+## Nodriza (P2P con deskcritter)
+
+Terminal-live actúa como "server" en nodriza para aceptar conexiones P2P de clients como deskcritter.
+
+### Configuración
+
+Variables de entorno (`.env`) tienen prioridad sobre `nodriza-config.json`:
+
+```env
+NODRIZA_ENABLED=true                            # activar/desactivar
+NODRIZA_URL=ws://localhost:3000/signaling        # endpoint de nodriza
+NODRIZA_SERVER_ID=<id del server en nodriza>     # ID obtenido del dashboard
+NODRIZA_API_KEY=<api key del server>             # API key obtenida al crear el server
+```
+
+En producción se usa `nodriza-config.json` (patrón idéntico a `provider-config.js`).
+
+### Módulos
+
+- **`nodriza-config.js`** — Config con patrón env > JSON. Funciones: `getConfig()`, `setConfig(partial)`, `isEnabled()`.
+- **`nodriza.js`** — Clase `NodrizaConnection`:
+  - Conecta al WebSocket de nodriza `/signaling` y se autentica como `role: "server"`
+  - Escucha `peer:connected`/`peer:disconnected` para crear/cerrar RTCPeerConnection
+  - Usa `node-datachannel` (WebRTC nativo para Node.js) para crear DataChannels
+  - Cuando un DataChannel se abre, crea un `P2PBotAdapter` que adapta el DataChannel a la interfaz de TelegramBot
+  - Reconexión automática con backoff exponencial (2s → 30s)
+- **`channels/p2p/P2PBotAdapter.js`** — Adaptador que expone la interfaz de TelegramBot sobre DataChannel P2P:
+  - Reutiliza `CommandHandler` y `CallbackHandler` de Telegram (mismos comandos /start, /cd, etc.)
+  - Soporta transcripción de audio recibido por P2P (reenvía a Whisper del server)
+  - Soporta TTS sobre P2P (envía audio sintetizado al client por DataChannel)
+
+### Flujo P2P
+
+```
+terminal-live ──ws──→ nodriza ←──ws── deskcritter
+     │                                    │
+     │── signal:offer ──→ nodriza ──→─────│
+     │←── signal:answer ──← nodriza ←─────│
+     │←→── ice-candidate ──→←─────────────│
+     │                                    │
+     │════════ P2P DataChannel ═══════════│
+     │                                    │
+     │←─ {type:"init", sessionType:"ai"} ─│
+     │──→ {type:"session_id"} ────────────│
+     │←─ {type:"input", data:"..."} ──────│
+     │──→ {type:"output", data:"..."} ────│
+```
+
+El DataChannel transporta el mismo protocolo JSON que el WebSocket directo.
+
+### REST API
+
+```
+GET  /api/nodriza/config    — config actual (apiKey censurada)
+PUT  /api/nodriza/config    — actualizar config { url, serverId, apiKey, enabled }
+GET  /api/nodriza/status    — { connected, peers: [...] }
+POST /api/nodriza/reconnect — forzar reconexión
+```
+
+### DI (bootstrap.js)
+
+`NodrizaConnection` se instancia en `bootstrap.js` si `isEnabled()` es true y se expone como `_container.nodriza`. Se inicia en `index.js` después de que el server HTTP esté escuchando.
 
 ## Arquitectura detallada
 
