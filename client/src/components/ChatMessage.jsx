@@ -2,9 +2,32 @@ import { memo, useState, useCallback } from 'react';
 import { Check, Copy, Download, FileText, Image, Film, Volume2 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import AudioPlayer from './AudioPlayer.jsx';
+
+/** Schema de sanitización: permite HTML visual pero bloquea scripts/iframes */
+const sanitizeSchema = {
+  ...defaultSchema,
+  tagNames: [
+    ...(defaultSchema.tagNames || []),
+    'style', 'mark', 'figure', 'figcaption', 'caption', 'colgroup', 'col',
+    'abbr', 'address', 'cite', 'dfn', 'meter', 'progress', 'time', 'wbr',
+  ],
+  attributes: {
+    ...defaultSchema.attributes,
+    '*': [...(defaultSchema.attributes['*'] || []), 'style', 'className', 'class', 'id'],
+    img: [...(defaultSchema.attributes.img || []), 'alt', 'width', 'height', 'loading'],
+    td: ['colspan', 'rowspan', 'style'],
+    th: ['colspan', 'rowspan', 'style'],
+    col: ['span', 'style'],
+    meter: ['value', 'min', 'max', 'low', 'high', 'optimum'],
+    progress: ['value', 'max'],
+    time: ['datetime'],
+  },
+};
 
 /**
  * ChatMessage — renderiza un mensaje de chat con Markdown completo.
@@ -78,6 +101,7 @@ function ChatMessage({ content, role, streaming, error, providerLabel, buttons, 
         ) : (
           <Markdown
             remarkPlugins={[remarkGfm]}
+            rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]}
             components={{
               code: CodeBlock,
               a: ExternalLink,
