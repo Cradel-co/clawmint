@@ -1,5 +1,5 @@
 import { memo, useState, useCallback } from 'react';
-import { Check, Copy } from 'lucide-react';
+import { Check, Copy, Download, FileText, Image, Film, Volume2 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -9,10 +9,10 @@ import AudioPlayer from './AudioPlayer.jsx';
 /**
  * ChatMessage — renderiza un mensaje de chat con Markdown completo.
  *
- * Soporta: GFM (tablas, strikethrough, listas de tareas), code blocks
- * con syntax highlighting y botón de copiar, links, imágenes inline.
+ * Soporta: GFM, code blocks con syntax highlighting, media (foto, documento, audio, video),
+ * botones inline, audio del usuario con transcripción.
  */
-function ChatMessage({ content, role, streaming, error, providerLabel, buttons, onButtonClick, audioUrl, audioDuration, transcription }) {
+function ChatMessage({ content, role, streaming, error, providerLabel, buttons, onButtonClick, audioUrl, audioDuration, transcription, mediaType, mediaSrc, caption, filename, mimeType }) {
   // Mensaje de audio TTS
   if (role === 'tts' && audioUrl) {
     return (
@@ -20,6 +20,39 @@ function ChatMessage({ content, role, streaming, error, providerLabel, buttons, 
         <div className="wc-msg-label">Audio TTS</div>
         <div className="wc-msg-content wc-audio-content">
           <audio controls src={audioUrl} className="wc-audio-player" />
+        </div>
+      </div>
+    );
+  }
+
+  // Media: photo, document, voice, video
+  if (mediaType && mediaSrc) {
+    return (
+      <div className={`wc-msg wc-msg-${role}`}>
+        {role === 'assistant' && providerLabel && (
+          <div className="wc-msg-label">{providerLabel}</div>
+        )}
+        <div className="wc-msg-content wc-media-content">
+          {mediaType === 'photo' && (
+            <img src={mediaSrc} alt={caption || filename || 'imagen'} className="wc-media-img" />
+          )}
+          {mediaType === 'video' && (
+            <video controls src={mediaSrc} className="wc-media-video" />
+          )}
+          {mediaType === 'voice' && (
+            <div className="wc-media-voice">
+              <Volume2 size={14} className="wc-media-voice-icon" />
+              <audio controls src={mediaSrc} className="wc-media-audio" />
+            </div>
+          )}
+          {mediaType === 'document' && (
+            <a href={mediaSrc} download={filename || 'archivo'} className="wc-media-doc">
+              <FileText size={18} />
+              <span className="wc-media-doc-name">{filename || 'archivo'}</span>
+              <Download size={14} className="wc-media-doc-dl" />
+            </a>
+          )}
+          {caption && <p className="wc-media-caption">{caption}</p>}
         </div>
       </div>
     );
@@ -88,6 +121,19 @@ function CodeBlock({ node, inline, className, children, ...props }) {
 
   if (inline) {
     return <code className="wc-inline-code" {...props}>{children}</code>;
+  }
+
+  // Bloque corto sin lenguaje: renderizar compacto (inline con botón copiar)
+  const isSingleLine = !code.includes('\n');
+  if (isSingleLine && !lang) {
+    return (
+      <div className="wc-code-inline-block">
+        <code className="wc-code-inline-text">{code}</code>
+        <button className="wc-code-inline-copy" onClick={handleCopy} title="Copiar">
+          {copied ? <Check size={12} /> : <Copy size={12} />}
+        </button>
+      </div>
+    );
   }
 
   return (
