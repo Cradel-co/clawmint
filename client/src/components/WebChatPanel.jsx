@@ -21,6 +21,7 @@ export default function WebChatPanel({ onClose }) {
   const inputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
+  const recordStartRef = useRef(0);
   const fileInputRef = useRef(null);
 
   // Scroll automático al final
@@ -129,8 +130,16 @@ export default function WebChatPanel({ onClose }) {
             break;
 
           case 'chat:transcription':
-            // Mostrar texto transcrito como mensaje del usuario
-            setMessages(prev => [...prev, { role: 'user', content: msg.text }]);
+            // Agregar transcripción al último mensaje de audio del usuario
+            setMessages(prev => {
+              const idx = prev.findLastIndex(m => m.role === 'user' && m.audioUrl);
+              if (idx >= 0) {
+                const updated = [...prev];
+                updated[idx] = { ...updated[idx], transcription: msg.text };
+                return updated;
+              }
+              return [...prev, { role: 'user', content: msg.text }];
+            });
             break;
 
           case 'chat:status':
@@ -255,6 +264,10 @@ export default function WebChatPanel({ onClose }) {
         stream.getTracks().forEach(t => t.stop());
         const actualMime = mediaRecorder.mimeType || 'audio/webm';
         const blob = new Blob(audioChunksRef.current, { type: actualMime });
+        const audioUrl = URL.createObjectURL(blob);
+        const audioDuration = (Date.now() - recordStartRef.current) / 1000;
+        // Mostrar audio en el chat inmediatamente
+        setMessages(prev => [...prev, { role: 'user', audioUrl, audioDuration, transcription: null }]);
         const reader = new FileReader();
         reader.onloadend = () => {
           const base64 = reader.result.split(',')[1];
@@ -269,6 +282,7 @@ export default function WebChatPanel({ onClose }) {
       };
 
       mediaRecorder.start();
+      recordStartRef.current = Date.now();
       setRecording(true);
     } catch (err) {
       let errorMsg = 'Micrófono no disponible';
@@ -461,6 +475,8 @@ export default function WebChatPanel({ onClose }) {
             buttons={msg.buttons}
             onButtonClick={handleButtonClick}
             audioUrl={msg.audioUrl}
+            audioDuration={msg.audioDuration}
+            transcription={msg.transcription}
           />
         ))}
         {sending && !messages.some(m => m.streaming) && (

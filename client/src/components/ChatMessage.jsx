@@ -3,6 +3,7 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import AudioPlayer from './AudioPlayer.jsx';
 
 /**
  * ChatMessage — renderiza un mensaje de chat con Markdown completo.
@@ -10,7 +11,7 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
  * Soporta: GFM (tablas, strikethrough, listas de tareas), code blocks
  * con syntax highlighting y botón de copiar, links, imágenes inline.
  */
-function ChatMessage({ content, role, streaming, error, providerLabel, buttons, onButtonClick, audioUrl }) {
+function ChatMessage({ content, role, streaming, error, providerLabel, buttons, onButtonClick, audioUrl, audioDuration, transcription }) {
   // Mensaje de audio TTS
   if (role === 'tts' && audioUrl) {
     return (
@@ -29,7 +30,16 @@ function ChatMessage({ content, role, streaming, error, providerLabel, buttons, 
         <div className="wc-msg-label">{providerLabel}</div>
       )}
       <div className="wc-msg-content">
-        {role === 'user' || role === 'system' ? (
+        {audioUrl ? (
+          <>
+            <AudioPlayer src={audioUrl} knownDuration={audioDuration} />
+            {transcription ? (
+              <span className="wc-audio-transcription">{transcription}</span>
+            ) : (
+              <span className="wc-audio-transcribing">Transcribiendo...</span>
+            )}
+          </>
+        ) : role === 'user' || role === 'system' ? (
           <span>{content}</span>
         ) : (
           <Markdown
