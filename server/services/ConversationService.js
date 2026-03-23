@@ -252,14 +252,28 @@ class ConversationService {
     const isWebChannel = channel === 'web' || botKey === 'web';
     const mcpPrompt = isWebChannel ? null : getMcpSystemPrompt();
     const channelCtx = (botKey && chatId)
-      ? `\n\n## Contexto del canal\n- Canal: ${channel || 'telegram'}\n- Bot key: ${botKey}\n- Chat ID: ${chatId}\n- Agente activo: ${agentKey || 'default'}\nUsa estos valores cuando necesites enviar fotos, documentos o mensajes al usuario.\nPara herramientas de memoria (memory_list, memory_read, memory_write, etc.), usa agent="${agentKey || 'default'}".`
+      ? `\n\n## Contexto del canal\n- Canal: ${channel || 'telegram'}\n- Bot key: ${botKey}\n- ${isWebChannel ? 'Session ID' : 'Chat ID'}: ${chatId}\n- Agente activo: ${agentKey || 'default'}\nUsa estos valores cuando necesites enviar fotos, documentos o mensajes al usuario.${isWebChannel ? `\nPara herramientas webchat_*, usa session_id="${chatId}".` : ''}\nPara herramientas de memoria (memory_list, memory_read, memory_write, etc.), usa agent="${agentKey || 'default'}".`
       : '';
     const webChannelPrompt = isWebChannel
       ? 'Estás respondiendo a un usuario a través del WebChat de Clawmint.\n' +
         'Responde siempre en texto plano (se renderiza como Markdown en el cliente).\n' +
-        'NO uses herramientas de Telegram (telegram_send_message, telegram_send_photo, etc.) — tu respuesta llega directamente al usuario por WebSocket.\n' +
+        'NO uses herramientas de Telegram (telegram_send_message, telegram_send_photo, etc.) — usa las equivalentes de WebChat.\n' +
         'Responde siempre en español. Sé conciso y directo.\n' +
         'Tienes acceso a herramientas MCP de memoria (memory_list, memory_read, memory_write, memory_append, memory_delete), bash, read_file, write_file, y kheiron-tools.\n' +
+        '\n' +
+        '## Herramientas WebChat\n' +
+        'Para enviar contenido multimedia o mensajes adicionales al usuario, usa estas herramientas:\n' +
+        '- webchat_send_message(session_id, text, buttons?, callbacks?) — enviar texto adicional con botones opcionales\n' +
+        '- webchat_send_photo(session_id, file_path, caption?) — enviar una imagen al chat (OBLIGATORIO cuando generes imágenes/screenshots)\n' +
+        '- webchat_send_document(session_id, file_path, caption?) — enviar un archivo al chat\n' +
+        '- webchat_send_voice(session_id, file_path, caption?) — enviar audio al chat\n' +
+        '- webchat_send_video(session_id, file_path, caption?) — enviar video al chat\n' +
+        '- webchat_edit_message(session_id, msg_id, text) — editar un mensaje enviado\n' +
+        '- webchat_delete_message(session_id, msg_id) — borrar un mensaje\n' +
+        '- webchat_list_sessions() — listar sesiones activas (para descubrir session_id)\n' +
+        '\n' +
+        'IMPORTANTE: Cuando generes archivos (screenshots, imágenes, PDFs, audio, video, etc.), SIEMPRE usa la herramienta webchat_send_* correspondiente para enviarlos al chat. NO te limites a guardarlos en disco — el usuario necesita verlos en el chat.\n' +
+        'Para obtener el session_id, usa webchat_list_sessions o el valor del contexto del canal.\n' +
         '\n' +
         '## Botones Inline\n' +
         'Podés enviar botones inline en tus respuestas usando este formato al final del mensaje:\n' +
