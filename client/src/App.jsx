@@ -1,10 +1,12 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { MessageCircle, Settings, Plug, Users, Bot } from 'lucide-react';
 import TabBar from './components/TabBar.jsx';
 import CommandBar from './components/CommandBar.jsx';
 import TerminalPanel from './components/TerminalPanel.jsx';
 import TelegramPanel from './components/TelegramPanel.jsx';
 import AgentsPanel from './components/AgentsPanel.jsx';
 import ProvidersPanel from './components/ProvidersPanel.jsx';
+import McpsPanel from './components/McpsPanel.jsx';
 import WebChatPanel from './components/WebChatPanel.jsx';
 import { API_BASE, WS_URL } from './config.js';
 import './App.css';
@@ -37,6 +39,7 @@ export default function App() {
   const [telegramChatsCount, setTelegramChatsCount] = useState(0);
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [providersOpen, setProvidersOpen] = useState(false);
+  const [mcpsOpen, setMcpsOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
 
   // Mapa: httpSessionId → frontendTabId
@@ -139,31 +142,38 @@ export default function App() {
         <div className="header-right">
           <button
             className={`telegram-btn ${chatOpen ? 'active' : ''}`}
-            onClick={() => { setChatOpen(v => !v); setProvidersOpen(false); setAgentsOpen(false); setTelegramOpen(false); }}
+            onClick={() => { setChatOpen(v => !v); setProvidersOpen(false); setMcpsOpen(false); setAgentsOpen(false); setTelegramOpen(false); }}
             title="Chat con IA"
           >
-            💬
+            <MessageCircle size={16} />
           </button>
           <button
             className={`telegram-btn ${providersOpen ? 'active' : ''}`}
-            onClick={() => { setProvidersOpen(v => !v); setAgentsOpen(false); setTelegramOpen(false); setChatOpen(false); }}
+            onClick={() => { setProvidersOpen(v => !v); setMcpsOpen(false); setAgentsOpen(false); setTelegramOpen(false); setChatOpen(false); }}
             title="Providers de IA"
           >
-            ⚙️
+            <Settings size={16} />
+          </button>
+          <button
+            className={`telegram-btn ${mcpsOpen ? 'active' : ''}`}
+            onClick={() => { setMcpsOpen(v => !v); setProvidersOpen(false); setAgentsOpen(false); setTelegramOpen(false); setChatOpen(false); }}
+            title="MCPs"
+          >
+            <Plug size={16} />
           </button>
           <button
             className={`telegram-btn ${agentsOpen ? 'active' : ''}`}
-            onClick={() => { setAgentsOpen(v => !v); setTelegramOpen(false); setProvidersOpen(false); setChatOpen(false); }}
+            onClick={() => { setAgentsOpen(v => !v); setMcpsOpen(false); setTelegramOpen(false); setProvidersOpen(false); setChatOpen(false); }}
             title="Agentes personalizados"
           >
-            🎭
+            <Users size={16} />
           </button>
           <button
             className={`telegram-btn ${telegramOpen ? 'active' : ''}`}
-            onClick={() => { setTelegramOpen(v => !v); setAgentsOpen(false); setProvidersOpen(false); setChatOpen(false); }}
+            onClick={() => { setTelegramOpen(v => !v); setMcpsOpen(false); setAgentsOpen(false); setProvidersOpen(false); setChatOpen(false); }}
             title="Panel de Telegram"
           >
-            🤖
+            <Bot size={16} />
             {telegramChatsCount > 0 && !telegramOpen && (
               <span className="telegram-badge">{telegramChatsCount}</span>
             )}
@@ -212,6 +222,10 @@ export default function App() {
 
         {providersOpen && (
           <ProvidersPanel onClose={() => setProvidersOpen(false)} />
+        )}
+
+        {mcpsOpen && (
+          <McpsPanel onClose={() => setMcpsOpen(false)} />
         )}
 
         {chatOpen && (

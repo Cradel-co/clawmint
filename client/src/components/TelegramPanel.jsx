@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Lock, CheckCircle, Sparkles, Square, Play, X, ChevronUp, ChevronDown, Eye, EyeOff, Check, Plus, Bot } from 'lucide-react';
 import { API_BASE } from '../config.js';
 import './TelegramPanel.css';
 
@@ -129,7 +130,7 @@ function AccessConfig({ bot, onRefresh }) {
 
   return (
     <div className="access-config">
-      <h4>🔒 Control de acceso</h4>
+      <h4><Lock size={14} style={{ marginRight: 4, verticalAlign: 'middle' }} />Control de acceso</h4>
       <label>IDs de usuarios permitidos <span>(separados por coma — vacío = todos)</span></label>
       <input
         value={ids}
@@ -156,7 +157,7 @@ function AccessConfig({ bot, onRefresh }) {
         placeholder="misecreta123"
       />
       <button onClick={save} disabled={saving}>
-        {saved ? '✅ Guardado' : saving ? 'Guardando…' : 'Guardar'}
+        {saved ? <><CheckCircle size={13} /> Guardado</> : saving ? 'Guardando…' : 'Guardar'}
       </button>
     </div>
   );
@@ -229,7 +230,7 @@ function BotCard({ bot, onOpenSession, onRefresh }) {
           >
             {allAgents.map(a => (
               <option key={a.key} value={a.key}>
-                {a.key}{a.prompt ? ' 🎭' : ''}
+                {a.key}{a.prompt ? ' *' : ''}
               </option>
             ))}
           </select>
@@ -237,17 +238,17 @@ function BotCard({ bot, onOpenSession, onRefresh }) {
         <div className="tg-bot-actions" onClick={e => e.stopPropagation()}>
           {bot.running ? (
             <button className="tg-btn tg-btn-sm tg-btn-stop" onClick={handleStop} disabled={loading}>
-              ■ Stop
+              <Square size={11} /> Stop
             </button>
           ) : (
             <button className="tg-btn tg-btn-sm tg-btn-start" onClick={handleStart} disabled={loading}>
-              ▶ Start
+              <Play size={11} /> Start
             </button>
           )}
           <button className="tg-btn tg-btn-sm tg-btn-delete" onClick={handleRemove} disabled={loading} title="Eliminar bot">
-            ✕
+            <X size={13} />
           </button>
-          <span className="tg-bot-expand">{expanded ? '▲' : '▼'}</span>
+          <span className="tg-bot-expand">{expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</span>
         </div>
       </div>
 
@@ -326,7 +327,7 @@ function AddBotForm({ onAdd, onCancel }) {
           onKeyDown={e => e.key === 'Enter' && handleSubmit()}
         />
         <button className="tg-icon-btn" onClick={() => setShowToken(v => !v)}>
-          {showToken ? '🙈' : '👁'}
+          {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
         </button>
       </div>
 
@@ -338,7 +339,7 @@ function AddBotForm({ onAdd, onCancel }) {
 
       <div className="tg-btn-row">
         <button className="tg-btn tg-btn-primary" onClick={handleSubmit} disabled={loading || !key || !token}>
-          {loading ? '...' : '✓ Agregar'}
+          {loading ? '...' : <><Check size={13} /> Agregar</>}
         </button>
         <button className="tg-btn tg-btn-ghost" onClick={onCancel}>
           Cancelar
@@ -379,11 +380,11 @@ export default function TelegramPanel({ onClose, onOpenSession }) {
     <div className="tg-panel">
       <div className="tg-header">
         <span className="tg-header-title">
-          <span className="tg-icon">🤖</span>
+          <span className="tg-icon"><Bot size={16} /></span>
           Bots de Telegram
           {activeBots > 0 && <span className="tg-header-badge">{activeBots} activo{activeBots > 1 ? 's' : ''}</span>}
         </span>
-        <button className="tg-close" onClick={onClose} title="Cerrar">×</button>
+        <button className="tg-close" onClick={onClose} title="Cerrar"><X size={16} /></button>
       </div>
 
       <div className="tg-body">
@@ -418,7 +419,7 @@ export default function TelegramPanel({ onClose, onOpenSession }) {
           <AddBotForm onAdd={handleAdd} onCancel={() => setShowAdd(false)} />
         ) : (
           <button className="tg-btn tg-btn-add" onClick={() => setShowAdd(true)}>
-            + Agregar bot
+            <Plus size={14} /> Agregar bot
           </button>
         )}
       </div>

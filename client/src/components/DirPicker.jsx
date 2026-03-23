@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { Folder, X } from 'lucide-react';
 import { API_BASE } from '../config.js';
 import './DirPicker.css';
 
@@ -65,7 +66,7 @@ export default function DirPicker({ value, onChange, onClose }) {
       <div className="dirpicker" onClick={e => e.stopPropagation()}>
         <div className="dirpicker-header">
           <span>Directorio de trabajo</span>
-          <button className="dirpicker-close" onClick={onClose}>&times;</button>
+          <button className="dirpicker-close" onClick={onClose}><X size={14} /></button>
         </div>
 
         <div className="dirpicker-path-row">
@@ -100,7 +101,7 @@ export default function DirPicker({ value, onChange, onClose }) {
           )}
           {dirs.map(d => (
             <div key={d} className="dirpicker-item" onClick={() => navigate(d)}>
-              <span className="dirpicker-folder-icon">📁</span>
+              <span className="dirpicker-folder-icon"><Folder size={14} /></span>
               {d}
             </div>
           ))}

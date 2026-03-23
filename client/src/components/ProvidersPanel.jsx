@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Settings, X, CheckCircle } from 'lucide-react';
 import { API_BASE } from '../config.js';
 
 const API = API_BASE;
@@ -48,7 +49,7 @@ export default function ProvidersPanel({ onClose }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ apiKey: apiKey || undefined, model: model || undefined }),
       });
-      setMsg(`✅ ${PROVIDER_NAMES[name] || name} guardado`);
+      setMsg(`${PROVIDER_NAMES[name] || name} guardado`);
       fetchProviders();
     } catch (err) {
       setMsg('Error: ' + err.message);
@@ -65,7 +66,7 @@ export default function ProvidersPanel({ onClose }) {
         body: JSON.stringify({ provider: name }),
       });
       setDefaultProvider(name);
-      setMsg(`✅ Provider por defecto: ${PROVIDER_NAMES[name] || name}`);
+      setMsg(`Provider por defecto: ${PROVIDER_NAMES[name] || name}`);
     } catch (err) {
       setMsg('Error: ' + err.message);
     }
@@ -76,8 +77,8 @@ export default function ProvidersPanel({ onClose }) {
   return (
     <div className="ap-panel">
       <div className="ap-header">
-        <span className="ap-title">⚙️ Providers de IA</span>
-        <button className="ap-close" onClick={onClose}>✕</button>
+        <span className="ap-title"><Settings size={16} style={{ marginRight: 6, verticalAlign: 'middle' }} />Providers de IA</span>
+        <button className="ap-close" onClick={onClose}><X size={16} /></button>
       </div>
 
       <div className="ap-body">

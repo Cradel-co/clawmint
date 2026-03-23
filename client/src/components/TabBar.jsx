@@ -1,3 +1,4 @@
+import { X, Plus } from 'lucide-react';
 import './TabBar.css';
 
 export default function TabBar({ sessions, activeId, onSelect, onClose, onNew }) {
@@ -19,13 +20,13 @@ export default function TabBar({ sessions, activeId, onSelect, onClose, onNew })
               }}
               title="Cerrar"
             >
-              ×
+              <X size={12} />
             </button>
           )}
         </div>
       ))}
       <button className="tab-new" onClick={onNew} title="Nueva terminal">
-        +
+        <Plus size={14} />
       </button>
     </div>
   );
