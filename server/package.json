@@ -21,6 +21,7 @@
     "@anthropic-ai/sdk": "^0.78.0",
     "@google/genai": "^1.45.0",
     "@huggingface/transformers": "^3.8.1",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "node-pty": "^1.0.0",

@@ -63,7 +63,7 @@ logger.info('HOME:', process.env.HOME);
 
 // ── Carga de módulos (async por sql.js WASM) ─────────────────────────────────
 
-let sessionManager, telegram, webChannel, agents, skills, events, memory, providerConfig, providersModule, consolidator, convSvc;
+let sessionManager, telegram, webChannel, agents, skills, events, memory, providerConfig, providersModule, consolidator, convSvc, mcps;
 let mcpRouter = null;
 
 const _modulesReady = (async function loadModules() {
@@ -71,6 +71,7 @@ const _modulesReady = (async function loadModules() {
   try { sessionManager  = require('./sessionManager');  logger.info('sessionManager OK'); }  catch(e) { logger.error('sessionManager FAIL:', e.message); process.exit(1); }
   try { agents          = require('./agents');           logger.info('agents OK'); }          catch(e) { logger.error('agents FAIL:', e.message); process.exit(1); }
   try { skills          = require('./skills');           logger.info('skills OK'); }          catch(e) { logger.error('skills FAIL:', e.message); process.exit(1); }
+  try { mcps            = require('./mcps');             logger.info('mcps OK'); }            catch(e) { logger.error('mcps FAIL:', e.message); process.exit(1); }
   try { events          = require('./events');           logger.info('events OK'); }          catch(e) { logger.error('events FAIL:', e.message); process.exit(1); }
 
   // sql.js requiere inicialización async del WASM antes de crear instancias SQLite
@@ -100,6 +101,14 @@ const _modulesReady = (async function loadModules() {
     }
     logger.info('bootstrap OK (telegram + consolidator)');
   } catch(e) { logger.error('bootstrap FAIL:', e.message); process.exit(1); }
+
+  // Inicializar pool de clientes MCP (conecta MCPs enabled para providers API)
+  try {
+    const mcpClientPool = require('./mcp-client-pool');
+    await mcpClientPool.initialize();
+    logger.info('mcp-client-pool OK');
+  } catch(e) { logger.warn('mcp-client-pool init falló:', e.message); }
+
   logger.info('Todos los módulos cargados.');
 })();
 
@@ -270,6 +279,100 @@ app.delete('/api/agents/:key', (req, res) => {
   const ok = agents.remove(req.params.key);
   if (!ok) return res.status(404).json({ error: 'Agente no encontrado' });
   res.json({ ok: true });
+});
+
+// ─── MCPs API ─────────────────────────────────────────────────────────────────
+
+// GET /api/mcps — listar MCPs configurados
+app.get('/api/mcps', (_req, res) => {
+  res.json(mcps.list());
+});
+
+// POST /api/mcps — crear MCP
+app.post('/api/mcps', (req, res) => {
+  try {
+    const mcp = mcps.add(req.body);
+    res.status(201).json(mcp);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// PATCH /api/mcps/:name — actualizar MCP
+app.patch('/api/mcps/:name', (req, res) => {
+  try {
+    const mcp = mcps.update(req.params.name, req.body);
+    res.json(mcp);
+  } catch (e) {
+    res.status(404).json({ error: e.message });
+  }
+});
+
+// DELETE /api/mcps/:name — eliminar MCP
+app.delete('/api/mcps/:name', (req, res) => {
+  const ok = mcps.remove(req.params.name);
+  if (!ok) return res.status(404).json({ error: 'MCP no encontrado' });
+  res.json({ ok: true });
+});
+
+// POST /api/mcps/:name/sync — activar MCP (sincronizar con Claude CLI + pool)
+app.post('/api/mcps/:name/sync', async (req, res) => {
+  try {
+    const mcp = await mcps.sync(req.params.name);
+    res.json(mcp);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// POST /api/mcps/:name/enable — alias de sync (usado por el frontend)
+app.post('/api/mcps/:name/enable', async (req, res) => {
+  try {
+    const mcp = await mcps.sync(req.params.name);
+    res.json(mcp);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// POST /api/mcps/:name/unsync — desactivar MCP
+app.post('/api/mcps/:name/unsync', async (req, res) => {
+  try {
+    const mcp = await mcps.unsync(req.params.name);
+    res.json(mcp);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// POST /api/mcps/:name/disable — alias de unsync (usado por el frontend)
+app.post('/api/mcps/:name/disable', async (req, res) => {
+  try {
+    const mcp = await mcps.unsync(req.params.name);
+    res.json(mcp);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// POST /api/mcps/registry/search — buscar en Smithery
+app.post('/api/mcps/registry/search', async (req, res) => {
+  try {
+    const results = await mcps.searchSmithery(req.body.query, req.body.limit);
+    res.json(results);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/mcps/registry/install — instalar desde Smithery
+app.post('/api/mcps/registry/install', async (req, res) => {
+  try {
+    const result = await mcps.installFromRegistry(req.body.qualifiedName, req.body.name);
+    res.json(result);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
 });
 
 // ─── Skills API ───────────────────────────────────────────────────────────────
