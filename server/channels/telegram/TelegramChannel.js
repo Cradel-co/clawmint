@@ -1391,6 +1391,7 @@ class TelegramChannel extends BaseChannel {
 
     // Checker de recordatorios cada 30s
     this._reminderInterval = setInterval(() => this._checkReminders(), 30_000);
+    this._reminderInterval.unref();
   }
 
   async _checkReminders() {

@@ -44,6 +44,7 @@ class WebChannel extends BaseChannel {
 
   async start() {
     this._cleanupTimer = setInterval(() => this._cleanupParked(), CLEANUP_INTERVAL_MS);
+    this._cleanupTimer.unref();
     this.logger.info('[WebChannel] Canal web iniciado');
   }
 
