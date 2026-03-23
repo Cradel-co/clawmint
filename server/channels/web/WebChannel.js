@@ -141,9 +141,18 @@ class WebChannel extends BaseChannel {
           }
 
           case 'chat:action': {
-            // Click en botón inline → reenviar como mensaje de texto
+            // Click en botón inline → check dynamic callbacks, luego fallback
             const action = (msg.data || msg.text || '').trim();
             if (!action || state.processing) return;
+
+            // Intentar callback dinámico primero
+            const dynamicRegistry = require('../telegram/DynamicCallbackRegistry');
+            const cb = dynamicRegistry.get(action);
+            if (cb) {
+              await this._executeDynamicCallback(ws, sessionId, state, cb);
+              break;
+            }
+
             if (action.startsWith('/')) {
               this._handleCommand(ws, sessionId, state, action);
             } else {
@@ -285,10 +294,86 @@ class WebChannel extends BaseChannel {
     this._sendJson(session.ws, { type: 'chat:message', text, buttons });
   }
 
+  async sendPhoto(sessionId, base64Data, { caption, filename, mimeType } = {}) {
+    const session = this.sessions.get(sessionId);
+    if (!session) return null;
+    const msgId = crypto.randomUUID().slice(0, 8);
+    this._sendJson(session.ws, {
+      type: 'chat:photo',
+      msgId,
+      data: base64Data,
+      mimeType: mimeType || 'image/png',
+      caption,
+      filename,
+    });
+    return msgId;
+  }
+
+  async sendDocument(sessionId, base64Data, { caption, filename, mimeType } = {}) {
+    const session = this.sessions.get(sessionId);
+    if (!session) return null;
+    const msgId = crypto.randomUUID().slice(0, 8);
+    this._sendJson(session.ws, {
+      type: 'chat:document',
+      msgId,
+      data: base64Data,
+      mimeType: mimeType || 'application/octet-stream',
+      caption,
+      filename,
+    });
+    return msgId;
+  }
+
   async editMessage(sessionId, msgId, text) {
     const session = this.sessions.get(sessionId);
     if (!session) return;
     this._sendJson(session.ws, { type: 'chat:edit', msgId, text });
+  }
+
+  async sendVoice(sessionId, base64Data, { caption, filename, mimeType } = {}) {
+    const session = this.sessions.get(sessionId);
+    if (!session) return null;
+    const msgId = crypto.randomUUID().slice(0, 8);
+    this._sendJson(session.ws, {
+      type: 'chat:voice',
+      msgId,
+      data: base64Data,
+      mimeType: mimeType || 'audio/ogg',
+      caption,
+      filename,
+    });
+    return msgId;
+  }
+
+  async sendVideo(sessionId, base64Data, { caption, filename, mimeType } = {}) {
+    const session = this.sessions.get(sessionId);
+    if (!session) return null;
+    const msgId = crypto.randomUUID().slice(0, 8);
+    this._sendJson(session.ws, {
+      type: 'chat:video',
+      msgId,
+      data: base64Data,
+      mimeType: mimeType || 'video/mp4',
+      caption,
+      filename,
+    });
+    return msgId;
+  }
+
+  async deleteMessage(sessionId, msgId) {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    this._sendJson(session.ws, { type: 'chat:delete', msgId });
+  }
+
+  listSessions() {
+    return [...this.sessions.entries()].map(([id, s]) => ({
+      sessionId: id,
+      provider: s.state.provider,
+      agent: s.state.agent,
+      messages: s.state.history.length,
+      cwd: s.state.cwd,
+    }));
   }
 
   async sendTyping(sessionId) {
@@ -527,6 +612,44 @@ class WebChannel extends BaseChannel {
     }
 
     state.processing = false;
+  }
+
+  // ── Dynamic Callbacks ────────────────────────────────────────────────────
+
+  async _executeDynamicCallback(ws, sessionId, state, cb) {
+    const { exec } = require('child_process');
+
+    switch (cb.type) {
+      case 'message':
+        this._sendJson(ws, { type: 'chat:message', text: cb.text || '(vacío)' });
+        break;
+
+      case 'command': {
+        const timeout = cb.timeout || 15000;
+        this._sendJson(ws, { type: 'chat:status', status: 'running_command' });
+        try {
+          const output = await new Promise((resolve, reject) => {
+            exec(cb.cmd, { timeout, cwd: state.cwd }, (err, stdout, stderr) => {
+              if (err && !stdout && !stderr) return reject(err);
+              resolve((stdout || '') + (stderr || ''));
+            });
+          });
+          this._sendJson(ws, { type: 'chat:message', text: `\`\`\`\n${output.trim() || '(sin output)'}\n\`\`\`` });
+        } catch (err) {
+          this._sendJson(ws, { type: 'chat:message', text: `Error: ${err.message}` });
+        }
+        break;
+      }
+
+      case 'prompt':
+        if (!state.processing) {
+          await this._sendToAI(ws, sessionId, state, cb.text);
+        }
+        break;
+
+      default:
+        this._sendJson(ws, { type: 'chat:message', text: `Callback tipo "${cb.type}" no soportado.` });
+    }
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
