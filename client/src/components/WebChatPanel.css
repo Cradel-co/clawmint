@@ -247,6 +247,23 @@
   51%, 100% { opacity: 0; }
 }
 
+/* ─── Audio message ─────────────────────────────────────────────────────────── */
+.wc-audio-transcription {
+  display: block;
+  margin-top: 6px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+  line-height: 1.4;
+}
+
+.wc-audio-transcribing {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  font-style: italic;
+}
+
 /* ─── Input area ────────────────────────────────────────────────────────────── */
 .wc-input-area {
   display: flex;
