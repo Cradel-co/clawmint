@@ -10,24 +10,44 @@ const ALL_TOOLS = [bash, ...files, ...pty, ...telegram, ...memory];
 
 const _byName = new Map(ALL_TOOLS.map(t => [t.name, t]));
 
-/** @returns {Array} todos los tools */
-function all() { return ALL_TOOLS; }
+// Lazy-load del pool de MCPs externos
+let _pool = null;
+function _getPool() {
+  if (!_pool) try { _pool = require('../../mcp-client-pool'); } catch {}
+  return _pool;
+}
+
+/** @returns {Array} todos los tools (internos + externos) */
+function all() {
+  const pool = _getPool();
+  const external = pool ? pool.getExternalToolDefs() : [];
+  return [...ALL_TOOLS, ...external];
+}
 
 /**
  * Ejecuta un tool por nombre.
+ * Primero busca en tools internos, luego en MCPs externos.
  * @param {string}  name
  * @param {object}  args
  * @param {object}  [ctx]  - { shellId, sessionManager, memory }
  * @returns {Promise<string>}
  */
 async function execute(name, args, ctx = {}) {
+  // Tools internos (prioridad)
   const tool = _byName.get(name);
-  if (!tool) return `Error: herramienta desconocida: ${name}`;
-  try {
-    return String(await tool.execute(args, ctx));
-  } catch (err) {
-    return `Error ejecutando ${name}: ${err.message}`;
+  if (tool) {
+    try {
+      return String(await tool.execute(args, ctx));
+    } catch (err) {
+      return `Error ejecutando ${name}: ${err.message}`;
+    }
   }
+  // Tools externos (MCPs)
+  const pool = _getPool();
+  if (pool && pool.isExternalTool(name)) {
+    return pool.callTool(name, args);
+  }
+  return `Error: herramienta desconocida: ${name}`;
 }
 
 module.exports = { all, execute };
