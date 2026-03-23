@@ -944,11 +944,12 @@ class CallbackHandler {
           break;
         }
         await bot.sendText(chatId, `⚡ Procesando cola… Te aviso cuando termine.`);
-        this.consolidator.processQueue().then(() => {
-          bot.sendText(chatId, `✅ Cola de consolidación procesada.`).catch(() => {});
-        }).catch(err => {
-          bot.sendText(chatId, `❌ Error en consolidación: ${err.message}`).catch(() => {});
-        });
+        try {
+          await this.consolidator.processQueue();
+          await bot.sendText(chatId, `✅ Cola de consolidación procesada.`);
+        } catch (err) {
+          await bot.sendText(chatId, `❌ Error en consolidación: ${err.message}`);
+        }
         break;
       }
 
