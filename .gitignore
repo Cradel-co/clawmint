@@ -12,6 +12,7 @@ server/memory/
 server/models-cache/
 server/voice-providers/piper/
 server/mcps/
+server/provider-config.json
 ecosystem.config.js
 logs/
 server/logs/

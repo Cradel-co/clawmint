@@ -83,6 +83,7 @@ async function _connect(name) {
   const prev = _connections.get(name);
   if (prev) {
     try { await prev.client.close(); } catch {}
+    try { if (prev.transport && prev.transport.close) await prev.transport.close(); } catch {}
     _connections.delete(name);
   }
 
@@ -195,10 +196,11 @@ async function disconnectMcp(name) {
   for (const tn of toolNames) _toolRegistry.delete(tn);
   _mcpToolNames.delete(name);
 
-  // Cerrar conexión
+  // Cerrar conexión y transport
   const conn = _connections.get(name);
   if (conn) {
     try { await conn.client.close(); } catch {}
+    try { if (conn.transport && conn.transport.close) await conn.transport.close(); } catch {}
     _connections.delete(name);
   }
 
