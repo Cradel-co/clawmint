@@ -399,6 +399,21 @@
   border-color: #58a6ff;
 }
 
+/* ─── TTS audio message ────────────────────────────────────────────────────── */
+.wc-msg-tts {
+  align-self: flex-start;
+}
+.wc-audio-content {
+  padding: 6px 10px !important;
+}
+.wc-audio-player {
+  width: 100%;
+  max-width: 280px;
+  height: 36px;
+  border-radius: 8px;
+  filter: invert(1) hue-rotate(180deg);
+}
+
 /* ─── Input area: media buttons ────────────────────────────────────────────── */
 .wc-file-input {
   display: none;

@@ -12,6 +12,18 @@ import AudioPlayer from './AudioPlayer.jsx';
  * con syntax highlighting y botón de copiar, links, imágenes inline.
  */
 function ChatMessage({ content, role, streaming, error, providerLabel, buttons, onButtonClick, audioUrl, audioDuration, transcription }) {
+  // Mensaje de audio TTS
+  if (role === 'tts' && audioUrl) {
+    return (
+      <div className="wc-msg wc-msg-tts">
+        <div className="wc-msg-label">Audio TTS</div>
+        <div className="wc-msg-content wc-audio-content">
+          <audio controls src={audioUrl} className="wc-audio-player" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`wc-msg wc-msg-${role} ${error ? 'wc-msg-error' : ''}`}>
       {role === 'assistant' && providerLabel && (

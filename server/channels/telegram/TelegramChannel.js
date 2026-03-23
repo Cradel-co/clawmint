@@ -11,6 +11,7 @@ const ConsoleSession       = require('../../core/ConsoleSession');
 const CommandHandler       = require('./CommandHandler');
 const CallbackHandler      = require('./CallbackHandler');
 const PendingActionHandler = require('./PendingActionHandler');
+const parseButtons         = require('../parseButtons');
 
 const TELEGRAM_HOST = 'api.telegram.org';
 const POLL_TIMEOUT  = 25;
@@ -756,9 +757,12 @@ class TelegramBot {
   }
 
   async _sendResult(chatId, text, sentMsg) {
-    const finalText = cleanPtyOutput(text || '').trim();
-    tdbg('result', `chatId=${chatId} rawLen=${(text||'').length} cleanLen=${finalText.length} hasSentMsg=${!!sentMsg}`);
-    if (!finalText) { tdbg('result', `SKIP — finalText vacío`); return; }
+    // Parsear botones inline del AI response
+    const { text: parsedText, buttons } = parseButtons(text || '');
+
+    const finalText = cleanPtyOutput(parsedText).trim();
+    tdbg('result', `chatId=${chatId} rawLen=${(text||'').length} cleanLen=${finalText.length} hasSentMsg=${!!sentMsg} hasButtons=${!!buttons}`);
+    if (!finalText && !buttons) { tdbg('result', `SKIP — finalText vacío`); return; }
 
     const chunks = chunkText(finalText, 4096);
     const lastIdx = chunks.length - 1;
@@ -768,17 +772,37 @@ class TelegramBot {
       if (chunks.length === 1) {
         tdbg('result', `editando msg ${sentMsg.message_id}`);
         try {
-          await this._apiCall('editMessageText', { chat_id: chatId, message_id: sentMsg.message_id, text: chunks[0] });
+          if (buttons) {
+            await this.sendWithButtons(chatId, chunks[0], buttons, sentMsg.message_id);
+          } else {
+            await this._apiCall('editMessageText', { chat_id: chatId, message_id: sentMsg.message_id, text: chunks[0] });
+          }
         } catch (e) { tdbg('result', `editMsg FAIL: ${e.message}`); await this.sendText(chatId, chunks[0]); }
       } else {
         try {
           await this._apiCall('editMessageText', { chat_id: chatId, message_id: sentMsg.message_id, text: chunks[0] });
         } catch (e) { tdbg('result', `editMsg FAIL: ${e.message}`); await this.sendText(chatId, chunks[0]); }
-        for (let i = 1; i <= lastIdx; i++) await this.sendText(chatId, chunks[i]);
+        for (let i = 1; i < lastIdx; i++) await this.sendText(chatId, chunks[i]);
+        // Último chunk: con botones si hay
+        if (buttons) {
+          await this.sendWithButtons(chatId, chunks[lastIdx], buttons);
+        } else {
+          await this.sendText(chatId, chunks[lastIdx]);
+        }
       }
     } else {
       tdbg('result', `enviando ${chunks.length} chunk(s) como mensajes nuevos`);
-      for (let i = 0; i <= lastIdx; i++) await this.sendText(chatId, chunks[i]);
+      if (buttons && chunks.length === 1) {
+        await this.sendWithButtons(chatId, chunks[0], buttons);
+      } else {
+        for (let i = 0; i < lastIdx; i++) await this.sendText(chatId, chunks[i]);
+        // Último chunk: con botones si hay
+        if (buttons) {
+          await this.sendWithButtons(chatId, chunks[lastIdx], buttons);
+        } else {
+          await this.sendText(chatId, chunks[lastIdx]);
+        }
+      }
     }
     tdbg('result', `OK`);
   }

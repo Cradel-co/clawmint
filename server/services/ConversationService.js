@@ -89,6 +89,7 @@ class ConversationService {
     model         = null,
     text,
     images        = null,
+    files         = null,
     history       = [],
     claudeSession = null,
     claudeMode    = 'auto',
@@ -98,6 +99,11 @@ class ConversationService {
     botKey        = null,
     channel       = null,
   }) {
+    // Procesar archivos no-imagen: extraer contenido como texto y adjuntarlo al mensaje
+    if (files && files.length > 0) {
+      text = await this._processFiles(text, files);
+    }
+
     const resolvedShellId = shellId || String(chatId);
     csdbg('msg', `chatId=${chatId} provider=${provider} agent=${agentKey} model=${model} textLen=${text.length} images=${images?.length || 0} histLen=${history.length} hasSession=${!!claudeSession}`);
 
@@ -112,6 +118,75 @@ class ConversationService {
     return this._processClaudeCode({
       chatId, agentKey, text, images, claudeSession, claudeMode, onChunk, onStatus, botKey, channel,
     });
+  }
+
+  // ── Procesamiento de archivos no-imagen ──────────────────────────────────
+
+  async _processFiles(text, files) {
+    const fs = require('fs');
+    const path = require('path');
+    const os = require('os');
+    const descriptions = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const name = file.name || `archivo_${i + 1}`;
+      const mediaType = file.mediaType || 'application/octet-stream';
+      const buffer = Buffer.from(file.base64, 'base64');
+
+      // Archivos de texto plano: leer contenido directamente
+      const textTypes = ['text/', 'application/json', 'application/xml', 'application/csv'];
+      const textExts = ['.txt', '.json', '.xml', '.csv', '.md', '.js', '.ts', '.py', '.html', '.css', '.yaml', '.yml', '.toml', '.ini', '.cfg', '.log', '.sh', '.bash', '.env'];
+      const ext = path.extname(name).toLowerCase();
+      const isText = textTypes.some(t => mediaType.startsWith(t)) || textExts.includes(ext);
+
+      if (isText) {
+        const content = buffer.toString('utf-8');
+        const truncated = content.length > 50000 ? content.slice(0, 50000) + '\n...[truncado]' : content;
+        descriptions.push(`[Archivo "${name}" (${mediaType})]\n\`\`\`\n${truncated}\n\`\`\``);
+        csdbg('files', `archivo texto ${name}: ${content.length} chars`);
+        continue;
+      }
+
+      // PDFs: intentar OCR con kheiron
+      if (mediaType === 'application/pdf' || ext === '.pdf') {
+        const tmpPath = path.join(os.tmpdir(), `clawmint_file_${Date.now()}_${i}${ext}`);
+        try {
+          fs.writeFileSync(tmpPath, buffer);
+          const { execSync } = require('child_process');
+          const raw = execSync(`kheiron ocr-pdf "${tmpPath}" -l spa 2>/dev/null`, { timeout: 60000, encoding: 'utf-8' });
+          let pdfText = '';
+          const startMark = raw.indexOf('--- Texto extraído ---');
+          const endMark = raw.indexOf('--- Fin ---');
+          if (startMark !== -1 && endMark !== -1) {
+            pdfText = raw.slice(startMark + '--- Texto extraído ---'.length, endMark).trim();
+          } else {
+            pdfText = raw.replace(/╔[^╝]*╝/gs, '').replace(/[-─✔✖].*(OCR|Idioma|Confianza|Palabras|Líneas|Archivo).*/gi, '').trim();
+          }
+          if (pdfText && pdfText.length > 10) {
+            descriptions.push(`[PDF "${name}" — texto extraído:]\n${pdfText}`);
+            csdbg('files', `PDF OCR ${name}: ${pdfText.length} chars`);
+          } else {
+            descriptions.push(`[PDF "${name}": no se pudo extraer texto]`);
+          }
+        } catch (err) {
+          csdbg('files', `PDF OCR falló para ${name}: ${err.message}`);
+          descriptions.push(`[PDF "${name}": error extrayendo texto — ${err.message}]`);
+        } finally {
+          try { fs.unlinkSync(tmpPath); } catch {}
+        }
+        continue;
+      }
+
+      // Otros archivos: informar tipo y tamaño
+      descriptions.push(`[Archivo "${name}" (${mediaType}, ${buffer.length} bytes): tipo no soportado para extracción de contenido]`);
+    }
+
+    if (descriptions.length > 0) {
+      const fileContext = descriptions.join('\n\n');
+      return `[El usuario adjuntó ${files.length} archivo(s):]\n\n${fileContext}\n\n[Mensaje del usuario: "${text}"]`;
+    }
+    return text;
   }
 
   // ── Proveedor claude-code (ClaudePrintSession) ────────────────────────────
@@ -184,7 +259,19 @@ class ConversationService {
         'Responde siempre en texto plano (se renderiza como Markdown en el cliente).\n' +
         'NO uses herramientas de Telegram (telegram_send_message, telegram_send_photo, etc.) — tu respuesta llega directamente al usuario por WebSocket.\n' +
         'Responde siempre en español. Sé conciso y directo.\n' +
-        'Tienes acceso a herramientas MCP de memoria (memory_list, memory_read, memory_write, memory_append, memory_delete), bash, read_file, write_file, y kheiron-tools.'
+        'Tienes acceso a herramientas MCP de memoria (memory_list, memory_read, memory_write, memory_append, memory_delete), bash, read_file, write_file, y kheiron-tools.\n' +
+        '\n' +
+        '## Botones Inline\n' +
+        'Podés enviar botones inline en tus respuestas usando este formato al final del mensaje:\n' +
+        '<!-- buttons: [{"text":"📋 Opción 1","callback_data":"opcion1"},{"text":"❓ Opción 2","callback_data":"opcion2"}] -->\n' +
+        'Los botones se muestran debajo de tu mensaje.\n' +
+        'callback_data es lo que se envía como mensaje cuando el usuario hace click.\n\n' +
+        'IMPORTANTE: Usá botones proactivamente en estos casos:\n' +
+        '- Cuando ofrezcas opciones o alternativas al usuario\n' +
+        '- Cuando preguntes algo con respuestas predefinidas (sí/no, elegir entre opciones)\n' +
+        '- Al finalizar una tarea, para ofrecer acciones de seguimiento\n' +
+        '- Cuando el usuario pueda necesitar ejecutar comandos comunes\n' +
+        'No abuses: no en cada mensaje, solo cuando las opciones sean claras y útiles.'
       : '';
     const fullSystemPrompt = isWebChannel
       ? (webChannelPrompt + channelCtx)

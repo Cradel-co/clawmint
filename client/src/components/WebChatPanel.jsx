@@ -80,13 +80,15 @@ export default function WebChatPanel({ onClose }) {
             });
             break;
 
+          case 'chat:message':
           case 'chat_done':
             setMessages(prev => {
               const last = prev[prev.length - 1];
+              const entry = { content: msg.text, streaming: false, ...(msg.buttons ? { buttons: msg.buttons } : {}) };
               if (last && last.role === 'assistant' && last.streaming) {
-                return [...prev.slice(0, -1), { ...last, content: msg.text, streaming: false }];
+                return [...prev.slice(0, -1), { ...last, ...entry }];
               }
-              return [...prev, { role: 'assistant', content: msg.text, streaming: false }];
+              return [...prev, { role: 'assistant', ...entry }];
             });
             setSending(false);
             setStatusText(null);
@@ -147,15 +149,19 @@ export default function WebChatPanel({ onClose }) {
             break;
 
           case 'chat:tts_audio': {
-            // Reproducir audio TTS
-            const audio = new Audio(`data:${msg.mimeType || 'audio/wav'};base64,${msg.data}`);
-            audio.play().catch(() => {});
+            // Mostrar audio TTS como mensaje con reproductor
+            const audioUrl = `data:${msg.mimeType || 'audio/wav'};base64,${msg.data}`;
+            setMessages(prev => [...prev, { role: 'tts', audioUrl }]);
             setStatusText(null);
             break;
           }
 
           case 'chat:tts_error':
             setStatusText(null);
+            setMessages(prev => [
+              ...prev,
+              { role: 'system', content: `TTS: ${msg.error || 'No disponible'}`, error: true },
+            ]);
             break;
 
           case 'status':
@@ -227,8 +233,26 @@ export default function WebChatPanel({ onClose }) {
     }
 
     try {
+      // Verificar que la API de medios está disponible
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        const hint = !window.isSecureContext
+          ? 'Necesitás acceder via HTTPS o localhost para usar el micrófono'
+          : 'Tu navegador no soporta grabación de audio';
+        setStatusText(hint);
+        setTimeout(() => setStatusText(null), 5000);
+        return;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+
+      // Elegir mimeType compatible
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+          ? 'audio/webm'
+          : '';
+      const mediaRecorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
 
@@ -238,7 +262,8 @@ export default function WebChatPanel({ onClose }) {
 
       mediaRecorder.onstop = async () => {
         stream.getTracks().forEach(t => t.stop());
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const actualMime = mediaRecorder.mimeType || 'audio/webm';
+        const blob = new Blob(audioChunksRef.current, { type: actualMime });
         const audioUrl = URL.createObjectURL(blob);
         const audioDuration = (Date.now() - recordStartRef.current) / 1000;
         // Mostrar audio en el chat inmediatamente
@@ -250,7 +275,7 @@ export default function WebChatPanel({ onClose }) {
           ws.send(JSON.stringify({
             type: 'chat:audio',
             data: base64,
-            mimeType: 'audio/webm',
+            mimeType: actualMime,
           }));
         };
         reader.readAsDataURL(blob);
@@ -259,9 +284,17 @@ export default function WebChatPanel({ onClose }) {
       mediaRecorder.start();
       recordStartRef.current = Date.now();
       setRecording(true);
-    } catch {
-      setStatusText('Micrófono no disponible');
-      setTimeout(() => setStatusText(null), 3000);
+    } catch (err) {
+      let errorMsg = 'Micrófono no disponible';
+      if (err.name === 'NotAllowedError') {
+        errorMsg = 'Permiso de micrófono denegado. Revisá los permisos del navegador';
+      } else if (err.name === 'NotFoundError') {
+        errorMsg = 'No se encontró ningún micrófono';
+      } else if (err.name === 'NotReadableError') {
+        errorMsg = 'El micrófono está siendo usado por otra aplicación';
+      }
+      setStatusText(errorMsg);
+      setTimeout(() => setStatusText(null), 5000);
     }
   }, [recording]);
 
@@ -286,26 +319,43 @@ export default function WebChatPanel({ onClose }) {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
     const file = files[0];
+    const isImage = file.type.startsWith('image/');
     const reader = new FileReader();
     reader.onloadend = () => {
       const base64 = reader.result.split(',')[1];
-      const mediaType = file.type || 'image/png';
-      const text = input.trim() || 'Describe esta imagen';
+      const mediaType = file.type || 'application/octet-stream';
 
-      setMessages(prev => [...prev, {
-        role: 'user',
-        content: `[Imagen: ${file.name}] ${text}`,
-      }]);
-      setInput('');
-      setSending(true);
-
-      ws.send(JSON.stringify({
-        type: 'chat',
-        text,
-        provider,
-        agent,
-        images: [{ base64, mediaType }],
-      }));
+      if (isImage) {
+        const text = input.trim() || 'Describe esta imagen';
+        setMessages(prev => [...prev, {
+          role: 'user',
+          content: `[Imagen: ${file.name}] ${text}`,
+        }]);
+        setInput('');
+        setSending(true);
+        ws.send(JSON.stringify({
+          type: 'chat',
+          text,
+          provider,
+          agent,
+          images: [{ base64, mediaType }],
+        }));
+      } else {
+        const text = input.trim() || 'Analiza este archivo';
+        setMessages(prev => [...prev, {
+          role: 'user',
+          content: `[Archivo: ${file.name}] ${text}`,
+        }]);
+        setInput('');
+        setSending(true);
+        ws.send(JSON.stringify({
+          type: 'chat',
+          text,
+          provider,
+          agent,
+          files: [{ base64, mediaType, name: file.name }],
+        }));
+      }
     };
     reader.readAsDataURL(file);
     // Reset input para permitir seleccionar el mismo archivo
@@ -322,28 +372,44 @@ export default function WebChatPanel({ onClose }) {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
     const file = files[0];
-    if (!file.type.startsWith('image/')) return;
+    const isImage = file.type.startsWith('image/');
 
     const reader = new FileReader();
     reader.onloadend = () => {
       const base64 = reader.result.split(',')[1];
-      const mediaType = file.type;
-      const text = input.trim() || 'Describe esta imagen';
+      const mediaType = file.type || 'application/octet-stream';
 
-      setMessages(prev => [...prev, {
-        role: 'user',
-        content: `[Imagen: ${file.name}] ${text}`,
-      }]);
-      setInput('');
-      setSending(true);
-
-      ws.send(JSON.stringify({
-        type: 'chat',
-        text,
-        provider,
-        agent,
-        images: [{ base64, mediaType }],
-      }));
+      if (isImage) {
+        const text = input.trim() || 'Describe esta imagen';
+        setMessages(prev => [...prev, {
+          role: 'user',
+          content: `[Imagen: ${file.name}] ${text}`,
+        }]);
+        setInput('');
+        setSending(true);
+        ws.send(JSON.stringify({
+          type: 'chat',
+          text,
+          provider,
+          agent,
+          images: [{ base64, mediaType }],
+        }));
+      } else {
+        const text = input.trim() || 'Analiza este archivo';
+        setMessages(prev => [...prev, {
+          role: 'user',
+          content: `[Archivo: ${file.name}] ${text}`,
+        }]);
+        setInput('');
+        setSending(true);
+        ws.send(JSON.stringify({
+          type: 'chat',
+          text,
+          provider,
+          agent,
+          files: [{ base64, mediaType, name: file.name }],
+        }));
+      }
     };
     reader.readAsDataURL(file);
   }, [input, provider, agent]);
@@ -431,14 +497,14 @@ export default function WebChatPanel({ onClose }) {
           type="file"
           ref={fileInputRef}
           className="wc-file-input"
-          accept="image/*"
+          accept="image/*,.pdf,.txt,.doc,.docx,.xls,.xlsx,.csv,.json,.xml,.zip,.rar,.7z,.mp3,.wav,.ogg,.mp4,.webm"
           onChange={handleFileSelect}
         />
         <button
           className="wc-btn-icon wc-attach-btn"
           onClick={() => fileInputRef.current?.click()}
           disabled={!connected || sending}
-          title="Adjuntar imagen"
+          title="Adjuntar archivo"
         >
           &#128206;
         </button>
