@@ -85,6 +85,11 @@ class WebChannel extends BaseChannel {
       this._parked.delete(sessionId);
       const state = parked.state;
       state.processing = false;
+      // Fallback: si historial RAM está vacío, cargar de SQLite
+      if (state.history.length === 0) {
+        const dbMessages = this.messagesRepo?.load(sessionId) || [];
+        if (dbMessages.length > 0) state.history = dbMessages;
+      }
       this.sessions.set(sessionId, { ws, state });
       this._sendStatus(ws, state);
       this._sendHistory(ws, state);
@@ -594,9 +599,7 @@ class WebChannel extends BaseChannel {
       if (result.history) state.history = result.history;
       if (result.newSession) state.claudeSession = result.newSession;
 
-      if (!result.history && state.provider === 'claude-code') {
-        // Claude Code mantiene su propio historial en la session
-      } else if (!result.history) {
+      if (!result.history) {
         state.history.push({ role: 'user', content: text });
         state.history.push({ role: 'assistant', content: result.text });
       }
