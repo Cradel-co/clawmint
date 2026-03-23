@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Check, Pencil, Trash2, X, Plus, Users, Sparkles } from 'lucide-react';
 import { API_BASE } from '../config.js';
 import './AgentsPanel.css';
 
@@ -75,7 +76,7 @@ function AgentForm({ initial, onSave, onCancel }) {
 
       <div className="ap-btn-row">
         <button className="ap-btn ap-btn-primary" onClick={handleSubmit} disabled={loading || !key.trim()}>
-          {loading ? '...' : isEdit ? '✓ Guardar' : '✓ Crear'}
+          {loading ? '...' : isEdit ? <><Check size={13} /> Guardar</> : <><Check size={13} /> Crear</>}
         </button>
         <button className="ap-btn ap-btn-ghost" onClick={onCancel}>
           Cancelar
@@ -95,12 +96,12 @@ function AgentRow({ agent, onEdit, onDelete }) {
     <div className="ap-agent-row">
       <div className="ap-agent-top">
         <span className="ap-agent-key">
-          {hasPrompt && <span className="ap-role-badge">🎭</span>}
+          {hasPrompt && <span className="ap-role-badge"><Sparkles size={12} /></span>}
           /{agent.key}
         </span>
         <div className="ap-agent-actions">
-          <button className="ap-icon-btn" onClick={() => onEdit(agent)} title="Editar">✏️</button>
-          <button className="ap-icon-btn ap-icon-btn-danger" onClick={() => onDelete(agent.key)} title="Eliminar">🗑</button>
+          <button className="ap-icon-btn" onClick={() => onEdit(agent)} title="Editar"><Pencil size={13} /></button>
+          <button className="ap-icon-btn ap-icon-btn-danger" onClick={() => onDelete(agent.key)} title="Eliminar"><Trash2 size={13} /></button>
         </div>
       </div>
       {agent.description && (
@@ -178,7 +179,7 @@ function SkillsSection() {
             <span className="ap-skill-slug">{s.slug}</span>
             {s.description && <span className="ap-skill-desc">{s.description}</span>}
           </div>
-          <button className="ap-icon-btn ap-icon-btn-danger" onClick={() => uninstall(s.slug)} title="Desinstalar">✕</button>
+          <button className="ap-icon-btn ap-icon-btn-danger" onClick={() => uninstall(s.slug)} title="Desinstalar"><X size={13} /></button>
         </div>
       ))}
     </div>
@@ -228,10 +229,10 @@ export default function AgentsPanel({ onClose }) {
     <div className="ap-panel">
       <div className="ap-header">
         <span className="ap-header-title">
-          <span className="ap-icon">🎭</span>
+          <span className="ap-icon"><Users size={16} /></span>
           Agentes personalizados
         </span>
-        <button className="ap-close" onClick={onClose} title="Cerrar">×</button>
+        <button className="ap-close" onClick={onClose} title="Cerrar"><X size={16} /></button>
       </div>
 
       <div className="ap-body">
@@ -261,7 +262,7 @@ export default function AgentsPanel({ onClose }) {
           />
         ) : (
           <button className="ap-btn ap-btn-add" onClick={handleNewClick}>
-            + Nuevo agente
+            <Plus size={14} /> Nuevo agente
           </button>
         )}
 

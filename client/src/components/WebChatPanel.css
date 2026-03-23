@@ -310,6 +310,7 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  transition: background 0.15s;
 }
 .wc-send:hover:not(:disabled) {
   background: #0066dd;
@@ -317,6 +318,17 @@
 .wc-send:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+.wc-send-mic {
+  background: #333;
+  font-size: 15px;
+}
+.wc-send-mic:hover:not(:disabled) {
+  background: #444;
+}
+.wc-send-mic.wc-recording {
+  background: #ff5f57;
+  animation: wc-pulse 1s infinite;
 }
 
 /* ─── Scrollbar ─────────────────────────────────────────────────────────────── */

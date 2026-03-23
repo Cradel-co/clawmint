@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { Trash2, Paperclip, Volume2, Send, Mic, Square, X } from 'lucide-react';
 import { API_BASE, WS_URL } from '../config.js';
 import ChatMessage from './ChatMessage.jsx';
 import './WebChatPanel.css';
@@ -442,8 +443,8 @@ export default function WebChatPanel({ onClose }) {
               <option key={a.key} value={a.key}>{a.key}</option>
             ))}
           </select>
-          <button className="wc-btn-icon" onClick={clearChat} title="Nueva conversación">&#128465;</button>
-          <button className="wc-close" onClick={onClose}>&times;</button>
+          <button className="wc-btn-icon" onClick={clearChat} title="Nueva conversación"><Trash2 size={14} /></button>
+          <button className="wc-close" onClick={onClose}><X size={16} /></button>
         </div>
       </div>
 
@@ -506,15 +507,7 @@ export default function WebChatPanel({ onClose }) {
           disabled={!connected || sending}
           title="Adjuntar archivo"
         >
-          &#128206;
-        </button>
-        <button
-          className={`wc-btn-icon wc-mic-btn ${recording ? 'wc-recording' : ''}`}
-          onClick={toggleRecording}
-          disabled={!connected || (sending && !recording)}
-          title={recording ? 'Parar grabación' : 'Grabar audio'}
-        >
-          &#127908;
+          <Paperclip size={16} />
         </button>
         <textarea
           ref={inputRef}
@@ -532,15 +525,26 @@ export default function WebChatPanel({ onClose }) {
           disabled={!connected || !messages.some(m => m.role === 'assistant')}
           title="Escuchar última respuesta (TTS)"
         >
-          &#128264;
+          <Volume2 size={16} />
         </button>
-        <button
-          className="wc-send"
-          onClick={sendMessage}
-          disabled={!input.trim() || sending || !connected}
-        >
-          {sending ? '...' : '\u27A4'}
-        </button>
+        {input.trim() ? (
+          <button
+            className="wc-send"
+            onClick={sendMessage}
+            disabled={sending || !connected}
+          >
+            {sending ? '...' : <Send size={16} />}
+          </button>
+        ) : (
+          <button
+            className={`wc-send wc-send-mic ${recording ? 'wc-recording' : ''}`}
+            onClick={toggleRecording}
+            disabled={!connected || (sending && !recording)}
+            title={recording ? 'Parar grabación' : 'Grabar audio'}
+          >
+            {recording ? <Square size={14} /> : <Mic size={16} />}
+          </button>
+        )}
       </div>
     </div>
   );

@@ -1,4 +1,5 @@
 import { memo, useState, useCallback } from 'react';
+import { Check, Copy } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -94,7 +95,7 @@ function CodeBlock({ node, inline, className, children, ...props }) {
       <div className="wc-code-header">
         <span className="wc-code-lang">{lang || 'text'}</span>
         <button className="wc-code-copy" onClick={handleCopy}>
-          {copied ? '✓' : 'Copiar'}
+          {copied ? <Check size={12} /> : <><Copy size={12} /> Copiar</>}
         </button>
       </div>
       <SyntaxHighlighter
