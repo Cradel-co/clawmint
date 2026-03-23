@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Trash2, Paperclip, Volume2, Send, Mic, Square, X } from 'lucide-react';
+import { Trash2, Paperclip, Volume2, Send, Mic, Square, X, Pause, Play } from 'lucide-react';
 import { API_BASE, WS_URL } from '../config.js';
 import ChatMessage from './ChatMessage.jsx';
 import './WebChatPanel.css';
@@ -15,6 +15,8 @@ export default function WebChatPanel({ onClose }) {
   const [cwd, setCwd] = useState('~');
   const [connected, setConnected] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [recPaused, setRecPaused] = useState(false);
+  const [recTime, setRecTime] = useState(0);
   const [statusText, setStatusText] = useState(null);
   const wsRef = useRef(null);
   const sessionIdRef = useRef(null);
@@ -23,6 +25,10 @@ export default function WebChatPanel({ onClose }) {
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const recordStartRef = useRef(0);
+  const recTimerRef = useRef(null);
+  const recCancelledRef = useRef(false);
+  const recTimeRef = useRef(0);
+  const streamRef = useRef(null);
   const fileInputRef = useRef(null);
 
   // Scroll automático al final
@@ -165,6 +171,62 @@ export default function WebChatPanel({ onClose }) {
             ]);
             break;
 
+          case 'chat:photo': {
+            const src = `data:${msg.mimeType || 'image/png'};base64,${msg.data}`;
+            setMessages(prev => [...prev, {
+              role: 'assistant', msgId: msg.msgId, mediaType: 'photo',
+              mediaSrc: src, caption: msg.caption, filename: msg.filename,
+            }]);
+            setSending(false);
+            setStatusText(null);
+            break;
+          }
+
+          case 'chat:document': {
+            const href = `data:${msg.mimeType || 'application/octet-stream'};base64,${msg.data}`;
+            setMessages(prev => [...prev, {
+              role: 'assistant', msgId: msg.msgId, mediaType: 'document',
+              mediaSrc: href, caption: msg.caption, filename: msg.filename,
+              mimeType: msg.mimeType,
+            }]);
+            setSending(false);
+            setStatusText(null);
+            break;
+          }
+
+          case 'chat:voice': {
+            const voiceUrl = `data:${msg.mimeType || 'audio/ogg'};base64,${msg.data}`;
+            setMessages(prev => [...prev, {
+              role: 'assistant', msgId: msg.msgId, mediaType: 'voice',
+              mediaSrc: voiceUrl, caption: msg.caption,
+            }]);
+            setSending(false);
+            setStatusText(null);
+            break;
+          }
+
+          case 'chat:video': {
+            const videoUrl = `data:${msg.mimeType || 'video/mp4'};base64,${msg.data}`;
+            setMessages(prev => [...prev, {
+              role: 'assistant', msgId: msg.msgId, mediaType: 'video',
+              mediaSrc: videoUrl, caption: msg.caption, filename: msg.filename,
+              mimeType: msg.mimeType,
+            }]);
+            setSending(false);
+            setStatusText(null);
+            break;
+          }
+
+          case 'chat:delete':
+            setMessages(prev => prev.filter(m => m.msgId !== msg.msgId));
+            break;
+
+          case 'chat:edit':
+            setMessages(prev => prev.map(m =>
+              m.msgId === msg.msgId ? { ...m, content: msg.text } : m
+            ));
+            break;
+
           case 'status':
             if (msg.provider) setProvider(msg.provider);
             if (msg.agent !== undefined) setAgent(msg.agent);
@@ -222,40 +284,57 @@ export default function WebChatPanel({ onClose }) {
 
   // ── Audio (grabación) ──────────────────────────────────────────────────────
 
-  const toggleRecording = useCallback(async () => {
-    const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  // Formatear segundos a m:ss
+  const formatRecTime = (s) => {
+    const m = Math.floor(s / 60);
+    const sec = String(s % 60).padStart(2, '0');
+    return `${m}:${sec}`;
+  };
 
-    if (recording) {
-      // Parar grabación
-      mediaRecorderRef.current?.stop();
-      setRecording(false);
+  // Timer de grabación
+  useEffect(() => {
+    if (recording && !recPaused) {
+      recTimerRef.current = setInterval(() => setRecTime(t => { recTimeRef.current = t + 1; return t + 1; }), 1000);
+    } else {
+      clearInterval(recTimerRef.current);
+    }
+    return () => clearInterval(recTimerRef.current);
+  }, [recording, recPaused]);
+
+  // Limpiar estado de grabación
+  const cleanupRecording = useCallback(() => {
+    clearInterval(recTimerRef.current);
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
+    mediaRecorderRef.current = null;
+    setRecording(false);
+    setRecPaused(false);
+    setRecTime(0);
+  }, []);
+
+  // Iniciar grabación
+  const startRecording = useCallback(async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      const hint = !window.isSecureContext
+        ? 'Necesitás acceder via HTTPS o localhost para usar el micrófono'
+        : 'Tu navegador no soporta grabación de audio';
+      setStatusText(hint);
+      setTimeout(() => setStatusText(null), 5000);
       return;
     }
-
     try {
-      // Verificar que la API de medios está disponible
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        const hint = !window.isSecureContext
-          ? 'Necesitás acceder via HTTPS o localhost para usar el micrófono'
-          : 'Tu navegador no soporta grabación de audio';
-        setStatusText(hint);
-        setTimeout(() => setStatusText(null), 5000);
-        return;
-      }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-      // Elegir mimeType compatible
+      streamRef.current = stream;
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/webm')
-          ? 'audio/webm'
-          : '';
+        : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
       const mediaRecorder = mimeType
         ? new MediaRecorder(stream, { mimeType })
         : new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
+      recCancelledRef.current = false;
+      recTimeRef.current = 0;
 
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) audioChunksRef.current.push(e.data);
@@ -263,21 +342,20 @@ export default function WebChatPanel({ onClose }) {
 
       mediaRecorder.onstop = async () => {
         stream.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+        if (recCancelledRef.current) return; // Descartado
+        const ws = wsRef.current;
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
         const actualMime = mediaRecorder.mimeType || 'audio/webm';
         const blob = new Blob(audioChunksRef.current, { type: actualMime });
         const audioUrl = URL.createObjectURL(blob);
-        const audioDuration = (Date.now() - recordStartRef.current) / 1000;
-        // Mostrar audio en el chat inmediatamente
+        const audioDuration = recTimeRef.current;
         setMessages(prev => [...prev, { role: 'user', audioUrl, audioDuration, transcription: null }]);
         const reader = new FileReader();
         reader.onloadend = () => {
           const base64 = reader.result.split(',')[1];
           setSending(true);
-          ws.send(JSON.stringify({
-            type: 'chat:audio',
-            data: base64,
-            mimeType: actualMime,
-          }));
+          ws.send(JSON.stringify({ type: 'chat:audio', data: base64, mimeType: actualMime }));
         };
         reader.readAsDataURL(blob);
       };
@@ -285,19 +363,48 @@ export default function WebChatPanel({ onClose }) {
       mediaRecorder.start();
       recordStartRef.current = Date.now();
       setRecording(true);
+      setRecPaused(false);
+      setRecTime(0);
     } catch (err) {
       let errorMsg = 'Micrófono no disponible';
-      if (err.name === 'NotAllowedError') {
-        errorMsg = 'Permiso de micrófono denegado. Revisá los permisos del navegador';
-      } else if (err.name === 'NotFoundError') {
-        errorMsg = 'No se encontró ningún micrófono';
-      } else if (err.name === 'NotReadableError') {
-        errorMsg = 'El micrófono está siendo usado por otra aplicación';
-      }
+      if (err.name === 'NotAllowedError') errorMsg = 'Permiso de micrófono denegado. Revisá los permisos del navegador';
+      else if (err.name === 'NotFoundError') errorMsg = 'No se encontró ningún micrófono';
+      else if (err.name === 'NotReadableError') errorMsg = 'El micrófono está siendo usado por otra aplicación';
       setStatusText(errorMsg);
       setTimeout(() => setStatusText(null), 5000);
     }
-  }, [recording]);
+  }, []);
+
+  // Cancelar grabación (descartar)
+  const cancelRecording = useCallback(() => {
+    recCancelledRef.current = true;
+    const mr = mediaRecorderRef.current;
+    if (mr && mr.state !== 'inactive') mr.stop();
+    cleanupRecording();
+  }, [cleanupRecording]);
+
+  // Pausar / reanudar grabación
+  const togglePauseRecording = useCallback(() => {
+    const mr = mediaRecorderRef.current;
+    if (!mr) return;
+    if (mr.state === 'recording') {
+      mr.pause();
+      setRecPaused(true);
+    } else if (mr.state === 'paused') {
+      mr.resume();
+      setRecPaused(false);
+    }
+  }, []);
+
+  // Enviar grabación
+  const sendRecording = useCallback(() => {
+    recCancelledRef.current = false;
+    const mr = mediaRecorderRef.current;
+    if (mr && mr.state !== 'inactive') mr.stop();
+    setRecording(false);
+    setRecPaused(false);
+    setRecTime(0);
+  }, []);
 
   // ── TTS (reproducir última respuesta) ──────────────────────────────────────
 
@@ -467,7 +574,7 @@ export default function WebChatPanel({ onClose }) {
         )}
         {messages.map((msg, i) => (
           <ChatMessage
-            key={i}
+            key={msg.msgId || i}
             content={msg.content}
             role={msg.role}
             streaming={msg.streaming}
@@ -478,6 +585,11 @@ export default function WebChatPanel({ onClose }) {
             audioUrl={msg.audioUrl}
             audioDuration={msg.audioDuration}
             transcription={msg.transcription}
+            mediaType={msg.mediaType}
+            mediaSrc={msg.mediaSrc}
+            caption={msg.caption}
+            filename={msg.filename}
+            mimeType={msg.mimeType}
           />
         ))}
         {sending && !messages.some(m => m.streaming) && (
@@ -494,56 +606,78 @@ export default function WebChatPanel({ onClose }) {
       </div>
 
       <div className="wc-input-area">
-        <input
-          type="file"
-          ref={fileInputRef}
-          className="wc-file-input"
-          accept="image/*,.pdf,.txt,.doc,.docx,.xls,.xlsx,.csv,.json,.xml,.zip,.rar,.7z,.mp3,.wav,.ogg,.mp4,.webm"
-          onChange={handleFileSelect}
-        />
-        <button
-          className="wc-btn-icon wc-attach-btn"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={!connected || sending}
-          title="Adjuntar archivo"
-        >
-          <Paperclip size={16} />
-        </button>
-        <textarea
-          ref={inputRef}
-          className="wc-input"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={recording ? 'Grabando...' : 'Escribí un mensaje...'}
-          rows={1}
-          disabled={!connected || recording}
-        />
-        <button
-          className="wc-btn-icon wc-tts-btn"
-          onClick={playTTS}
-          disabled={!connected || !messages.some(m => m.role === 'assistant')}
-          title="Escuchar última respuesta (TTS)"
-        >
-          <Volume2 size={16} />
-        </button>
-        {input.trim() ? (
-          <button
-            className="wc-send"
-            onClick={sendMessage}
-            disabled={sending || !connected}
-          >
-            {sending ? '...' : <Send size={16} />}
-          </button>
+        {recording ? (
+          /* ── Barra de grabación ── */
+          <div className="wc-rec-bar">
+            <button className="wc-rec-btn wc-rec-cancel" onClick={cancelRecording} title="Cancelar grabación">
+              <Trash2 size={16} />
+            </button>
+            <div className="wc-rec-indicator">
+              <span className={`wc-rec-dot ${recPaused ? 'wc-rec-dot-paused' : ''}`} />
+              <span className="wc-rec-time">{formatRecTime(recTime)}</span>
+            </div>
+            <button className="wc-rec-btn wc-rec-pause" onClick={togglePauseRecording} title={recPaused ? 'Reanudar' : 'Pausar'}>
+              {recPaused ? <Mic size={16} /> : <Pause size={16} />}
+            </button>
+            <button className="wc-rec-btn wc-rec-send" onClick={sendRecording} title="Enviar audio">
+              <Send size={16} />
+            </button>
+          </div>
         ) : (
-          <button
-            className={`wc-send wc-send-mic ${recording ? 'wc-recording' : ''}`}
-            onClick={toggleRecording}
-            disabled={!connected || (sending && !recording)}
-            title={recording ? 'Parar grabación' : 'Grabar audio'}
-          >
-            {recording ? <Square size={14} /> : <Mic size={16} />}
-          </button>
+          /* ── Barra normal de input ── */
+          <>
+            <input
+              type="file"
+              ref={fileInputRef}
+              className="wc-file-input"
+              accept="image/*,.pdf,.txt,.doc,.docx,.xls,.xlsx,.csv,.json,.xml,.zip,.rar,.7z,.mp3,.wav,.ogg,.mp4,.webm"
+              onChange={handleFileSelect}
+            />
+            <button
+              className="wc-btn-icon wc-attach-btn"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={!connected || sending}
+              title="Adjuntar archivo"
+            >
+              <Paperclip size={16} />
+            </button>
+            <textarea
+              ref={inputRef}
+              className="wc-input"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Escribí un mensaje..."
+              rows={1}
+              disabled={!connected}
+            />
+            <button
+              className="wc-btn-icon wc-tts-btn"
+              onClick={playTTS}
+              disabled={!connected || !messages.some(m => m.role === 'assistant')}
+              title="Escuchar última respuesta (TTS)"
+            >
+              <Volume2 size={16} />
+            </button>
+            {input.trim() ? (
+              <button
+                className="wc-send"
+                onClick={sendMessage}
+                disabled={sending || !connected}
+              >
+                {sending ? '...' : <Send size={16} />}
+              </button>
+            ) : (
+              <button
+                className="wc-send wc-send-mic"
+                onClick={startRecording}
+                disabled={!connected || sending}
+                title="Grabar audio"
+              >
+                <Mic size={16} />
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>

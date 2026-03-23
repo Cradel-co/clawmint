@@ -320,15 +320,94 @@
   cursor: not-allowed;
 }
 .wc-send-mic {
-  background: #333;
+  background: #2a2a2a;
+  color: #aaa;
   font-size: 15px;
 }
 .wc-send-mic:hover:not(:disabled) {
-  background: #444;
+  background: #333;
+  color: #ccc;
 }
 .wc-send-mic.wc-recording {
+  background: #2a1518;
+  border: 1.5px solid #ff5f57;
+  color: #ff5f57;
+  animation: wc-pulse-icon 1.5s ease-in-out infinite;
+}
+@keyframes wc-pulse-icon {
+  0%, 100% { color: #ff5f57; border-color: #ff5f57; }
+  50% { color: #ff8a85; border-color: #ff8a85; }
+}
+
+/* ─── Recording bar ────────────────────────────────────────────────────────── */
+.wc-rec-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 0;
+}
+.wc-rec-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+.wc-rec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
   background: #ff5f57;
-  animation: wc-pulse 1s infinite;
+  animation: wc-rec-blink 1s ease-in-out infinite;
+}
+.wc-rec-dot-paused {
+  background: #888;
+  animation: none;
+}
+@keyframes wc-rec-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+.wc-rec-time {
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 14px;
+  color: #f0f0f0;
+  min-width: 36px;
+}
+.wc-rec-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.wc-rec-cancel {
+  background: #2a1518;
+  color: #ff5f57;
+}
+.wc-rec-cancel:hover {
+  background: #3a1a1e;
+  color: #ff8a85;
+}
+.wc-rec-pause {
+  background: #2a2a2a;
+  color: #ccc;
+}
+.wc-rec-pause:hover {
+  background: #333;
+  color: #fff;
+}
+.wc-rec-send {
+  background: #1a3a1a;
+  color: #4caf50;
+}
+.wc-rec-send:hover {
+  background: #1e4a1e;
+  color: #66cc66;
 }
 
 /* ─── Scrollbar ─────────────────────────────────────────────────────────────── */
@@ -387,6 +466,36 @@
   border-radius: 3px;
   font-family: 'Cascadia Code', 'Fira Code', monospace;
   font-size: 12px;
+}
+
+/* ─── Code inline block (single-line fenced code without language) ────────── */
+.wc-code-inline-block {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #2a2a2a;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  padding: 3px 8px;
+  margin: 2px 0;
+}
+.wc-code-inline-text {
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 13px;
+  color: #e06c75;
+}
+.wc-code-inline-copy {
+  background: none;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  transition: color 0.15s;
+}
+.wc-code-inline-copy:hover {
+  color: #ccc;
 }
 
 /* ─── Inline buttons ───────────────────────────────────────────────────────── */
@@ -450,12 +559,7 @@
   cursor: not-allowed;
 }
 
-/* Recording state */
-.wc-recording {
-  opacity: 1 !important;
-  color: #ff5f57;
-  animation: wc-pulse 1s infinite;
-}
+/* Recording state (legacy, unused — now handled by .wc-send-mic.wc-recording) */
 @keyframes wc-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
@@ -494,4 +598,75 @@
 @keyframes wc-typing-bounce {
   0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
   40% { transform: scale(1); opacity: 1; }
+}
+
+/* ─── Media messages (photo, video, voice, document) ──────────────────────── */
+.wc-media-content {
+  padding: 4px !important;
+  background: #2a2a2a;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.wc-media-img {
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 8px;
+  display: block;
+  object-fit: contain;
+}
+.wc-media-video {
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 8px;
+  display: block;
+}
+.wc-media-voice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+}
+.wc-media-voice-icon {
+  color: #888;
+  flex-shrink: 0;
+}
+.wc-media-audio {
+  width: 100%;
+  max-width: 250px;
+  height: 32px;
+  border-radius: 8px;
+  filter: invert(1) hue-rotate(180deg);
+}
+.wc-media-doc {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  color: #58a6ff;
+  text-decoration: none;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+.wc-media-doc:hover {
+  background: #333;
+}
+.wc-media-doc-name {
+  flex: 1;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wc-media-doc-dl {
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+.wc-media-doc:hover .wc-media-doc-dl {
+  opacity: 1;
+}
+.wc-media-caption {
+  margin: 6px 8px 4px;
+  font-size: 12px;
+  color: #aaa;
+  line-height: 1.4;
 }

@@ -24,13 +24,14 @@ const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
  * y upload de imágenes.
  */
 class WebChannel extends BaseChannel {
-  constructor({ convSvc, providers, providerConfig, agents, chatSettingsRepo, eventBus, logger, transcriber, tts } = {}) {
+  constructor({ convSvc, providers, providerConfig, agents, chatSettingsRepo, messagesRepo, eventBus, logger, transcriber, tts } = {}) {
     super({ eventBus, logger });
     this.convSvc          = convSvc;
     this.providers        = providers;
     this.providerConfig   = providerConfig;
     this.agents           = agents;
     this.chatSettingsRepo = chatSettingsRepo;
+    this.messagesRepo     = messagesRepo;
     this.transcriber      = transcriber;
     this.tts              = tts;
     /** @type {Map<string, object>} sessionId → { ws, state } */
@@ -95,11 +96,14 @@ class WebChannel extends BaseChannel {
     // Cargar settings persistidos de SQLite
     const saved = this.chatSettingsRepo?.load(WebChannel.BOT_KEY, sessionId) || null;
 
+    // Cargar historial de mensajes de SQLite
+    const savedMessages = this.messagesRepo?.load(sessionId) || [];
+
     const state = {
       provider: saved?.provider || opts.provider || this.providerConfig?.getConfig()?.default || 'anthropic',
       agent: opts.agent || null,
       model: saved?.model || null,
-      history: [],
+      history: savedMessages,
       claudeSession: saved?.claude_session_id || null,
       claudeMode: saved?.claude_mode || 'auto',
       cwd: saved?.cwd || process.env.HOME || '~',
@@ -109,8 +113,9 @@ class WebChannel extends BaseChannel {
     this.sessions.set(sessionId, { ws, state });
     if (!saved) this._saveSettings(sessionId, state);
     this._sendStatus(ws, state);
+    if (savedMessages.length > 0) this._sendHistory(ws, state);
     this._bindWs(ws, sessionId, state);
-    this.logger.info(`[WebChannel] Nueva sesión ${sessionId.slice(0, 8)} (provider: ${state.provider})`);
+    this.logger.info(`[WebChannel] Sesión ${sessionId.slice(0, 8)} ${savedMessages.length > 0 ? 'restaurada' : 'nueva'} (provider: ${state.provider}, msgs: ${savedMessages.length})`);
   }
 
   /** Vincula handlers de WS a una sesión */
@@ -274,6 +279,8 @@ class WebChannel extends BaseChannel {
         this.logger.info(`[WebChannel] Sesión parked ${id.slice(0, 8)} expirada, eliminada`);
       }
     }
+    // Limpiar mensajes de sesiones inactivas > 7 días
+    try { this.messagesRepo?.cleanup(); } catch {}
   }
 
   // ── BaseChannel interface ──────────────────────────────────────────────────
@@ -419,6 +426,7 @@ class WebChannel extends BaseChannel {
         }
         state.provider = arg;
         state.history = [];
+        try { this.messagesRepo?.clear(sessionId); } catch {}
         this._saveSettings(sessionId, state);
         this._sendJson(ws, { type: 'command_result', text: `Provider cambiado a ${p.label || arg}`, provider: arg });
         return;
@@ -484,6 +492,7 @@ class WebChannel extends BaseChannel {
       case '/clear': {
         state.history = [];
         state.claudeSession = null;
+        try { this.messagesRepo?.clear(sessionId); } catch {}
         this._sendJson(ws, { type: 'command_result', text: 'Conversación reiniciada.' });
         return;
       }
@@ -590,6 +599,13 @@ class WebChannel extends BaseChannel {
       } else if (!result.history) {
         state.history.push({ role: 'user', content: text });
         state.history.push({ role: 'assistant', content: result.text });
+      }
+
+      // Persistir mensajes en SQLite
+      try {
+        this.messagesRepo?.pushPair(sessionId, text, result.text);
+      } catch (err) {
+        this.logger.error('[WebChannel] Error persistiendo mensajes:', err.message);
       }
 
       // Parsear botones inline del AI response
