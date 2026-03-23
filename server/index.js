@@ -1267,7 +1267,7 @@ app.get('/api/providers', (_req, res) => {
   const cfg = providerConfig.getConfig();
   const list = providersModule.list().map(p => ({
     ...p,
-    configured: p.name === 'claude-code' ? true : !!(providerConfig.getApiKey(p.name)),
+    configured: ['claude-code', 'ollama'].includes(p.name) ? true : !!(providerConfig.getApiKey(p.name)),
     currentModel: cfg.providers?.[p.name]?.model || p.defaultModel,
   }));
   res.json({ providers: list, default: cfg.default });
