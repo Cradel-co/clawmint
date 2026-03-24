@@ -344,10 +344,9 @@ function buildMemoryContext(agentKey, memoryFilesOrMessage = [], opts = {}) {
   let embeddingsModule = null;
   try { embeddingsModule = require('./embeddings'); } catch {}
 
-  if (db && embeddingsModule && provider) {
-    // Intentar embeddings locales primero (todos los API providers)
+  if (db && embeddingsModule) {
+    // Intentar embeddings locales primero (todos los providers incluyendo claude-code)
     // Fallback: API embeddings (si provider soporta) → spreading activation
-    // Nota: si provider es undefined (claude-code), va directo a spreading (síncrono)
     dbg('ctx', `intentando embeddings locales para provider="${provider}"`);
     const spreadingFallback = () => {
       dbg('ctx', `fallback a spreading activation`);
