@@ -14,18 +14,21 @@
 - [x] Fix duplicado mensajes Telegram
 - [x] deleteWebhook al iniciar polling
 - [x] /modo habilitado para todos los providers
+- [x] Sesión 1: PtySession idle timeout, ShellSession cleanup, log rotation, índices SQLite, TerminalPanel cleanup
+- [x] Sesión 2: Retry 3x con backoff, rate limit 10/min, timeout 120s, resume tras restart (aiHistory en SQLite)
+- [x] Sesión 3: Refactor index.js 1704→170 LOC (11 routes/ + 3 ws/ modules)
 
 ### Issues abiertos GitHub
-- #45 Memory leak: streams audio sin cleanup (critical)
-- #46 Event listeners acumulados sin cleanup en TerminalPanel (critical)
+- #45 Memory leak: streams audio sin cleanup — **ya resuelto en código actual** (cleanup correcto)
+- #46 Event listeners acumulados sin cleanup en TerminalPanel — **resuelto** (onData disposable)
+- #48 Timer interval grabación sin cleanup — **ya resuelto en código actual**
 - #47 Race condition en chat_chunks WebChatPanel (critical)
 - #48 Timer interval grabación sin cleanup (critical)
 - #49-57 Accesibilidad, UX, performance, responsive, Lighthouse
 
 ---
 
-## Sesión 1 — Estabilidad crítica (3-4h)
-**Objetivo**: Eliminar memory leaks y riesgos de crash.
+## ~~Sesión 1 — Estabilidad crítica~~ ✅ COMPLETADA
 
 ### 1.1 PtySession timeout de inactividad
 - Agregar `lastAccessAt` en PtySession
@@ -59,7 +62,7 @@
 
 ---
 
-## Sesión 2 — Resiliencia de providers (3-4h)
+## ~~Sesión 2 — Resiliencia de providers~~ ✅ COMPLETADA
 **Objetivo**: Los providers API no fallan silenciosamente.
 
 ### 2.1 Retry con exponential backoff
@@ -86,7 +89,7 @@
 
 ---
 
-## Sesión 3 — Refactor index.js (4-6h)
+## ~~Sesión 3 — Refactor index.js~~ ✅ COMPLETADA
 **Objetivo**: Partir el monolito de 1704 LOC.
 
 ### 3.1 Extraer rutas REST
@@ -269,10 +272,10 @@
 ## Prioridad de sesiones
 
 ```
-Sesión 1 — Estabilidad crítica      ████████████ URGENTE
-Sesión 2 — Resiliencia providers    ████████░░░░ ALTA
-Sesión 3 — Refactor index.js        ██████░░░░░░ ALTA (deuda técnica)
-Sesión 4 — Telegram optimización    ██████░░░░░░ MEDIA
+Sesión 1 — Estabilidad crítica      ████████████ ✅ COMPLETADA
+Sesión 2 — Resiliencia providers    ████████████ ✅ COMPLETADA
+Sesión 3 — Refactor index.js        ████████████ ✅ COMPLETADA
+Sesión 4 — Telegram optimización    ██████░░░░░░ SIGUIENTE
 Sesión 5 — Frontend issues          █████░░░░░░░ MEDIA
 Sesión 6 — Búsqueda avanzada        ████░░░░░░░░ MEDIA
 Sesión 7 — Base de datos            ████░░░░░░░░ BAJA (escala)
@@ -280,4 +283,4 @@ Sesión 8 — Seguridad                ███░░░░░░░░░ BAJA
 Sesión 9 — Multi-agente             ██░░░░░░░░░░ FUTURO
 ```
 
-## Tiempo total estimado: 32-46 horas (9 sesiones)
+## Progreso: 3/9 sesiones completadas (~12h de 32-46h estimadas)
