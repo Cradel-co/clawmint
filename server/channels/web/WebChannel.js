@@ -575,9 +575,49 @@ class WebChannel extends BaseChannel {
         return;
       }
 
-      const onChunk = (partial) => {
+      const mode = state.claudeMode || 'auto';
+      const isMcpMode = mode === 'auto';
+
+      const onChunk = isMcpMode ? null : (partial) => {
         this._sendJson(ws, { type: 'chat_chunk', text: partial });
       };
+
+      const onStatus = isMcpMode ? (status, detail) => {
+        this._sendJson(ws, { type: 'chat_status', status, detail });
+      } : null;
+
+      // Callback de aprobación para modo ask (providers API)
+      const dynamicRegistry = require('../telegram/DynamicCallbackRegistry');
+      const onAskPermission = mode === 'ask' && state.provider !== 'claude-code'
+        ? async (toolName, toolArgs) => {
+            return new Promise((resolve) => {
+              const ts = Date.now();
+              const approveId = `ask:${ts}:y`;
+              const rejectId  = `ask:${ts}:n`;
+              const timeout = setTimeout(() => {
+                dynamicRegistry.remove(approveId);
+                dynamicRegistry.remove(rejectId);
+                resolve(false);
+              }, 60000);
+              dynamicRegistry.register(approveId, {
+                type: 'func', fn: () => { clearTimeout(timeout); resolve(true); },
+                once: true, ttl: 60000,
+              });
+              dynamicRegistry.register(rejectId, {
+                type: 'func', fn: () => { clearTimeout(timeout); resolve(false); },
+                once: true, ttl: 60000,
+              });
+              const preview = JSON.stringify(toolArgs || {}).slice(0, 300);
+              this._sendJson(ws, {
+                type: 'chat_ask_permission',
+                tool: toolName,
+                args: preview,
+                approveId,
+                rejectId,
+              });
+            });
+          }
+        : null;
 
       const result = await this.convSvc.processMessage({
         chatId: sessionId,
@@ -591,6 +631,8 @@ class WebChannel extends BaseChannel {
         claudeSession: state.claudeSession,
         claudeMode: state.claudeMode,
         onChunk,
+        onStatus,
+        onAskPermission,
         shellId: sessionId,
         botKey: WebChannel.BOT_KEY,
         channel: 'web',
@@ -664,6 +706,10 @@ class WebChannel extends BaseChannel {
         if (!state.processing) {
           await this._sendToAI(ws, sessionId, state, cb.text);
         }
+        break;
+
+      case 'func':
+        if (typeof cb.fn === 'function') cb.fn();
         break;
 
       default:

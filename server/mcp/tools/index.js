@@ -1,13 +1,15 @@
 'use strict';
 
-const bash     = require('./bash');
-const files    = require('./files');    // array
-const pty      = require('./pty');      // array
-const telegram = require('./telegram'); // array
-const memory   = require('./memory');   // array
-const webchat  = require('./webchat');  // array
+const bash          = require('./bash');
+const files         = require('./files');          // array
+const pty           = require('./pty');            // array
+const telegram      = require('./telegram');       // array
+const memory        = require('./memory');         // array
+const webchat       = require('./webchat');        // array
+const critter       = require('./critter');        // array, channel: 'p2p'
+const critterStatus = require('./critter-status');
 
-const ALL_TOOLS = [bash, ...files, ...pty, ...telegram, ...memory, ...webchat];
+const ALL_TOOLS = [bash, ...files, ...pty, ...telegram, ...memory, ...webchat, ...critter, critterStatus];
 
 const _byName = new Map(ALL_TOOLS.map(t => [t.name, t]));
 
@@ -18,11 +20,13 @@ function _getPool() {
   return _pool;
 }
 
-/** @returns {Array} todos los tools (internos + externos) */
-function all() {
+/** @returns {Array} todos los tools (internos + externos, filtrados por channel si se especifica) */
+function all(opts = {}) {
   const pool = _getPool();
   const external = pool ? pool.getExternalToolDefs() : [];
-  return [...ALL_TOOLS, ...external];
+  const all = [...ALL_TOOLS, ...external];
+  if (!opts.channel) return all.filter(t => !t.channel);
+  return all.filter(t => !t.channel || t.channel === opts.channel);
 }
 
 /**

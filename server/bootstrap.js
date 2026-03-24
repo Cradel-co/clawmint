@@ -104,6 +104,22 @@ function createContainer() {
   let mcps = null;
   try { mcps = require('./mcps'); } catch {}
 
+  // ── Nodriza (señalización P2P) ──────────────────────────────────────────────
+
+  let nodriza = null;
+  try {
+    const nodrizaConfig = require('./nodriza-config');
+    if (nodrizaConfig.isEnabled()) {
+      const NodrizaConnection = require('./nodriza');
+      nodriza = new NodrizaConnection({ logger, nodrizaConfig });
+      logger.info('[bootstrap] nodriza habilitada');
+    } else {
+      logger.info('[bootstrap] nodriza deshabilitada');
+    }
+  } catch (e) {
+    logger.warn('[bootstrap] nodriza no disponible:', e.message);
+  }
+
   // ── ConversationService ───────────────────────────────────────────────────
 
   const convSvc = new ConversationService({
@@ -176,6 +192,7 @@ function createContainer() {
     providers,
     providerConfig,
     mcps,
+    nodriza,
     transcriber,
     tts,
     voiceProviders,

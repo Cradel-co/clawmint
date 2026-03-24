@@ -9,19 +9,20 @@ module.exports = {
   defaultModel: 'claude-opus-4-6',
   models: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
 
-  async *chat({ systemPrompt, history, apiKey, model, executeTool: execToolFn }) {
+  async *chat({ systemPrompt, history, apiKey, model, executeTool: execToolFn, channel }) {
     if (!apiKey) {
       yield { type: 'done', fullText: 'Error: API key de Anthropic no configurada. Configurala en el panel ⚙️.' };
       return;
     }
 
     const client = new Anthropic({ apiKey });
-    const toolDefs  = tools.toAnthropicFormat();
+    const toolDefs  = tools.toAnthropicFormat({ channel });
     const execTool  = execToolFn || tools.executeTool;
     const messages  = [...history];
     const usedModel = model || this.defaultModel;
 
     let fullText = '';
+    let totalPromptTokens = 0, totalCompletionTokens = 0;
 
     while (true) {
       let response;
@@ -37,6 +38,9 @@ module.exports = {
         yield { type: 'done', fullText: `Error Anthropic: ${err.message}` };
         return;
       }
+
+      const u = response.usage;
+      if (u) { totalPromptTokens += u.input_tokens || 0; totalCompletionTokens += u.output_tokens || 0; }
 
       // Acumular texto de los content blocks
       let assistantText = '';
@@ -56,6 +60,7 @@ module.exports = {
       }
 
       if (toolUses.length === 0 || response.stop_reason === 'end_turn') {
+        yield { type: 'usage', promptTokens: totalPromptTokens, completionTokens: totalCompletionTokens };
         yield { type: 'done', fullText };
         return;
       }

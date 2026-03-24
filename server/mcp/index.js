@@ -147,9 +147,9 @@ async function executeTool(name, args, ctx = {}) {
   return toolsIndex.execute(name, args, ctx);
 }
 
-/** Retorna las definiciones de todos los tools */
-function getToolDefs() {
-  return toolsIndex.all();
+/** Retorna las definiciones de los tools (filtradas por opts.channel si se especifica) */
+function getToolDefs(opts) {
+  return toolsIndex.all(opts);
 }
 
 module.exports = { createMcpRouter, executeTool, getToolDefs };

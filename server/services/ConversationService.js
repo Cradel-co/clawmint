@@ -12,6 +12,10 @@ function getMcpSystemPrompt() {
   return _mcpSystemPrompt;
 }
 
+const MAX_HISTORY_MESSAGES = 30;
+const MESSAGES_TO_SUMMARIZE = 20;
+const SUMMARY_MARKER = '[resumen-conversacion]';
+
 function _csDbg() { return process.env.DEBUG_TELEGRAM === '1'; }
 function csdbg(scope, ...args) { if (_csDbg()) console.log(`[ConvSvc:DBG:${scope}]`, ...args); }
 
@@ -62,6 +66,109 @@ class ConversationService {
   }
 
   /**
+   * Construye system prompt con instrucciones de herramientas para providers API.
+   */
+  _buildToolSystemPrompt(channel, botKey, chatId, agentKey) {
+    const parts = [
+      'Sos un asistente útil. Respondé de forma concisa y clara, siempre en español.',
+      '',
+      'Tenés acceso a herramientas (tools/functions) que podés usar cuando sea necesario.',
+      'Usá herramientas proactivamente para ejecutar comandos, leer/escribir archivos, enviar multimedia, y gestionar memoria.',
+      '',
+      '## Herramientas disponibles',
+      '',
+      '- **bash**: Ejecutar comandos shell. Usar session_id para aislar conversaciones.',
+      '- **read_file**: Leer archivo (límite 50KB).',
+      '- **write_file**: Crear o sobreescribir archivo completo.',
+      '- **edit_file**: Editar archivo con buscar/reemplazar (preferir sobre write_file para cambios parciales). Params: path, old_string, new_string, replace_all?.',
+      '- **list_dir / search_files**: Navegar filesystem.',
+      '- **pty_create**: Crear terminal interactiva persistente (para ssh, vim, htop, etc.). Retorna session_id.',
+      '- **pty_write**: Enviar input a una sesión PTY. Params: session_id, input.',
+      '- **pty_read**: Leer output de una sesión PTY. Params: session_id, since?.',
+      '- **memory_list / memory_read / memory_write / memory_append / memory_delete**: Memoria persistente del agente.',
+    ];
+
+    if (channel === 'telegram' && botKey && chatId) {
+      parts.push(
+        '',
+        '## Telegram',
+        `Contexto: bot="${botKey}", chat_id=${chatId}, agent="${agentKey || 'claude'}"`,
+        '- **telegram_send_message**: Enviar texto adicional (con botones opcionales).',
+        '- **telegram_send_photo / telegram_send_document / telegram_send_voice / telegram_send_video**: Enviar multimedia.',
+        '- **telegram_edit_message / telegram_delete_message**: Editar/borrar mensajes.',
+        '',
+        'IMPORTANTE: Tu respuesta de texto se envía automáticamente al chat — NO necesitás usar telegram_send_message para responder.',
+        'Usá telegram_send_message SOLO para enviar mensajes adicionales (ej: dividir respuesta larga, enviar extras).',
+        'Usá telegram_send_photo/document/voice/video cuando generes archivos y quieras enviarlos al chat.',
+      );
+    } else if (channel === 'webchat') {
+      parts.push(
+        '',
+        '## WebChat',
+        `Contexto: agent="${agentKey || 'claude'}"`,
+        '- **webchat_send_message**: Enviar texto adicional.',
+        '- **webchat_send_photo / webchat_send_document / webchat_send_voice / webchat_send_video**: Enviar multimedia.',
+        '',
+        'IMPORTANTE: Tu respuesta de texto se envía automáticamente — NO necesitás usar webchat_send_message para responder.',
+      );
+    }
+
+    parts.push(
+      '',
+      '## Memoria',
+      `Agente actual: "${agentKey || 'claude'}"`,
+      'Guardá información importante proactivamente con memory_write (datos personales, preferencias, soluciones técnicas).',
+      'Usá nombres descriptivos en español para los archivos (ej: preferencias-usuario.md).',
+    );
+
+    return parts.join('\n');
+  }
+
+  /**
+   * Compacta el historial si excede MAX_HISTORY_MESSAGES.
+   * Toma los mensajes más viejos, los resume con el provider, y los reemplaza con un solo mensaje.
+   */
+  async _compactHistory(history, provider, apiKey, model) {
+    if (!history || history.length <= MAX_HISTORY_MESSAGES) return history;
+
+    const provObj = this._providers?.get(provider);
+    if (!provObj) return history;
+
+    const toSummarize = history.slice(0, MESSAGES_TO_SUMMARIZE);
+    const toKeep = history.slice(MESSAGES_TO_SUMMARIZE);
+
+    try {
+      csdbg('compact', `history=${history.length} → resumiendo ${toSummarize.length} mensajes, conservando ${toKeep.length}`);
+
+      const gen = provObj.chat({
+        systemPrompt: 'Sos un asistente que resume conversaciones. Generá un resumen conciso en español de la conversación. Incluí:\n- Datos personales mencionados del usuario\n- Decisiones tomadas y acuerdos\n- Contexto técnico relevante\n- Tareas pendientes o temas abiertos\n\nEl resumen debe ser breve (máx 500 palabras) y preservar lo importante.',
+        history: [...toSummarize, { role: 'user', content: 'Resumí la conversación anterior en puntos clave.' }],
+        apiKey,
+        model,
+      });
+
+      let summary = '';
+      for await (const event of gen) {
+        if (event.type === 'text') summary += event.text;
+        else if (event.type === 'done') summary = event.fullText || summary;
+      }
+
+      if (!summary.trim()) {
+        csdbg('compact', 'resumen vacío, retornando history original');
+        return history;
+      }
+
+      csdbg('compact', `resumen generado: ${summary.length} chars`);
+      const summaryMsg = { role: 'user', content: `${SUMMARY_MARKER}\nResumen de conversación anterior:\n${summary}` };
+      const ackMsg = { role: 'assistant', content: 'Entendido, tengo el contexto de la conversación anterior.' };
+      return [summaryMsg, ackMsg, ...toKeep];
+    } catch (err) {
+      csdbg('compact', `error al resumir: ${err.message}`);
+      return history; // fallback: no romper nada
+    }
+  }
+
+  /**
    * Procesa un mensaje del usuario y devuelve la respuesta del agente.
    *
    * @param {object}   opts
@@ -95,6 +202,7 @@ class ConversationService {
     claudeMode    = 'auto',
     onChunk       = null,
     onStatus      = null,
+    onAskPermission = null,
     shellId       = null,
     botKey        = null,
     channel       = null,
@@ -108,9 +216,9 @@ class ConversationService {
     csdbg('msg', `chatId=${chatId} provider=${provider} agent=${agentKey} model=${model} textLen=${text.length} images=${images?.length || 0} histLen=${history.length} hasSession=${!!claudeSession}`);
 
     if (provider !== 'claude-code' && this._providers) {
-      csdbg('msg', `→ _processApiProvider`);
+      csdbg('msg', `→ _processApiProvider mode=${claudeMode}`);
       return this._processApiProvider({
-        chatId, agentKey, provider, model, text, images, history, onChunk, shellId: resolvedShellId,
+        chatId, agentKey, provider, model, text, images, history, onChunk, onStatus, onAskPermission, claudeMode, shellId: resolvedShellId, botKey, channel,
       });
     }
 
@@ -411,7 +519,7 @@ class ConversationService {
 
   // ── Proveedores API (Anthropic, Gemini, OpenAI, …) ───────────────────────
 
-  async _processApiProvider({ chatId, agentKey, provider, model, text, images, history, onChunk, shellId }) {
+  async _processApiProvider({ chatId, agentKey, provider, model, text, images, history, onChunk, onStatus, onAskPermission, claudeMode, shellId, botKey, channel }) {
     const provObj   = this._providers.get(provider);
     const apiKey    = this._providerConfig ? this._providerConfig.getApiKey(provider) : '';
     const cfg       = this._providerConfig ? this._providerConfig.getConfig() : {};
@@ -419,11 +527,30 @@ class ConversationService {
 
     // Inyectar executor con contexto de shell para persistencia de cwd/env
     const mcpExec  = this._getExecuteTool();
-    const execToolFn = mcpExec
+    const rawExecFn = mcpExec
       ? (name, args) => mcpExec(name, args, { shellId, sessionManager: this._sessionManager })
       : undefined;
 
-    const basePrompt = 'Sos un asistente útil. Respondé de forma concisa y clara.';
+    // Wrappear execToolFn según modo
+    const mode = claudeMode || 'auto';
+    let execToolFn = rawExecFn;
+    if (mode === 'plan' && rawExecFn) {
+      execToolFn = async (name, args) =>
+        `[Modo Plan] Se ejecutaría ${name}(${JSON.stringify(args)}). No ejecutado — describí qué harías.`;
+    } else if (mode === 'ask' && rawExecFn && onAskPermission) {
+      execToolFn = async (name, args) => {
+        const approved = await onAskPermission(name, args);
+        if (!approved) return 'Herramienta rechazada por el usuario.';
+        return rawExecFn(name, args);
+      };
+    }
+
+    // System prompt con instrucciones de herramientas según canal
+    const toolPrompt = this._buildToolSystemPrompt(channel, botKey, chatId, agentKey);
+    let basePrompt = toolPrompt || 'Sos un asistente útil. Respondé de forma concisa y clara.';
+    if (mode === 'plan') {
+      basePrompt += '\n\n## MODO PLAN\nEstás en modo planificación. Las herramientas NO se ejecutan realmente — retornan descripciones simuladas. Describí paso a paso qué harías para resolver el pedido del usuario, qué herramientas usarías y con qué argumentos. No ejecutes, solo planificá.';
+    }
     const memCtxRaw  = (agentKey && this._memory)
       ? this._memory.buildMemoryContext(agentKey, text, { provider, apiKey })
       : '';
@@ -464,7 +591,9 @@ class ConversationService {
       userContent = userText;
     }
 
-    const updatedHistory = [...history, { role: 'user', content: userContent }];
+    // Compactar historial si excede el límite
+    const compactedHistory = await this._compactHistory(history, provider, apiKey, useModel);
+    const updatedHistory = [...compactedHistory, { role: 'user', content: userContent }];
 
     // Para Gemini y Ollama: adjuntar imágenes raw para conversión en el provider
     const extraOpts = {};
@@ -472,17 +601,31 @@ class ConversationService {
       extraOpts.images = images;
     }
 
-    const gen = provObj.chat({ systemPrompt, history: updatedHistory, apiKey, model: useModel, executeTool: execToolFn, ...extraOpts });
+    // Detectar channel para filtrar critter tools (p2p desde shellId, o el channel del caller)
+    const toolChannel = shellId?.startsWith('p2p-') ? 'p2p' : channel || undefined;
+
+    const gen = provObj.chat({ systemPrompt, history: updatedHistory, apiKey, model: useModel, executeTool: execToolFn, channel: toolChannel, ...extraOpts });
     let accumulated = '';
+    let usedTools = false;
+    let usage = null;
+
+    if (onStatus) onStatus('thinking');
 
     for await (const event of gen) {
       if (event.type === 'text') {
         accumulated += event.text;
         if (onChunk) onChunk(accumulated);
+      } else if (event.type === 'tool_call') {
+        usedTools = true;
+        if (onStatus) onStatus('tool_use', event.name);
+      } else if (event.type === 'usage') {
+        usage = { promptTokens: event.promptTokens, completionTokens: event.completionTokens };
       } else if (event.type === 'done') {
         accumulated = event.fullText || accumulated;
       }
     }
+
+    if (onStatus && usedTools) onStatus('done');
 
     // Extraer y aplicar operaciones de memoria
     let finalText = accumulated;
@@ -508,6 +651,7 @@ class ConversationService {
       text:    finalText || '',
       history: updatedHistory,
       savedMemoryFiles,
+      usage,
     };
   }
 }

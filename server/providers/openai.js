@@ -9,7 +9,7 @@ module.exports = {
   defaultModel: 'gpt-4o',
   models: ['gpt-4o', 'gpt-4o-mini', 'o1', 'o3-mini'],
 
-  async *chat({ systemPrompt, history, apiKey, model, executeTool: execToolFn }) {
+  async *chat({ systemPrompt, history, apiKey, model, executeTool: execToolFn, channel }) {
     if (!apiKey) {
       yield { type: 'done', fullText: 'Error: API key de OpenAI no configurada. Configurala en el panel ⚙️.' };
       return;
@@ -17,7 +17,7 @@ module.exports = {
 
     const client = new OpenAI({ apiKey });
     const usedModel = model || this.defaultModel;
-    const toolDefs  = tools.toOpenAIFormat();
+    const toolDefs  = tools.toOpenAIFormat({ channel });
     const execTool  = execToolFn || tools.executeTool;
 
     // Construir messages OpenAI
@@ -30,6 +30,7 @@ module.exports = {
     }
 
     let fullText = '';
+    let totalPromptTokens = 0, totalCompletionTokens = 0;
 
     while (true) {
       let response;
@@ -45,10 +46,14 @@ module.exports = {
         return;
       }
 
+      const u = response.usage;
+      if (u) { totalPromptTokens += u.prompt_tokens || 0; totalCompletionTokens += u.completion_tokens || 0; }
+
       const choice = response.choices?.[0];
       const msg = choice?.message;
 
       if (!msg) {
+        yield { type: 'usage', promptTokens: totalPromptTokens, completionTokens: totalCompletionTokens };
         yield { type: 'done', fullText };
         return;
       }
@@ -61,6 +66,7 @@ module.exports = {
       const toolCalls = msg.tool_calls || [];
 
       if (toolCalls.length === 0 || choice.finish_reason === 'stop') {
+        yield { type: 'usage', promptTokens: totalPromptTokens, completionTokens: totalCompletionTokens };
         yield { type: 'done', fullText };
         return;
       }

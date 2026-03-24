@@ -2,6 +2,7 @@
 
 const OpenAI = require('openai');
 const http   = require('http');
+const tools  = require('../tools');
 
 const DEFAULT_BASE_URL = 'http://100.64.0.5:11434';
 
@@ -73,7 +74,7 @@ module.exports = {
     return this.models;
   },
 
-  async *chat({ systemPrompt, history, model, images }) {
+  async *chat({ systemPrompt, history, model, images, executeTool: execToolFn, channel }) {
     const baseUrl   = getBaseUrl();
     // Cargar modelos disponibles si no hay
     if (!this.models.length) await this.fetchModels();
@@ -81,6 +82,7 @@ module.exports = {
     const hasImages = images && images.length > 0;
 
     // Si hay imágenes, usar la API nativa de Ollama (no la compatible con OpenAI)
+    // El path de visión no soporta tools (API nativa no los maneja)
     if (hasImages) {
       const visionModel = isVisionModel(usedModel) ? usedModel
         : this.models.find(m => isVisionModel(m)) || 'minicpm-v:latest';
@@ -111,9 +113,13 @@ module.exports = {
       return;
     }
 
-    // Sin imágenes: usar API compatible con OpenAI (streaming)
+    // Sin imágenes: usar API compatible con OpenAI
     const baseURL = baseUrl + '/v1';
     const client = new OpenAI({ apiKey: 'ollama', baseURL });
+
+    const toolDefs = tools.toOpenAIFormat({ channel });
+    const execTool = execToolFn || tools.executeTool;
+    const hasTools = toolDefs.length > 0 && execToolFn;
 
     const messages = [];
     if (systemPrompt) {
@@ -124,7 +130,70 @@ module.exports = {
     }
 
     let fullText = '';
+    let totalPromptTokens = 0, totalCompletionTokens = 0;
 
+    if (hasTools) {
+      // Non-streaming con tool loop (Ollama streaming + tools tiene bugs conocidos)
+      while (true) {
+        let response;
+        try {
+          response = await client.chat.completions.create({
+            model: usedModel,
+            messages,
+            tools: toolDefs,
+            tool_choice: 'auto',
+          });
+        } catch (err) {
+          yield { type: 'done', fullText: `Error Ollama: ${err.message}` };
+          return;
+        }
+
+        const u = response.usage;
+        if (u) { totalPromptTokens += u.prompt_tokens || 0; totalCompletionTokens += u.completion_tokens || 0; }
+
+        const choice = response.choices?.[0];
+        const msg = choice?.message;
+
+        if (!msg) {
+          yield { type: 'usage', promptTokens: totalPromptTokens, completionTokens: totalCompletionTokens };
+          yield { type: 'done', fullText };
+          return;
+        }
+
+        if (msg.content) {
+          fullText += msg.content;
+          yield { type: 'text', text: msg.content };
+        }
+
+        const toolCalls = msg.tool_calls || [];
+
+        if (toolCalls.length === 0 || choice.finish_reason === 'stop') {
+          yield { type: 'usage', promptTokens: totalPromptTokens, completionTokens: totalCompletionTokens };
+          yield { type: 'done', fullText };
+          return;
+        }
+
+        messages.push(msg);
+
+        for (const tc of toolCalls) {
+          const fnName = tc.function.name;
+          let fnArgs = {};
+          try { fnArgs = JSON.parse(tc.function.arguments || '{}'); } catch {}
+
+          yield { type: 'tool_call', name: fnName, args: fnArgs };
+          const result = await execTool(fnName, fnArgs);
+          yield { type: 'tool_result', name: fnName, result };
+
+          messages.push({
+            role: 'tool',
+            tool_call_id: tc.id,
+            content: String(result),
+          });
+        }
+      }
+    }
+
+    // Streaming sin tools (comportamiento original)
     try {
       const stream = await client.chat.completions.create({
         model: usedModel,

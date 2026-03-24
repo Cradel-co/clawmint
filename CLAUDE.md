@@ -30,10 +30,13 @@ clawmint/
 │   ├── sessionManager.js       # PtySession + pool de sesiones
 │   ├── channels/
 │   │   ├── BaseChannel.js      # Clase base para canales de mensajería
+│   │   ├── p2p/
+│   │   │   └── P2PBotAdapter.js # Adaptador DataChannel → interfaz TelegramBot
 │   │   └── telegram/
 │   │       ├── TelegramChannel.js     # TelegramBot + manejo de mensajes
 │   │       ├── CommandHandler.js      # Comandos /start, /cd, /consola, etc.
 │   │       ├── CallbackHandler.js     # Callbacks de botones inline
+│   │       ├── DynamicCallbackRegistry.js # Callbacks dinámicos con TTL
 │   │       └── PendingActionHandler.js # Acciones pendientes (whitelist, etc.)
 │   ├── core/
 │   │   ├── ClaudePrintSession.js # Sesión Claude CLI con persistencia
@@ -66,7 +69,14 @@ clawmint/
 │   │   └── BotsRepository.js    # Persistencia de configuración de bots
 │   ├── mcp/
 │   │   ├── index.js             # Router MCP (herramientas expuestas)
-│   │   └── ShellSession.js      # Sesión shell para MCP
+│   │   ├── ShellSession.js      # Sesión shell para MCP
+│   │   └── tools/
+│   │       ├── index.js         # Registry de herramientas MCP
+│   │       ├── bash.js          # Herramienta bash para MCP
+│   │       ├── files.js         # Operaciones de archivos para MCP
+│   │       ├── pty.js           # Herramientas PTY para MCP
+│   │       ├── memory.js        # Gestión de memoria para MCP
+│   │       └── telegram.js      # Integración Telegram para MCP
 │   ├── mcps.js                  # Gestión de servidores MCP externos
 │   ├── tts.js                   # Módulo TTS central
 │   ├── tts-config.js            # Configuración de proveedores TTS
@@ -79,19 +89,28 @@ clawmint/
 │   ├── reminders.js             # Recordatorios/alarmas programadas
 │   ├── transcriber.js           # Transcripción audio con Whisper
 │   ├── provider-config.js       # Configuración de proveedores IA
+│   ├── nodriza.js               # Conexión a nodriza (señalización P2P + WebRTC)
+│   ├── nodriza-config.js        # Configuración de nodriza (env + JSON)
+│   ├── nodriza-config.json      # Config nodriza persistida (auto-generado)
+│   ├── mcp-config.json          # Config de servidores MCP externos
+│   ├── mcp-system-prompt.txt    # System prompt para respuestas via Telegram/WebChat
 │   ├── events.js                # EventEmitter global (legacy)
 │   ├── ecosystem.config.js      # Configuración PM2
 │   └── test/                    # Tests unitarios
-└── client/
-    └── src/
-        ├── App.jsx
-        └── components/
-            ├── TerminalPanel.jsx
-            ├── TabBar.jsx
-            ├── AgentsPanel.jsx
-            ├── ProvidersPanel.jsx
-            ├── CommandBar.jsx
-            └── TelegramPanel.jsx
+├── client/
+│   └── src/
+│       ├── App.jsx
+│       ├── config.js              # Config centralizada (SERVER_HOST, API_BASE, WS_URL)
+│       └── components/
+│           ├── TerminalPanel.jsx
+│           ├── TabBar.jsx
+│           ├── AgentsPanel.jsx
+│           ├── ProvidersPanel.jsx
+│           ├── CommandBar.jsx
+│           ├── TelegramPanel.jsx
+│           ├── WebChatPanel.jsx   # Chat web con ConversationService
+│           └── WebChatPanel.css
+└── docs/                          # Documentación del proyecto
 ```
 
 ## Comandos
@@ -130,8 +149,75 @@ pm2 save             # guardar estado para auto-arranque
 - **Persistencia de modo de permisos**: `claudeMode` (`ask`/`auto`/`plan`) se guarda en `chat_settings` y se restaura al reconectar.
 - **TTS multi-proveedor**: configurado en `tts-config.js`/`tts-config.json`. Cada proveedor implementa `synthesize(text, opts)` → `Buffer`. Edge TTS y Piper funcionan offline.
 - **Providers IA**: 6 proveedores (Anthropic, Claude Code, Gemini, OpenAI, Grok, Ollama). Cada uno implementa `sendMessage(messages, opts)` con streaming. Se seleccionan por chat desde Telegram.
-- **MCP**: servidor MCP integrado (`mcp/index.js`) que expone herramientas del sistema. `mcps.js` gestiona conexiones a MCPs externos.
+- **MCP**: servidor MCP integrado (`mcp/index.js`) con herramientas modulares en `mcp/tools/` (bash, files, pty, memory, telegram). `mcps.js` gestiona conexiones a MCPs externos. `mcp-config.json` configura MCPs externos y `mcp-system-prompt.txt` define el system prompt para respuestas con herramientas.
+- **ConversationService**: motor unificado de conversación con IA, usado por Telegram y WebChat. Soporta streaming, agentes, memoria y múltiples proveedores.
+- **WebChat**: panel de chat web (`WebChatPanel.jsx`) conectado via WebSocket tipo `webchat`. Mismos comandos que Telegram (`/provider`, `/agente`, `/modelo`, etc.).
+- **DynamicCallbackRegistry**: registro de callbacks dinámicos con TTL para botones inline en Telegram.
+- **Config centralizada del client**: `client/src/config.js` expone `SERVER_HOST`, `API_BASE`, `WS_URL` desde variables de entorno Vite.
 - **PM2**: el servidor se gestiona con PM2 en producción. `ecosystem.config.js` carga `.env` automáticamente y usa `--stack-size=65536`. Auto-arranque con systemd.
+
+## Nodriza (P2P con deskcritter)
+
+Terminal-live actúa como "server" en nodriza para aceptar conexiones P2P de clients como deskcritter.
+
+### Configuración
+
+Variables de entorno (`.env`) tienen prioridad sobre `nodriza-config.json`:
+
+```env
+NODRIZA_ENABLED=true                            # activar/desactivar
+NODRIZA_URL=ws://localhost:3000/signaling        # endpoint de nodriza
+NODRIZA_SERVER_ID=<id del server en nodriza>     # ID obtenido del dashboard
+NODRIZA_API_KEY=<api key del server>             # API key obtenida al crear el server
+```
+
+En producción se usa `nodriza-config.json` (patrón idéntico a `provider-config.js`).
+
+### Módulos
+
+- **`nodriza-config.js`** — Config con patrón env > JSON. Funciones: `getConfig()`, `setConfig(partial)`, `isEnabled()`.
+- **`nodriza.js`** — Clase `NodrizaConnection`:
+  - Conecta al WebSocket de nodriza `/signaling` y se autentica como `role: "server"`
+  - Escucha `peer:connected`/`peer:disconnected` para crear/cerrar RTCPeerConnection
+  - Usa `node-datachannel` (WebRTC nativo para Node.js) para crear DataChannels
+  - Cuando un DataChannel se abre, crea un `P2PBotAdapter` que adapta el DataChannel a la interfaz de TelegramBot
+  - Reconexión automática con backoff exponencial (2s → 30s)
+- **`channels/p2p/P2PBotAdapter.js`** — Adaptador que expone la interfaz de TelegramBot sobre DataChannel P2P:
+  - Reutiliza `CommandHandler` y `CallbackHandler` de Telegram (mismos comandos /start, /cd, etc.)
+  - Soporta transcripción de audio recibido por P2P (reenvía a Whisper del server)
+  - Soporta TTS sobre P2P (envía audio sintetizado al client por DataChannel)
+
+### Flujo P2P
+
+```
+terminal-live ──ws──→ nodriza ←──ws── deskcritter
+     │                                    │
+     │── signal:offer ──→ nodriza ──→─────│
+     │←── signal:answer ──← nodriza ←─────│
+     │←→── ice-candidate ──→←─────────────│
+     │                                    │
+     │════════ P2P DataChannel ═══════════│
+     │                                    │
+     │←─ {type:"init", sessionType:"ai"} ─│
+     │──→ {type:"session_id"} ────────────│
+     │←─ {type:"input", data:"..."} ──────│
+     │──→ {type:"output", data:"..."} ────│
+```
+
+El DataChannel transporta el mismo protocolo JSON que el WebSocket directo.
+
+### REST API
+
+```
+GET  /api/nodriza/config    — config actual (apiKey censurada)
+PUT  /api/nodriza/config    — actualizar config { url, serverId, apiKey, enabled }
+GET  /api/nodriza/status    — { connected, peers: [...] }
+POST /api/nodriza/reconnect — forzar reconexión
+```
+
+### DI (bootstrap.js)
+
+`NodrizaConnection` se instancia en `bootstrap.js` si `isEnabled()` es true y se expone como `_container.nodriza`. Se inicia en `index.js` después de que el server HTTP esté escuchando.
 
 ## Telegram: envío de imágenes y documentos
 

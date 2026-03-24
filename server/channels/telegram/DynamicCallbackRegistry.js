@@ -8,6 +8,7 @@
  *   - { type: 'command', cmd }                      → ejecutar bash, enviar output
  *   - { type: 'prompt', text }                      → enviar como prompt al AI
  *   - { type: 'url', url }                          → (no-op, Telegram abre directo)
+ *   - { type: 'func', fn }                          → ejecutar función directamente
  *
  * Cada entrada puede tener:
  *   - once: true   → se elimina tras ejecutarse una vez

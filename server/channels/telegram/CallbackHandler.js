@@ -174,6 +174,11 @@ class CallbackHandler {
           break;
         }
 
+        case 'func': {
+          if (typeof action.fn === 'function') action.fn();
+          break;
+        }
+
         default:
           this.logger.warn(`[DynCallback] Tipo desconocido: ${action.type}`);
           await bot.sendText(chatId, `❌ Tipo de acción desconocido: ${action.type}`);

@@ -9,7 +9,7 @@ module.exports = {
   defaultModel: 'grok-3-fast',
   models: ['grok-3', 'grok-3-mini', 'grok-3-fast'],
 
-  async *chat({ systemPrompt, history, apiKey, model, executeTool: execToolFn }) {
+  async *chat({ systemPrompt, history, apiKey, model, executeTool: execToolFn, channel }) {
     if (!apiKey) {
       yield { type: 'done', fullText: 'Error: API key de Grok no configurada. Configurala en el panel ⚙️.' };
       return;
@@ -17,7 +17,7 @@ module.exports = {
 
     const client = new OpenAI({ apiKey, baseURL: 'https://api.x.ai/v1' });
     const usedModel = model || this.defaultModel;
-    const toolDefs  = tools.toOpenAIFormat();
+    const toolDefs  = tools.toOpenAIFormat({ channel });
     const execTool  = execToolFn || tools.executeTool;
 
     const messages = [];
@@ -29,6 +29,7 @@ module.exports = {
     }
 
     let fullText = '';
+    let totalPromptTokens = 0, totalCompletionTokens = 0;
 
     while (true) {
       let response;
@@ -44,10 +45,14 @@ module.exports = {
         return;
       }
 
+      const u = response.usage;
+      if (u) { totalPromptTokens += u.prompt_tokens || 0; totalCompletionTokens += u.completion_tokens || 0; }
+
       const choice = response.choices?.[0];
       const msg = choice?.message;
 
       if (!msg) {
+        yield { type: 'usage', promptTokens: totalPromptTokens, completionTokens: totalCompletionTokens };
         yield { type: 'done', fullText };
         return;
       }
@@ -60,6 +65,7 @@ module.exports = {
       const toolCalls = msg.tool_calls || [];
 
       if (toolCalls.length === 0 || choice.finish_reason === 'stop') {
+        yield { type: 'usage', promptTokens: totalPromptTokens, completionTokens: totalCompletionTokens };
         yield { type: 'done', fullText };
         return;
       }
