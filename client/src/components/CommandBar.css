@@ -28,7 +28,7 @@
 }
 
 .command-input::placeholder {
-  color: #444;
+  color: #999;
 }
 
 .command-submit {
