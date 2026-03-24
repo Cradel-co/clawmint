@@ -98,8 +98,8 @@ clawmint/
 │   │       ├── telegram.js      # Integración Telegram para MCP
 │   │       ├── webchat.js       # Integración WebChat para MCP
 │   │       ├── critter.js       # Control remoto P2P (channel: 'p2p')
-│   │       ├── critter-registry.js # Registry de critters conectados
-│   │       └── critter-status.js   # Estado de critter P2P
+│   │       ├── critter-status.js   # Estado de critter (global, sin channel)
+│   │       └── critter-registry.js # Registry de peers P2P conectados
 │   ├── mcps.js                  # Gestión de servidores MCP externos
 │   ├── tts.js                   # Módulo TTS central
 │   ├── tts-config.js            # Configuración de proveedores TTS
@@ -168,6 +168,7 @@ pm2 save             # guardar estado para auto-arranque
   - El wrapper `storage/sqlite-wrapper.js` expone API compatible con better-sqlite3.
   - La DB vive en memoria y se auto-persiste a disco con debounce de 500ms.
   - Índices en `notes(agent_key)`, `consolidation_queue(status)`, `note_links`, `note_embeddings`.
+  - La inicialización es async (`await Database.initialize()` en `memory.initDBAsync()`).
 - **spawn de `claude` CLI** usa `shell: true` en Windows para resolver `.cmd`.
 - **Persistencia de sesión Claude**: se guarda `claudeSessionId`, `messageCount`, `cwd` y `claudeMode` en SQLite. `--resume` al reiniciar.
 - **Persistencia de historial API**: `aiHistory` se guarda en SQLite (`ai_history` en `chat_settings`). Se carga al reconectar. Se compacta automáticamente cuando supera 30 mensajes (sliding window con resumen).
@@ -177,6 +178,10 @@ pm2 save             # guardar estado para auto-arranque
   - `plan`: tools no se ejecutan, solo describe qué haría.
 - **TTS multi-proveedor**: configurado en `tts-config.js`/`tts-config.json`. Edge TTS y Piper funcionan offline.
 - **Providers IA**: 6 proveedores. Cada uno implementa `async *chat()` generator con streaming + tool-use + usage tracking.
+  - Todos los providers SDK soportan **tool calling** — reciben `executeTool` desde `ConversationService`.
+  - Ollama usa modo **non-streaming** cuando hay tools (workaround para bug de Ollama con streaming + tools).
+  - Ollama carga los modelos disponibles **dinámicamente** desde `/api/tags` (cache 30s).
+  - Todos los providers emiten `{ type: 'usage', promptTokens, completionTokens }` para tracking.
 - **MCP**: 32 herramientas modulares en `mcp/tools/`:
   - `bash` — shell con estado persistente
   - `git` — 12 acciones (status, diff, log, commit, push, pull, branch, checkout, stash, blame, show)
@@ -186,6 +191,7 @@ pm2 save             # guardar estado para auto-arranque
   - `telegram_send_message/photo/document/voice/video/edit/delete`, `telegram_list_bots`
   - `webchat_send_message/photo/document/voice/video/edit/delete`, `webchat_list_sessions`
   - `critter_status`
+  - **Filtrado por channel**: cada tool puede tener un campo `channel` opcional. Las tools de critter tienen `channel: 'p2p'` y solo aparecen en sesiones P2P.
 - **ConversationService**: motor unificado de conversación con IA.
   - Retry 3x con exponential backoff para errores transitorios (429, 500, timeout).
   - No reintenta si ya ejecutó tools (previene side effects duplicados).
@@ -251,6 +257,30 @@ POST /api/nodriza/reconnect — forzar reconexión
 - `/consola` — modo consola bash
 - `/estado` — estado detallado del chat
 - `/ayuda` — todos los comandos
+
+### Critter Tools (control remoto P2P)
+
+Herramientas MCP para controlar remotamente el PC de un usuario conectado via deskcritter. Solo disponibles en sesiones P2P (`channel: 'p2p'`).
+
+| Tool | Descripción |
+|------|------------|
+| `critter_bash` | Ejecutar comando en el PC remoto (PowerShell/bash) |
+| `critter_read_file` | Leer archivo del PC remoto |
+| `critter_write_file` | Escribir archivo en el PC remoto |
+| `critter_edit_file` | Editar archivo (reemplazo de texto) |
+| `critter_list_files` | Listar directorio |
+| `critter_grep` | Buscar por patrón en archivos |
+| `critter_screenshot` | Capturar pantalla (retorna base64 PNG) |
+| `critter_clipboard_read` | Leer portapapeles |
+| `critter_clipboard_write` | Escribir al portapapeles |
+| `critter_screen_info` | Info del monitor (resolución, escala) |
+| `critter_status` | Verificar si hay critter conectado (**global**, disponible en todos los canales) |
+
+- **`mcp/tools/critter.js`** — Definición de tools con `channel: 'p2p'`.
+- **`mcp/tools/critter-registry.js`** — Singleton que gestiona peers conectados. Envía acciones via DataChannel y espera resultados con timeout (30s por defecto).
+- **`mcp/tools/critter-status.js`** — Tool global (sin `channel`) que permite a la IA verificar si hay un critter conectado desde cualquier canal.
+
+Flujo: IA invoca `critter_bash({ command })` → registry envía `{ type: 'action', tool: 'bash', args }` al peer via DataChannel → critter ejecuta y responde con `{ type: 'action_result', id, result }` → registry resuelve la promesa → IA recibe el resultado.
 
 ### Envío de multimedia (REST)
 
