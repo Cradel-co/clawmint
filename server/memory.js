@@ -339,14 +339,44 @@ function buildMemoryContext(agentKey, memoryFilesOrMessage = [], opts = {}) {
 
   const userMessage = typeof memoryFilesOrMessage === 'string' ? memoryFilesOrMessage : '';
 
-  // Embeddings: si el provider lo soporta, devuelve Promise<string>
+  // Embeddings: intentar local primero (todos los providers), fallback a API, luego spreading
   const { provider, apiKey } = opts;
   let embeddingsModule = null;
   try { embeddingsModule = require('./embeddings'); } catch {}
 
-  if (provider && apiKey && db && embeddingsModule && embeddingsModule.supportsEmbeddings(provider)) {
-    dbg('ctx', `usando embeddings para provider="${provider}"`);
-    return _buildMemoryContextByEmbeddings(agentKey, userMessage, provider, apiKey, embeddingsModule);
+  if (db && embeddingsModule && provider) {
+    // Intentar embeddings locales primero (todos los API providers)
+    // Fallback: API embeddings (si provider soporta) → spreading activation
+    // Nota: si provider es undefined (claude-code), va directo a spreading (síncrono)
+    dbg('ctx', `intentando embeddings locales para provider="${provider}"`);
+    const spreadingFallback = () => {
+      dbg('ctx', `fallback a spreading activation`);
+      try {
+        const keywords = extractKeywords(userMessage);
+        const spreading = spreadingActivation(agentKey, keywords);
+        if (!spreading.length) return '';
+        const ids = spreading.map(r => r.id);
+        const notes = db.prepare(`SELECT id, filename, title, content FROM notes WHERE id IN (${ids.join(',')})`).all();
+        const noteMap = new Map(notes.map(n => [n.id, n]));
+        const parts = [];
+        for (const r of spreading) {
+          const n = noteMap.get(r.id);
+          if (n) parts.push(`  → "${n.title}" cosine=${r.score.toFixed(3)}`);
+        }
+        if (parts.length) dbg('ctx', parts.join('\n'));
+        return spreading.length ? notes.map(n => `### ${n.title}\n${n.content}`).join('\n\n---\n\n') : '';
+      } catch { return ''; }
+    };
+
+    return _buildMemoryContextByEmbeddings(agentKey, userMessage, 'local', null, embeddingsModule)
+      .catch(localErr => {
+        dbg('ctx', `embeddings locales fallaron: ${localErr.message}`);
+        if (provider && apiKey && embeddingsModule.supportsEmbeddings(provider)) {
+          dbg('ctx', `fallback a embeddings API provider="${provider}"`);
+          return _buildMemoryContextByEmbeddings(agentKey, userMessage, provider, apiKey, embeddingsModule);
+        }
+        return spreadingFallback();
+      });
   }
 
   // Spreading activation (síncrono, default para claude-code y anthropic)
