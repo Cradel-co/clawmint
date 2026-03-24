@@ -18,10 +18,12 @@ const Logger     = require('./core/Logger');
 const EventBus   = require('./core/EventBus');
 
 const DatabaseProvider         = require('./storage/DatabaseProvider');
-const ChatSettingsRepository   = require('./storage/ChatSettingsRepository');
-const BotsRepository           = require('./storage/BotsRepository');
+const ChatSettingsRepository       = require('./storage/ChatSettingsRepository');
+const WebchatMessagesRepository   = require('./storage/WebchatMessagesRepository');
+const BotsRepository               = require('./storage/BotsRepository');
 const ConversationService      = require('./services/ConversationService');
 const { TelegramChannel }      = require('./channels/telegram/TelegramChannel');
+const WebChannel               = require('./channels/web/WebChannel');
 const ClaudePrintSession       = require('./core/ClaudePrintSession');
 
 let _container = null;
@@ -51,6 +53,9 @@ function createContainer() {
 
   const chatSettingsRepo = new ChatSettingsRepository(db);
   chatSettingsRepo.init();
+
+  const messagesRepo = new WebchatMessagesRepository(db);
+  messagesRepo.init();
 
   const botsRepo = new BotsRepository(path.join(__dirname, 'bots.json'));
 
@@ -152,6 +157,21 @@ function createContainer() {
     logger,
   });
 
+  // ── WebChannel ─────────────────────────────────────────────────────────────
+
+  const webChannel = new WebChannel({
+    convSvc,
+    providers,
+    providerConfig,
+    agents,
+    chatSettingsRepo,
+    messagesRepo,
+    eventBus,
+    logger,
+    transcriber,
+    tts,
+  });
+
   // ── Container ─────────────────────────────────────────────────────────────
 
   _container = {
@@ -164,6 +184,7 @@ function createContainer() {
     botsRepo,
     convSvc,
     telegramChannel,
+    webChannel,
     sessionManager,
     agents,
     skills,

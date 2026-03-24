@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Check, Pencil, Trash2, X, Plus, Plug } from 'lucide-react';
 import { API_BASE } from '../config.js';
 
 const API = `${API_BASE}/api/mcps`;
@@ -54,9 +55,13 @@ function McpForm({ initial, onSave, onCancel }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const isStdio = isEdit ? initial.type === 'stdio' : type === 'stdio';
+  const missingRequired = (!isEdit && !name.trim())
+    || (isStdio && !command.trim())
+    || (!isStdio && !url.trim());
+
   const handleSubmit = async () => {
     setError('');
-    if (!isEdit && !name.trim()) { setError('El nombre es obligatorio'); return; }
 
     const body = { description: description.trim() };
     if (!isEdit) {
@@ -181,9 +186,9 @@ function McpForm({ initial, onSave, onCancel }) {
         <button
           className="ap-btn ap-btn-primary"
           onClick={handleSubmit}
-          disabled={loading || (!isEdit && !name.trim())}
+          disabled={loading || missingRequired}
         >
-          {loading ? '...' : isEdit ? '✓ Guardar' : '✓ Crear'}
+          {loading ? '...' : isEdit ? <><Check size={13} /> Guardar</> : <><Check size={13} /> Crear</>}
         </button>
         <button className="ap-btn ap-btn-ghost" onClick={onCancel}>Cancelar</button>
       </div>
@@ -212,8 +217,8 @@ function McpRow({ mcp, onEdit, onDelete, onToggle, toggling }) {
           >
             {toggling === mcp.name ? '...' : mcp.enabled ? 'OFF' : 'ON'}
           </button>
-          <button className="ap-icon-btn" onClick={() => onEdit(mcp)} title="Editar">✏️</button>
-          <button className="ap-icon-btn ap-icon-btn-danger" onClick={() => onDelete(mcp.name)} title="Eliminar">🗑</button>
+          <button className="ap-icon-btn" onClick={() => onEdit(mcp)} title="Editar"><Pencil size={13} /></button>
+          <button className="ap-icon-btn ap-icon-btn-danger" onClick={() => onDelete(mcp.name)} title="Eliminar"><Trash2 size={13} /></button>
         </div>
       </div>
       {mcp.description && <p className="ap-agent-desc">{mcp.description}</p>}
@@ -287,10 +292,10 @@ export default function McpsPanel({ onClose }) {
     <div className="ap-panel">
       <div className="ap-header">
         <span className="ap-header-title">
-          <span className="ap-icon">🔌</span>
+          <span className="ap-icon"><Plug size={16} /></span>
           MCPs
         </span>
-        <button className="ap-close" onClick={onClose} title="Cerrar">×</button>
+        <button className="ap-close" onClick={onClose} title="Cerrar"><X size={16} /></button>
       </div>
 
       <div className="ap-body">
@@ -324,7 +329,7 @@ export default function McpsPanel({ onClose }) {
           />
         ) : (
           <button className="ap-btn ap-btn-add" onClick={() => { setEditMcp(null); setShowForm(true); }}>
-            + Nuevo MCP
+            <Plus size={14} /> Nuevo MCP
           </button>
         )}
       </div>

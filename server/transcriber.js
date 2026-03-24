@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const os = require('os');
+const { execFile } = require('child_process');
 
 // ─── Estado singleton ────────────────────────────────────────────────────────
 
@@ -129,34 +130,26 @@ function _unloadModel(modelId) {
   }
 }
 
-async function _decodeOgg(filePath) {
-  const { OggOpusDecoder } = await import('ogg-opus-decoder');
-  const decoder = new OggOpusDecoder();
-  await decoder.ready;
-
-  const fileBuffer = fs.readFileSync(filePath);
-  const { channelData, sampleRate } = await decoder.decode(new Uint8Array(fileBuffer));
-  decoder.free();
-
-  let pcm = channelData[0];
-  if (sampleRate !== 16000) {
-    pcm = _resample(pcm, sampleRate, 16000);
-  }
-  return pcm;
-}
-
-function _resample(float32, fromRate, toRate) {
-  const ratio = fromRate / toRate;
-  const newLength = Math.floor(float32.length / ratio);
-  const result = new Float32Array(newLength);
-  for (let i = 0; i < newLength; i++) {
-    const srcIdx = i * ratio;
-    const lo = Math.floor(srcIdx);
-    const hi = Math.min(lo + 1, float32.length - 1);
-    const frac = srcIdx - lo;
-    result[i] = float32[lo] * (1 - frac) + float32[hi] * frac;
-  }
-  return result;
+async function _decodeAudio(filePath) {
+  return new Promise((resolve, reject) => {
+    const args = [
+      '-i', filePath,
+      '-f', 'f32le',     // raw PCM float32 little-endian
+      '-ar', '16000',    // 16kHz (lo que Whisper espera)
+      '-ac', '1',        // mono
+      'pipe:1',          // salida a stdout
+    ];
+    const proc = execFile('ffmpeg', args, {
+      encoding: 'buffer',
+      maxBuffer: 50 * 1024 * 1024, // 50MB
+    }, (err, stdout, stderr) => {
+      if (err) {
+        const msg = stderr ? stderr.toString().split('\n').pop() : err.message;
+        return reject(new Error(`ffmpeg decode failed: ${msg}`));
+      }
+      resolve(new Float32Array(stdout.buffer, stdout.byteOffset, stdout.byteLength / 4));
+    });
+  });
 }
 
 // ─── Descarga HTTPS genérica ─────────────────────────────────────────────────
@@ -192,7 +185,7 @@ function httpsDownload(url, destPath) {
 
 async function transcribe(filePath, opts = {}) {
   const cfg = { ...DEFAULTS, ...opts };
-  const audio = await _decodeOgg(filePath);
+  const audio = await _decodeAudio(filePath);
 
   const startIdx = MODEL_FALLBACK_CHAIN.indexOf(cfg.model);
   const chain = startIdx >= 0 ? MODEL_FALLBACK_CHAIN.slice(startIdx) : [cfg.model];

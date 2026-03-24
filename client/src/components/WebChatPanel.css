@@ -166,8 +166,49 @@
   padding: 8px 12px;
   font-size: 13px;
   line-height: 1.5;
-  white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* Markdown dentro de mensajes del asistente */
+.wc-msg-assistant .wc-msg-content p { margin: 0 0 8px 0; }
+.wc-msg-assistant .wc-msg-content p:last-child { margin-bottom: 0; }
+.wc-msg-assistant .wc-msg-content ul,
+.wc-msg-assistant .wc-msg-content ol { margin: 4px 0; padding-left: 20px; }
+.wc-msg-assistant .wc-msg-content li { margin: 2px 0; }
+.wc-msg-assistant .wc-msg-content h1,
+.wc-msg-assistant .wc-msg-content h2,
+.wc-msg-assistant .wc-msg-content h3 { margin: 12px 0 6px; color: #f0f0f0; }
+.wc-msg-assistant .wc-msg-content h1 { font-size: 16px; }
+.wc-msg-assistant .wc-msg-content h2 { font-size: 14px; }
+.wc-msg-assistant .wc-msg-content h3 { font-size: 13px; }
+.wc-msg-assistant .wc-msg-content blockquote {
+  border-left: 3px solid #555;
+  margin: 4px 0;
+  padding: 2px 8px;
+  color: #aaa;
+}
+.wc-msg-assistant .wc-msg-content table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 12px;
+  width: 100%;
+}
+.wc-msg-assistant .wc-msg-content th,
+.wc-msg-assistant .wc-msg-content td {
+  border: 1px solid #444;
+  padding: 4px 8px;
+  text-align: left;
+}
+.wc-msg-assistant .wc-msg-content th {
+  background: #333;
+  color: #ddd;
+}
+.wc-msg-assistant .wc-msg-content a {
+  color: #58a6ff;
+  text-decoration: none;
+}
+.wc-msg-assistant .wc-msg-content a:hover {
+  text-decoration: underline;
 }
 
 .wc-msg-system {
@@ -204,6 +245,23 @@
 @keyframes wc-blink {
   0%, 50% { opacity: 1; }
   51%, 100% { opacity: 0; }
+}
+
+/* ─── Audio message ─────────────────────────────────────────────────────────── */
+.wc-audio-transcription {
+  display: block;
+  margin-top: 6px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+  line-height: 1.4;
+}
+
+.wc-audio-transcribing {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  font-style: italic;
 }
 
 /* ─── Input area ────────────────────────────────────────────────────────────── */
@@ -252,6 +310,7 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  transition: background 0.15s;
 }
 .wc-send:hover:not(:disabled) {
   background: #0066dd;
@@ -259,6 +318,96 @@
 .wc-send:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+.wc-send-mic {
+  background: #2a2a2a;
+  color: #aaa;
+  font-size: 15px;
+}
+.wc-send-mic:hover:not(:disabled) {
+  background: #333;
+  color: #ccc;
+}
+.wc-send-mic.wc-recording {
+  background: #2a1518;
+  border: 1.5px solid #ff5f57;
+  color: #ff5f57;
+  animation: wc-pulse-icon 1.5s ease-in-out infinite;
+}
+@keyframes wc-pulse-icon {
+  0%, 100% { color: #ff5f57; border-color: #ff5f57; }
+  50% { color: #ff8a85; border-color: #ff8a85; }
+}
+
+/* ─── Recording bar ────────────────────────────────────────────────────────── */
+.wc-rec-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 0;
+}
+.wc-rec-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+.wc-rec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff5f57;
+  animation: wc-rec-blink 1s ease-in-out infinite;
+}
+.wc-rec-dot-paused {
+  background: #888;
+  animation: none;
+}
+@keyframes wc-rec-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+.wc-rec-time {
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 14px;
+  color: #f0f0f0;
+  min-width: 36px;
+}
+.wc-rec-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.wc-rec-cancel {
+  background: #2a1518;
+  color: #ff5f57;
+}
+.wc-rec-cancel:hover {
+  background: #3a1a1e;
+  color: #ff8a85;
+}
+.wc-rec-pause {
+  background: #2a2a2a;
+  color: #ccc;
+}
+.wc-rec-pause:hover {
+  background: #333;
+  color: #fff;
+}
+.wc-rec-send {
+  background: #1a3a1a;
+  color: #4caf50;
+}
+.wc-rec-send:hover {
+  background: #1e4a1e;
+  color: #66cc66;
 }
 
 /* ─── Scrollbar ─────────────────────────────────────────────────────────────── */
@@ -274,4 +423,250 @@
 }
 .wc-messages::-webkit-scrollbar-thumb:hover {
   background: #666;
+}
+
+/* ─── Code blocks ──────────────────────────────────────────────────────────── */
+.wc-code-block {
+  margin: 8px 0;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #333;
+}
+.wc-code-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 10px;
+  background: #1e1e1e;
+  border-bottom: 1px solid #333;
+  font-size: 11px;
+}
+.wc-code-lang {
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.wc-code-copy {
+  background: none;
+  border: 1px solid #444;
+  color: #aaa;
+  border-radius: 4px;
+  padding: 1px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.wc-code-copy:hover {
+  background: #333;
+  color: #fff;
+}
+.wc-inline-code {
+  background: #333;
+  color: #e06c75;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 12px;
+}
+
+/* ─── Code inline block (single-line fenced code without language) ────────── */
+.wc-code-inline-block {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #2a2a2a;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  padding: 3px 8px;
+  margin: 2px 0;
+}
+.wc-code-inline-text {
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 13px;
+  color: #e06c75;
+}
+.wc-code-inline-copy {
+  background: none;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  transition: color 0.15s;
+}
+.wc-code-inline-copy:hover {
+  color: #ccc;
+}
+
+/* ─── Inline buttons ───────────────────────────────────────────────────────── */
+.wc-msg-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.wc-inline-btn {
+  background: #2a2a2a;
+  color: #58a6ff;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.wc-inline-btn:hover {
+  background: #333;
+  border-color: #58a6ff;
+}
+
+/* ─── TTS audio message ────────────────────────────────────────────────────── */
+.wc-msg-tts {
+  align-self: flex-start;
+}
+.wc-audio-content {
+  padding: 6px 10px !important;
+}
+.wc-audio-player {
+  width: 100%;
+  max-width: 280px;
+  height: 36px;
+  border-radius: 8px;
+  filter: invert(1) hue-rotate(180deg);
+}
+
+/* ─── Input area: media buttons ────────────────────────────────────────────── */
+.wc-file-input {
+  display: none;
+}
+.wc-attach-btn,
+.wc-mic-btn,
+.wc-tts-btn {
+  font-size: 16px;
+  padding: 4px 6px;
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+.wc-attach-btn:hover:not(:disabled),
+.wc-mic-btn:hover:not(:disabled),
+.wc-tts-btn:hover:not(:disabled) {
+  opacity: 1;
+}
+.wc-attach-btn:disabled,
+.wc-mic-btn:disabled,
+.wc-tts-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+/* Recording state (legacy, unused — now handled by .wc-send-mic.wc-recording) */
+@keyframes wc-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Status text en barra */
+.wc-status-text {
+  color: #58a6ff;
+  font-style: italic;
+}
+
+/* Drag over feedback */
+.wc-panel.dragover {
+  outline: 2px dashed #007aff;
+  outline-offset: -4px;
+}
+
+/* ─── Typing indicator ─────────────────────────────────────────────────────── */
+.wc-typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 14px !important;
+  min-height: auto !important;
+}
+.wc-typing-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #888;
+  animation: wc-typing-bounce 1.4s infinite ease-in-out both;
+}
+.wc-typing-dot:nth-child(1) { animation-delay: 0s; }
+.wc-typing-dot:nth-child(2) { animation-delay: 0.16s; }
+.wc-typing-dot:nth-child(3) { animation-delay: 0.32s; }
+@keyframes wc-typing-bounce {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+/* ─── Media messages (photo, video, voice, document) ──────────────────────── */
+.wc-media-content {
+  padding: 4px !important;
+  background: #2a2a2a;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.wc-media-img {
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 8px;
+  display: block;
+  object-fit: contain;
+}
+.wc-media-video {
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 8px;
+  display: block;
+}
+.wc-media-voice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+}
+.wc-media-voice-icon {
+  color: #888;
+  flex-shrink: 0;
+}
+.wc-media-audio {
+  width: 100%;
+  max-width: 250px;
+  height: 32px;
+  border-radius: 8px;
+  filter: invert(1) hue-rotate(180deg);
+}
+.wc-media-doc {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  color: #58a6ff;
+  text-decoration: none;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+.wc-media-doc:hover {
+  background: #333;
+}
+.wc-media-doc-name {
+  flex: 1;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wc-media-doc-dl {
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+.wc-media-doc:hover .wc-media-doc-dl {
+  opacity: 1;
+}
+.wc-media-caption {
+  margin: 6px 8px 4px;
+  font-size: 12px;
+  color: #aaa;
+  line-height: 1.4;
 }

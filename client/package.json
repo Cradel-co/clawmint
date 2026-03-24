@@ -1,6 +1,6 @@
 {
   "name": "terminal-live-client",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Frontend React + xterm.js para terminal en tiempo real",
   "scripts": {
     "dev": "vite",
@@ -11,10 +11,17 @@
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-web-links": "^0.11.0",
     "@xterm/xterm": "^5.5.0",
+    "lucide-react": "^1.0.1",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
+    "react-syntax-highlighter": "^16.1.1",
+    "rehype-raw": "^7.0.0",
+    "rehype-sanitize": "^6.0.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
+    "@vitejs/plugin-basic-ssl": "^1.2.0",
     "@vitejs/plugin-react": "^4.3.1",
     "vite": "^5.4.1"
   }

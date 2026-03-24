@@ -104,7 +104,14 @@ function remove(name) {
   return true;
 }
 
-function sync(name) {
+// Lazy-load del pool de clientes MCP
+let _pool = null;
+function _getPool() {
+  if (!_pool) try { _pool = require('./mcp-client-pool'); } catch {}
+  return _pool;
+}
+
+async function sync(name) {
   const mcp = _read(name);
   if (!mcp) throw new Error(`MCP "${name}" no encontrado`);
 
@@ -119,11 +126,24 @@ function sync(name) {
     if (mcp.headers && Object.keys(mcp.headers).length > 0) mcpConfig.headers = mcp.headers;
   }
 
-  execFileSync(CLAUDE_BIN, ['mcp', 'add-json', name, JSON.stringify(mcpConfig)], {
-    env: _claudeEnv(),
-    stdio: 'pipe',
-    timeout: 10000,
-  });
+  // Registrar en Claude CLI (para Claude Code)
+  try {
+    execFileSync(CLAUDE_BIN, ['mcp', 'add-json', name, JSON.stringify(mcpConfig)], {
+      env: _claudeEnv(),
+      stdio: 'pipe',
+      timeout: 10000,
+    });
+  } catch (err) {
+    process.stderr.write(`[mcps] Claude CLI sync falló para "${name}": ${err.message}\n`);
+  }
+
+  // Conectar al pool de clientes MCP (para providers API)
+  const pool = _getPool();
+  if (pool) {
+    try { await pool.connectMcp(name); } catch (err) {
+      process.stderr.write(`[mcps] Pool connect falló para "${name}": ${err.message}\n`);
+    }
+  }
 
   mcp.enabled = true;
   mcp.syncedAt = new Date().toISOString();
@@ -131,15 +151,26 @@ function sync(name) {
   return mcp;
 }
 
-function unsync(name) {
+async function unsync(name) {
   const mcp = _read(name);
   if (!mcp) throw new Error(`MCP "${name}" no encontrado`);
 
-  execFileSync(CLAUDE_BIN, ['mcp', 'remove', name], {
-    env: _claudeEnv(),
-    stdio: 'pipe',
-    timeout: 10000,
-  });
+  // Desregistrar de Claude CLI
+  try {
+    execFileSync(CLAUDE_BIN, ['mcp', 'remove', name], {
+      env: _claudeEnv(),
+      stdio: 'pipe',
+      timeout: 10000,
+    });
+  } catch (err) {
+    process.stderr.write(`[mcps] Claude CLI unsync falló para "${name}": ${err.message}\n`);
+  }
+
+  // Desconectar del pool
+  const pool = _getPool();
+  if (pool) {
+    try { await pool.disconnectMcp(name); } catch {}
+  }
 
   mcp.enabled = false;
   mcp.syncedAt = new Date().toISOString();
@@ -147,12 +178,12 @@ function unsync(name) {
   return mcp;
 }
 
-function syncAll() {
+async function syncAll() {
   const all = list().filter(m => m.enabled);
   let count = 0;
   for (const mcp of all) {
     try {
-      sync(mcp.name);
+      await sync(mcp.name);
       count++;
     } catch (err) {
       // No interrumpir el startup por un MCP que falla

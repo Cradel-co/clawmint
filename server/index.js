@@ -63,7 +63,7 @@ logger.info('HOME:', process.env.HOME);
 
 // ── Carga de módulos (async por sql.js WASM) ─────────────────────────────────
 
-let sessionManager, telegram, agents, skills, events, memory, providerConfig, providersModule, consolidator, convSvc;
+let sessionManager, telegram, webChannel, agents, skills, events, memory, providerConfig, providersModule, consolidator, convSvc, mcps;
 let mcpRouter = null;
 let nodrizaInstance = null;
 
@@ -72,6 +72,7 @@ const _modulesReady = (async function loadModules() {
   try { sessionManager  = require('./sessionManager');  logger.info('sessionManager OK'); }  catch(e) { logger.error('sessionManager FAIL:', e.message); process.exit(1); }
   try { agents          = require('./agents');           logger.info('agents OK'); }          catch(e) { logger.error('agents FAIL:', e.message); process.exit(1); }
   try { skills          = require('./skills');           logger.info('skills OK'); }          catch(e) { logger.error('skills FAIL:', e.message); process.exit(1); }
+  try { mcps            = require('./mcps');             logger.info('mcps OK'); }            catch(e) { logger.error('mcps FAIL:', e.message); process.exit(1); }
   try { events          = require('./events');           logger.info('events OK'); }          catch(e) { logger.error('events FAIL:', e.message); process.exit(1); }
 
   // sql.js requiere inicialización async del WASM antes de crear instancias SQLite
@@ -88,6 +89,7 @@ const _modulesReady = (async function loadModules() {
     const { createContainer } = require('./bootstrap');
     const _c = createContainer();
     telegram     = _c.telegramChannel;
+    webChannel   = _c.webChannel;
     consolidator = _c.consolidator;
     nodrizaInstance = _c.nodriza || null;
     convSvc      = _c.convSvc;
@@ -101,6 +103,14 @@ const _modulesReady = (async function loadModules() {
     }
     logger.info('bootstrap OK (telegram + consolidator)');
   } catch(e) { logger.error('bootstrap FAIL:', e.message); process.exit(1); }
+
+  // Inicializar pool de clientes MCP (conecta MCPs enabled para providers API)
+  try {
+    const mcpClientPool = require('./mcp-client-pool');
+    await mcpClientPool.initialize();
+    logger.info('mcp-client-pool OK');
+  } catch(e) { logger.warn('mcp-client-pool init falló:', e.message); }
+
   logger.info('Todos los módulos cargados.');
 })();
 
@@ -271,6 +281,100 @@ app.delete('/api/agents/:key', (req, res) => {
   const ok = agents.remove(req.params.key);
   if (!ok) return res.status(404).json({ error: 'Agente no encontrado' });
   res.json({ ok: true });
+});
+
+// ─── MCPs API ─────────────────────────────────────────────────────────────────
+
+// GET /api/mcps — listar MCPs configurados
+app.get('/api/mcps', (_req, res) => {
+  res.json(mcps.list());
+});
+
+// POST /api/mcps — crear MCP
+app.post('/api/mcps', (req, res) => {
+  try {
+    const mcp = mcps.add(req.body);
+    res.status(201).json(mcp);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// PATCH /api/mcps/:name — actualizar MCP
+app.patch('/api/mcps/:name', (req, res) => {
+  try {
+    const mcp = mcps.update(req.params.name, req.body);
+    res.json(mcp);
+  } catch (e) {
+    res.status(404).json({ error: e.message });
+  }
+});
+
+// DELETE /api/mcps/:name — eliminar MCP
+app.delete('/api/mcps/:name', (req, res) => {
+  const ok = mcps.remove(req.params.name);
+  if (!ok) return res.status(404).json({ error: 'MCP no encontrado' });
+  res.json({ ok: true });
+});
+
+// POST /api/mcps/:name/sync — activar MCP (sincronizar con Claude CLI + pool)
+app.post('/api/mcps/:name/sync', async (req, res) => {
+  try {
+    const mcp = await mcps.sync(req.params.name);
+    res.json(mcp);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// POST /api/mcps/:name/enable — alias de sync (usado por el frontend)
+app.post('/api/mcps/:name/enable', async (req, res) => {
+  try {
+    const mcp = await mcps.sync(req.params.name);
+    res.json(mcp);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// POST /api/mcps/:name/unsync — desactivar MCP
+app.post('/api/mcps/:name/unsync', async (req, res) => {
+  try {
+    const mcp = await mcps.unsync(req.params.name);
+    res.json(mcp);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// POST /api/mcps/:name/disable — alias de unsync (usado por el frontend)
+app.post('/api/mcps/:name/disable', async (req, res) => {
+  try {
+    const mcp = await mcps.unsync(req.params.name);
+    res.json(mcp);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// POST /api/mcps/registry/search — buscar en Smithery
+app.post('/api/mcps/registry/search', async (req, res) => {
+  try {
+    const results = await mcps.searchSmithery(req.body.query, req.body.limit);
+    res.json(results);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/mcps/registry/install — instalar desde Smithery
+app.post('/api/mcps/registry/install', async (req, res) => {
+  try {
+    const result = await mcps.installFromRegistry(req.body.qualifiedName, req.body.name);
+    res.json(result);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
 });
 
 // ─── Skills API ───────────────────────────────────────────────────────────────
@@ -742,6 +846,171 @@ app.post('/api/telegram/bots/:key/chats/:chatId/delete', async (req, res) => {
   }
 });
 
+// ─── WebChat API ──────────────────────────────────────────────────────────────
+
+// GET /api/webchat/sessions — listar sesiones activas
+app.get('/api/webchat/sessions', (_req, res) => {
+  if (!webChannel) return res.status(503).json({ error: 'WebChannel no disponible' });
+  res.json(webChannel.listSessions());
+});
+
+// POST /api/webchat/sessions/:sessionId/message — enviar texto a una sesión
+app.post('/api/webchat/sessions/:sessionId/message', async (req, res) => {
+  try {
+    if (!webChannel) return res.status(503).json({ error: 'WebChannel no disponible' });
+    const { sessionId } = req.params;
+    const { text, buttons, callbacks } = req.body || {};
+    if (!text) return res.status(400).json({ error: 'Se requiere text' });
+
+    // Registrar callbacks dinámicos si vienen
+    if (callbacks && typeof callbacks === 'object') {
+      const dynamicRegistry = require('./channels/telegram/DynamicCallbackRegistry');
+      dynamicRegistry.registerMany(callbacks);
+    }
+
+    if (buttons) {
+      await webChannel.sendWithButtons(sessionId, text, buttons);
+    } else {
+      await webChannel.sendText(sessionId, text);
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/webchat/sessions/:sessionId/photo — enviar imagen a una sesión
+app.post('/api/webchat/sessions/:sessionId/photo', express.raw({ type: '*/*', limit: '20mb' }), async (req, res) => {
+  try {
+    if (!webChannel) return res.status(503).json({ error: 'WebChannel no disponible' });
+    const { sessionId } = req.params;
+    const caption = req.query.caption || '';
+    const filename = req.query.filename || 'photo.png';
+
+    let photoBuffer;
+    if (Buffer.isBuffer(req.body) && req.body.length > 0) {
+      photoBuffer = req.body;
+    } else if (typeof req.body === 'string') {
+      photoBuffer = Buffer.from(req.body, 'base64');
+    } else {
+      return res.status(400).json({ error: 'Se requiere imagen como body raw o base64' });
+    }
+
+    const base64 = photoBuffer.toString('base64');
+    const mimeType = req.headers['content-type'] || 'image/png';
+    const msgId = await webChannel.sendPhoto(sessionId, base64, { caption, filename, mimeType });
+    res.json({ ok: true, msgId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/webchat/sessions/:sessionId/document — enviar archivo a una sesión
+app.post('/api/webchat/sessions/:sessionId/document', express.raw({ type: '*/*', limit: '50mb' }), async (req, res) => {
+  try {
+    if (!webChannel) return res.status(503).json({ error: 'WebChannel no disponible' });
+    const { sessionId } = req.params;
+    const caption = req.query.caption || '';
+    const filename = req.query.filename || 'file.bin';
+    const contentType = req.query.contentType || 'application/octet-stream';
+
+    let docBuffer;
+    if (Buffer.isBuffer(req.body) && req.body.length > 0) {
+      docBuffer = req.body;
+    } else if (typeof req.body === 'string') {
+      docBuffer = Buffer.from(req.body, 'base64');
+    } else {
+      return res.status(400).json({ error: 'Se requiere archivo como body raw o base64' });
+    }
+
+    const base64 = docBuffer.toString('base64');
+    const msgId = await webChannel.sendDocument(sessionId, base64, { caption, filename, mimeType: contentType });
+    res.json({ ok: true, msgId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/webchat/sessions/:sessionId/edit — editar mensaje
+app.post('/api/webchat/sessions/:sessionId/edit', async (req, res) => {
+  try {
+    if (!webChannel) return res.status(503).json({ error: 'WebChannel no disponible' });
+    const { sessionId } = req.params;
+    const { msg_id, text } = req.body || {};
+    if (!msg_id || !text) return res.status(400).json({ error: 'Se requieren msg_id y text' });
+    await webChannel.editMessage(sessionId, msg_id, text);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/webchat/sessions/:sessionId/delete — borrar mensaje
+app.post('/api/webchat/sessions/:sessionId/delete', async (req, res) => {
+  try {
+    if (!webChannel) return res.status(503).json({ error: 'WebChannel no disponible' });
+    const { sessionId } = req.params;
+    const { msg_id } = req.body || {};
+    if (!msg_id) return res.status(400).json({ error: 'Se requiere msg_id' });
+    await webChannel.deleteMessage(sessionId, msg_id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/webchat/sessions/:sessionId/voice — enviar audio a una sesión
+app.post('/api/webchat/sessions/:sessionId/voice', express.raw({ type: '*/*', limit: '20mb' }), async (req, res) => {
+  try {
+    if (!webChannel) return res.status(503).json({ error: 'WebChannel no disponible' });
+    const { sessionId } = req.params;
+    const caption = req.query.caption || '';
+    const filename = req.query.filename || 'audio.ogg';
+
+    let audioBuffer;
+    if (Buffer.isBuffer(req.body) && req.body.length > 0) {
+      audioBuffer = req.body;
+    } else if (typeof req.body === 'string') {
+      audioBuffer = Buffer.from(req.body, 'base64');
+    } else {
+      return res.status(400).json({ error: 'Se requiere audio como body raw o base64' });
+    }
+
+    const base64 = audioBuffer.toString('base64');
+    const mimeType = req.headers['content-type'] || 'audio/ogg';
+    const msgId = await webChannel.sendVoice(sessionId, base64, { caption, filename, mimeType });
+    res.json({ ok: true, msgId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/webchat/sessions/:sessionId/video — enviar video a una sesión
+app.post('/api/webchat/sessions/:sessionId/video', express.raw({ type: '*/*', limit: '50mb' }), async (req, res) => {
+  try {
+    if (!webChannel) return res.status(503).json({ error: 'WebChannel no disponible' });
+    const { sessionId } = req.params;
+    const caption = req.query.caption || '';
+    const filename = req.query.filename || 'video.mp4';
+
+    let videoBuffer;
+    if (Buffer.isBuffer(req.body) && req.body.length > 0) {
+      videoBuffer = req.body;
+    } else if (typeof req.body === 'string') {
+      videoBuffer = Buffer.from(req.body, 'base64');
+    } else {
+      return res.status(400).json({ error: 'Se requiere video como body raw o base64' });
+    }
+
+    const base64 = videoBuffer.toString('base64');
+    const mimeType = req.headers['content-type'] || 'video/mp4';
+    const msgId = await webChannel.sendVideo(sessionId, base64, { caption, filename, mimeType });
+    res.json({ ok: true, msgId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── WebSocket ────────────────────────────────────────────────────────────────
 
 wss.on('connection', (ws) => {
@@ -774,7 +1043,11 @@ wss.on('connection', (ws) => {
         }
 
         if (msg.sessionType === 'webchat') {
-          startWebChatSession(ws, msg);
+          if (webChannel) {
+            webChannel.handleConnection(ws, msg);
+          } else {
+            ws.send(JSON.stringify({ type: 'chat_error', error: 'WebChannel no disponible' }));
+          }
           return;
         }
 
@@ -1242,250 +1515,7 @@ function startAISessionForDataChannel(dcAdapter, peerId) {
   });
 }
 
-// ─── WebChat Session (chat con burbujas, usa ConversationService) ─────────────
-
-function startWebChatSession(ws, opts) {
-  const sessionId = crypto.randomUUID();
-  ws.send(JSON.stringify({ type: 'session_id', id: sessionId }));
-
-  // Estado del chat (similar al estado por chat de Telegram)
-  const state = {
-    provider: opts.provider || providerConfig?.getConfig()?.default || 'anthropic',
-    agent: opts.agent || null,
-    model: null,
-    history: [],
-    claudeSession: null,
-    claudeMode: 'auto',
-    cwd: process.env.HOME || '~',
-    processing: false,
-  };
-
-  // Enviar status inicial
-  sendStatus();
-
-  ws.on('message', async (raw) => {
-    try {
-      const msg = JSON.parse(raw);
-      if (msg.type !== 'chat') return;
-      if (state.processing) return;
-
-      const text = (msg.text || '').trim();
-      if (!text) return;
-
-      // Actualizar provider/agent desde el cliente si lo envía
-      if (msg.provider) state.provider = msg.provider;
-      if (msg.agent !== undefined) state.agent = msg.agent || null;
-
-      // Comandos
-      if (text.startsWith('/')) {
-        handleCommand(text);
-        return;
-      }
-
-      // Mensaje normal → enviar a ConversationService
-      await sendToAI(text);
-    } catch (err) {
-      sendJson({ type: 'chat_error', error: err.message || 'Error interno' });
-      state.processing = false;
-    }
-  });
-
-  function handleCommand(text) {
-    const parts = text.split(/\s+/);
-    const cmd = parts[0].toLowerCase();
-    const arg = parts.slice(1).join(' ').trim();
-
-    switch (cmd) {
-      case '/provider': {
-        if (!arg) {
-          const list = providersModule.list().map(p => `${p.name === state.provider ? '→ ' : '  '}${p.name} (${p.label})`).join('\n');
-          sendJson({ type: 'command_result', text: `Providers disponibles:\n${list}` });
-          return;
-        }
-        const p = providersModule.get(arg);
-        if (!p) {
-          sendJson({ type: 'command_result', text: `Provider "${arg}" no encontrado.` });
-          return;
-        }
-        state.provider = arg;
-        state.history = [];
-        sendJson({ type: 'command_result', text: `Provider cambiado a ${p.label || arg}`, provider: arg });
-        return;
-      }
-
-      case '/agente': {
-        if (!arg) {
-          const list = agents.list().map(a => `${a.key === state.agent ? '→ ' : '  '}${a.key}: ${a.description || ''}`).join('\n');
-          sendJson({ type: 'command_result', text: list || 'No hay agentes configurados.', agent: state.agent });
-          return;
-        }
-        if (arg === 'ninguno' || arg === 'none') {
-          state.agent = null;
-          sendJson({ type: 'command_result', text: 'Agente desactivado.', agent: null });
-          return;
-        }
-        const a = agents.get(arg);
-        if (!a) {
-          sendJson({ type: 'command_result', text: `Agente "${arg}" no encontrado.` });
-          return;
-        }
-        state.agent = arg;
-        sendJson({ type: 'command_result', text: `Agente activo: ${arg}`, agent: arg });
-        return;
-      }
-
-      case '/modelo':
-      case '/model': {
-        if (!arg) {
-          sendJson({ type: 'command_result', text: `Modelo actual: ${state.model || '(default del provider)'}` });
-          return;
-        }
-        state.model = arg;
-        sendJson({ type: 'command_result', text: `Modelo: ${arg}` });
-        return;
-      }
-
-      case '/cd': {
-        if (!arg) {
-          sendJson({ type: 'command_result', text: `Directorio actual: ${state.cwd}`, cwd: state.cwd });
-          return;
-        }
-        const resolved = require('path').resolve(state.cwd, arg);
-        try {
-          const stat = require('fs').statSync(resolved);
-          if (!stat.isDirectory()) {
-            sendJson({ type: 'command_result', text: `"${resolved}" no es un directorio.` });
-            return;
-          }
-          state.cwd = resolved;
-          sendJson({ type: 'command_result', text: `Directorio: ${resolved}`, cwd: resolved });
-        } catch {
-          sendJson({ type: 'command_result', text: `Directorio no encontrado: ${resolved}` });
-        }
-        return;
-      }
-
-      case '/nueva':
-      case '/reset':
-      case '/clear': {
-        state.history = [];
-        state.claudeSession = null;
-        sendJson({ type: 'command_result', text: 'Conversación reiniciada.' });
-        return;
-      }
-
-      case '/modo':
-      case '/mode': {
-        const modes = ['ask', 'auto', 'plan'];
-        if (!arg || !modes.includes(arg)) {
-          sendJson({ type: 'command_result', text: `Modo actual: ${state.claudeMode}. Opciones: ${modes.join(', ')}` });
-          return;
-        }
-        state.claudeMode = arg;
-        sendJson({ type: 'command_result', text: `Modo: ${arg}` });
-        return;
-      }
-
-      case '/estado':
-      case '/status': {
-        const info = [
-          `Provider: ${state.provider}`,
-          `Agente: ${state.agent || '(ninguno)'}`,
-          `Modelo: ${state.model || '(default)'}`,
-          `Modo: ${state.claudeMode}`,
-          `Directorio: ${state.cwd}`,
-          `Historial: ${state.history.length} mensajes`,
-        ].join('\n');
-        sendJson({ type: 'command_result', text: info });
-        return;
-      }
-
-      case '/ayuda':
-      case '/help': {
-        const help = [
-          '/provider [nombre] — cambiar provider de IA',
-          '/agente [nombre] — seleccionar agente',
-          '/modelo [nombre] — cambiar modelo',
-          '/cd [ruta] — cambiar directorio',
-          '/nueva — nueva conversación',
-          '/modo [ask|auto|plan] — modo de permisos (Claude Code)',
-          '/estado — ver estado actual',
-          '/ayuda — esta ayuda',
-        ].join('\n');
-        sendJson({ type: 'command_result', text: help });
-        return;
-      }
-
-      default:
-        sendJson({ type: 'command_result', text: `Comando desconocido: ${cmd}. Usá /ayuda.` });
-    }
-  }
-
-  async function sendToAI(text) {
-    state.processing = true;
-
-    try {
-      if (!convSvc) {
-        sendJson({ type: 'chat_error', error: 'ConversationService no disponible.' });
-        state.processing = false;
-        return;
-      }
-
-      const onChunk = (partial) => {
-        sendJson({ type: 'chat_chunk', text: partial });
-      };
-
-      const result = await convSvc.processMessage({
-        chatId: sessionId,
-        agentKey: state.agent,
-        provider: state.provider,
-        model: state.model,
-        text,
-        history: state.history,
-        claudeSession: state.claudeSession,
-        claudeMode: state.claudeMode,
-        onChunk,
-        shellId: sessionId,
-      });
-
-      // Actualizar estado con resultado
-      if (result.history) state.history = result.history;
-      if (result.newSession) state.claudeSession = result.newSession;
-
-      // Para claude-code que no devuelve history, mantener historial manual
-      if (!result.history && state.provider === 'claude-code') {
-        // Claude Code mantiene su propio historial en la session
-      } else if (!result.history) {
-        state.history.push({ role: 'user', content: text });
-        state.history.push({ role: 'assistant', content: result.text });
-      }
-
-      sendJson({ type: 'chat_done', text: result.text });
-
-      if (result.savedMemoryFiles?.length > 0) {
-        sendJson({ type: 'command_result', text: `💾 Memoria guardada: ${result.savedMemoryFiles.join(', ')}` });
-      }
-    } catch (err) {
-      logger.error('WebChat error:', err.stack || err.message);
-      sendJson({ type: 'chat_error', error: err.message || 'Error procesando mensaje' });
-    }
-
-    state.processing = false;
-  }
-
-  function sendStatus() {
-    sendJson({
-      type: 'status',
-      provider: state.provider,
-      agent: state.agent,
-      cwd: state.cwd,
-    });
-  }
-
-  function sendJson(obj) {
-    if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(obj));
-  }
-}
+// ─── WebChat Session — delegada a WebChannel (server/channels/web/WebChannel.js) ───
 
 // ─── Providers API ────────────────────────────────────────────────────────────
 
@@ -1494,7 +1524,7 @@ app.get('/api/providers', (_req, res) => {
   const cfg = providerConfig.getConfig();
   const list = providersModule.list().map(p => ({
     ...p,
-    configured: p.name === 'claude-code' ? true : !!(providerConfig.getApiKey(p.name)),
+    configured: ['claude-code', 'ollama'].includes(p.name) ? true : !!(providerConfig.getApiKey(p.name)),
     currentModel: cfg.providers?.[p.name]?.model || p.defaultModel,
   }));
   res.json({ providers: list, default: cfg.default });
