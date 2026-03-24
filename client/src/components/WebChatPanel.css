@@ -74,7 +74,7 @@
 .wc-close {
   background: none;
   border: none;
-  color: #888;
+  color: #aaa;
   font-size: 18px;
   cursor: pointer;
   padding: 0 4px;
@@ -497,7 +497,7 @@
 .wc-code-inline-copy {
   background: none;
   border: none;
-  color: #888;
+  color: #aaa;
   cursor: pointer;
   padding: 2px;
   display: flex;
@@ -637,7 +637,7 @@
   padding: 4px 8px;
 }
 .wc-media-voice-icon {
-  color: #888;
+  color: #aaa;
   flex-shrink: 0;
 }
 .wc-media-audio {

@@ -45,7 +45,7 @@
 .ap-close {
   background: none;
   border: none;
-  color: #888;
+  color: #aaa;
   font-size: 18px;
   cursor: pointer;
   padding: 0 4px;
@@ -224,7 +224,7 @@
 
 .ap-btn-ghost {
   background: transparent;
-  color: #888;
+  color: #aaa;
   border: 1px solid #444;
 }
 .ap-btn-ghost:hover:not(:disabled) { color: #ccc; border-color: #666; }
