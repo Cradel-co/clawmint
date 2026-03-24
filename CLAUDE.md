@@ -76,7 +76,11 @@ clawmint/
 │   │       ├── files.js         # Operaciones de archivos para MCP
 │   │       ├── pty.js           # Herramientas PTY para MCP
 │   │       ├── memory.js        # Gestión de memoria para MCP
-│   │       └── telegram.js      # Integración Telegram para MCP
+│   │       ├── telegram.js      # Integración Telegram para MCP
+│   │       ├── webchat.js       # Integración WebChat para MCP
+│   │       ├── critter.js       # Control remoto P2P (channel: 'p2p')
+│   │       ├── critter-status.js # Estado de critter (global, sin channel)
+│   │       └── critter-registry.js # Registry de peers P2P conectados
 │   ├── mcps.js                  # Gestión de servidores MCP externos
 │   ├── tts.js                   # Módulo TTS central
 │   ├── tts-config.js            # Configuración de proveedores TTS
@@ -148,8 +152,13 @@ pm2 save             # guardar estado para auto-arranque
 - **Persistencia de sesión Claude**: se guarda `claudeSessionId`, `messageCount`, `cwd` y `claudeMode` en SQLite. Al reiniciar el servidor, se restaura la sesión con `--resume`. Si `--resume` falla, se reintenta como nueva sesión automáticamente.
 - **Persistencia de modo de permisos**: `claudeMode` (`ask`/`auto`/`plan`) se guarda en `chat_settings` y se restaura al reconectar.
 - **TTS multi-proveedor**: configurado en `tts-config.js`/`tts-config.json`. Cada proveedor implementa `synthesize(text, opts)` → `Buffer`. Edge TTS y Piper funcionan offline.
-- **Providers IA**: 6 proveedores (Anthropic, Claude Code, Gemini, OpenAI, Grok, Ollama). Cada uno implementa `sendMessage(messages, opts)` con streaming. Se seleccionan por chat desde Telegram.
-- **MCP**: servidor MCP integrado (`mcp/index.js`) con herramientas modulares en `mcp/tools/` (bash, files, pty, memory, telegram). `mcps.js` gestiona conexiones a MCPs externos. `mcp-config.json` configura MCPs externos y `mcp-system-prompt.txt` define el system prompt para respuestas con herramientas.
+- **Providers IA**: 6 proveedores (Anthropic, Claude Code, Gemini, OpenAI, Grok, Ollama). Cada uno implementa `chat()` como async generator con streaming. Se seleccionan por chat desde Telegram o WebChat.
+  - Todos los providers SDK (Anthropic, OpenAI, Gemini, Grok, Ollama) soportan **tool calling** — reciben `executeTool` desde `ConversationService` y ejecutan herramientas MCP en loop.
+  - Ollama usa modo **non-streaming** cuando hay tools (workaround para bug de Ollama con streaming + tools). Sin tools, usa streaming normal.
+  - Ollama carga los modelos disponibles **dinámicamente** desde `/api/tags` del servidor Ollama (cache 30s). No se hardcodean modelos.
+  - Todos los providers emiten `{ type: 'usage', promptTokens, completionTokens }` antes del `done` para tracking de consumo de tokens.
+- **MCP**: servidor MCP integrado (`mcp/index.js`) con herramientas modulares en `mcp/tools/` (bash, files, pty, memory, telegram, webchat, critter). `mcps.js` gestiona conexiones a MCPs externos. `mcp-config.json` configura MCPs externos y `mcp-system-prompt.txt` define el system prompt para respuestas con herramientas.
+  - **Filtrado por channel**: cada tool puede tener un campo `channel` opcional. `getToolDefs({ channel })` filtra: sin channel → solo tools genéricas; con channel → genéricas + las de ese canal. Las tools de Telegram y WebChat son genéricas (sin `channel`), accesibles desde cualquier canal. Las tools de critter tienen `channel: 'p2p'` y solo aparecen en sesiones P2P.
 - **ConversationService**: motor unificado de conversación con IA, usado por Telegram y WebChat. Soporta streaming, agentes, memoria y múltiples proveedores.
 - **WebChat**: panel de chat web (`WebChatPanel.jsx`) conectado via WebSocket tipo `webchat`. Mismos comandos que Telegram (`/provider`, `/agente`, `/modelo`, etc.).
 - **DynamicCallbackRegistry**: registro de callbacks dinámicos con TTL para botones inline en Telegram.
@@ -218,6 +227,30 @@ POST /api/nodriza/reconnect — forzar reconexión
 ### DI (bootstrap.js)
 
 `NodrizaConnection` se instancia en `bootstrap.js` si `isEnabled()` es true y se expone como `_container.nodriza`. Se inicia en `index.js` después de que el server HTTP esté escuchando.
+
+### Critter Tools (control remoto P2P)
+
+Herramientas MCP para controlar remotamente el PC de un usuario conectado via deskcritter. Solo disponibles en sesiones P2P (`channel: 'p2p'`).
+
+| Tool | Descripción |
+|------|------------|
+| `critter_bash` | Ejecutar comando en el PC remoto (PowerShell/bash) |
+| `critter_read_file` | Leer archivo del PC remoto |
+| `critter_write_file` | Escribir archivo en el PC remoto |
+| `critter_edit_file` | Editar archivo (reemplazo de texto) |
+| `critter_list_files` | Listar directorio |
+| `critter_grep` | Buscar por patrón en archivos |
+| `critter_screenshot` | Capturar pantalla (retorna base64 PNG) |
+| `critter_clipboard_read` | Leer portapapeles |
+| `critter_clipboard_write` | Escribir al portapapeles |
+| `critter_screen_info` | Info del monitor (resolución, escala) |
+| `critter_status` | Verificar si hay critter conectado (**global**, disponible en todos los canales) |
+
+- **`mcp/tools/critter.js`** — Definición de tools con `channel: 'p2p'`.
+- **`mcp/tools/critter-registry.js`** — Singleton que gestiona peers conectados. Envía acciones via DataChannel y espera resultados con timeout (30s por defecto).
+- **`mcp/tools/critter-status.js`** — Tool global (sin `channel`) que permite a la IA verificar si hay un critter conectado desde cualquier canal.
+
+Flujo: IA invoca `critter_bash({ command })` → registry envía `{ type: 'action', tool: 'bash', args }` al peer via DataChannel → critter ejecuta y responde con `{ type: 'action_result', id, result }` → registry resuelve la promesa → IA recibe el resultado.
 
 ## Telegram: envío de imágenes y documentos
 
