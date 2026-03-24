@@ -1025,6 +1025,10 @@ function startAISessionForDataChannel(dcAdapter, peerId) {
     dcAdapter.send(JSON.stringify(data));
   }
 
+  // Registrar peer en CritterRegistry para control remoto del PC
+  const critterRegistry = require('./mcp/tools/critter-registry');
+  critterRegistry.register(peerId, send);
+
   // Crear handlers con las mismas deps que Telegram
   const cbHandler = new CallbackHandler({
     agents: container.agents,
@@ -1069,6 +1073,16 @@ function startAISessionForDataChannel(dcAdapter, peerId) {
   dcAdapter.on('message', (raw) => {
     try {
       const msg = JSON.parse(raw);
+
+      // Action results del critter
+      if (msg.type === 'action_result') {
+        critterRegistry.handleResult(peerId, msg.id, msg.result);
+        return;
+      }
+      if (msg.type === 'action_error') {
+        critterRegistry.handleError(peerId, msg.id, msg.error);
+        return;
+      }
 
       // Init
       if (msg.type === 'init' && !initialized) {
@@ -1223,6 +1237,7 @@ function startAISessionForDataChannel(dcAdapter, peerId) {
   }
 
   dcAdapter.on('close', () => {
+    critterRegistry.unregister(peerId);
     logger.info(`[nodriza] DataChannel cerrado con peer ${peerId}`);
   });
 }

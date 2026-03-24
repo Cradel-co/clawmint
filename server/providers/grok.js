@@ -9,7 +9,7 @@ module.exports = {
   defaultModel: 'grok-3-fast',
   models: ['grok-3', 'grok-3-mini', 'grok-3-fast'],
 
-  async *chat({ systemPrompt, history, apiKey, model, executeTool: execToolFn }) {
+  async *chat({ systemPrompt, history, apiKey, model, executeTool: execToolFn, channel }) {
     if (!apiKey) {
       yield { type: 'done', fullText: 'Error: API key de Grok no configurada. Configurala en el panel ⚙️.' };
       return;
@@ -17,7 +17,7 @@ module.exports = {
 
     const client = new OpenAI({ apiKey, baseURL: 'https://api.x.ai/v1' });
     const usedModel = model || this.defaultModel;
-    const toolDefs  = tools.toOpenAIFormat();
+    const toolDefs  = tools.toOpenAIFormat({ channel });
     const execTool  = execToolFn || tools.executeTool;
 
     const messages = [];

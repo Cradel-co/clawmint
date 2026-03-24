@@ -10,8 +10,8 @@ const { executeTool: mcpExecute, getToolDefs } = require('./mcp');
 
 // ── Formateadores de schema para cada provider ────────────────────────────────
 
-function toAnthropicFormat() {
-  return getToolDefs().map(t => ({
+function toAnthropicFormat(opts) {
+  return getToolDefs(opts).map(t => ({
     name:         t.name,
     description:  t.description,
     input_schema: {
@@ -26,8 +26,8 @@ function toAnthropicFormat() {
   }));
 }
 
-function toGeminiFormat() {
-  return getToolDefs().map(t => ({
+function toGeminiFormat(opts) {
+  return getToolDefs(opts).map(t => ({
     name:        t.name,
     description: t.description,
     parameters: {
@@ -42,8 +42,8 @@ function toGeminiFormat() {
   }));
 }
 
-function toOpenAIFormat() {
-  return getToolDefs().map(t => ({
+function toOpenAIFormat(opts) {
+  return getToolDefs(opts).map(t => ({
     type: 'function',
     function: {
       name:        t.name,
@@ -71,7 +71,9 @@ async function executeTool(name, args, ctx) {
   return mcpExecute(name, args, ctx);
 }
 
-// TOOLS array para retrocompatibilidad (providers que lo usen directamente)
+// TOOLS array para retrocompatibilidad (providers que lo usen directamente).
+// Nota: se resuelve en load-time sin channel, así que excluye tools con channel (ej. critter).
+// No se usa actualmente — los providers llaman toXxxFormat({ channel }) directamente.
 const TOOLS = getToolDefs();
 
 module.exports = { TOOLS, executeTool, toAnthropicFormat, toGeminiFormat, toOpenAIFormat };

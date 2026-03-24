@@ -361,7 +361,10 @@ class ConversationService {
       extraOpts.images = images;
     }
 
-    const gen = provObj.chat({ systemPrompt, history: updatedHistory, apiKey, model: useModel, executeTool: execToolFn, ...extraOpts });
+    // Detectar channel desde shellId para filtrar critter tools
+    const channel = shellId?.startsWith('p2p-') ? 'p2p' : undefined;
+
+    const gen = provObj.chat({ systemPrompt, history: updatedHistory, apiKey, model: useModel, executeTool: execToolFn, channel, ...extraOpts });
     let accumulated = '';
 
     for await (const event of gen) {

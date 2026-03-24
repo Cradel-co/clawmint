@@ -9,14 +9,14 @@ module.exports = {
   defaultModel: 'claude-opus-4-6',
   models: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
 
-  async *chat({ systemPrompt, history, apiKey, model, executeTool: execToolFn }) {
+  async *chat({ systemPrompt, history, apiKey, model, executeTool: execToolFn, channel }) {
     if (!apiKey) {
       yield { type: 'done', fullText: 'Error: API key de Anthropic no configurada. Configurala en el panel ⚙️.' };
       return;
     }
 
     const client = new Anthropic({ apiKey });
-    const toolDefs  = tools.toAnthropicFormat();
+    const toolDefs  = tools.toAnthropicFormat({ channel });
     const execTool  = execToolFn || tools.executeTool;
     const messages  = [...history];
     const usedModel = model || this.defaultModel;

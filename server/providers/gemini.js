@@ -9,7 +9,7 @@ module.exports = {
   defaultModel: 'gemini-2.5-flash',
   models: ['gemini-2.5-flash', 'gemini-2.5-pro'],
 
-  async *chat({ systemPrompt, history, apiKey, model, executeTool: execToolFn, images }) {
+  async *chat({ systemPrompt, history, apiKey, model, executeTool: execToolFn, images, channel }) {
     if (!apiKey) {
       yield { type: 'done', fullText: 'Error: API key de Gemini no configurada. Configurala en el panel ⚙️.' };
       return;
@@ -17,7 +17,7 @@ module.exports = {
 
     const ai = new GoogleGenAI({ apiKey });
     const usedModel = model || this.defaultModel;
-    const toolDefs  = tools.toGeminiFormat();
+    const toolDefs  = tools.toGeminiFormat({ channel });
     const execTool  = execToolFn || tools.executeTool;
 
     // Convertir history al formato Gemini

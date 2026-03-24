@@ -51,7 +51,8 @@
       "Bash(unzip -l piper_windows_amd64.zip)",
       "Bash(git fetch:*)",
       "Bash(git merge:*)",
-      "Bash(echo \"EXIT: $?\")"
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(echo \"EXIT:$?\")"
     ]
   }
 }

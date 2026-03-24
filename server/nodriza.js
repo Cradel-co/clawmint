@@ -21,8 +21,11 @@ class NodrizaConnection {
     this._reconnectTimer = null;
     this._intentionalClose = false;
 
-    // peerId → { pc: RTCPeerConnection, dc: DataChannel }
+    // peerId → { pc: RTCPeerConnection, dc: DataChannel, _p2pTimer }
     this._peers = new Map();
+
+    // peerId → relayAdapter (conexiones en modo relay)
+    this._relayAdapters = new Map();
 
     // Callback cuando se abre un DataChannel con un peer
     this._onPeerChannel = null;
@@ -53,7 +56,8 @@ class NodrizaConnection {
   }
 
   getConnectedPeers() {
-    return [...this._peers.keys()];
+    const peers = new Set([...this._peers.keys(), ...this._relayAdapters.keys()]);
+    return [...peers];
   }
 
   // ── Conexión a nodriza signaling ──────────────────────────────────────────
@@ -92,6 +96,13 @@ class NodrizaConnection {
       this._ws = null;
       this._authenticated = false;
       this._logger.info('[nodriza] WebSocket cerrado');
+
+      // Relay depende del WS — cerrar adapters relay si se perdió
+      for (const [, adapter] of this._relayAdapters) {
+        adapter.close();
+      }
+      this._relayAdapters.clear();
+
       // Si hay peers P2P activos, no reconectar (nodriza ya no necesaria)
       if (this._peers.size > 0) {
         this._logger.info('[nodriza] P2P activo, signaling no necesario');
@@ -144,6 +155,23 @@ class NodrizaConnection {
         this._handleIceCandidate(msg.data.fromId, msg.data.candidate);
         break;
 
+      case 'relay:activated': {
+        const peerId = msg.data.peerId;
+        this._logger.info(`[nodriza] Relay activado con ${peerId}`);
+        this._createRelayAdapter(peerId);
+        break;
+      }
+
+      case 'relay:message': {
+        const { fromId, payload } = msg.data;
+        const adapter = this._relayAdapters.get(fromId);
+        if (adapter) {
+          // Emitir el mensaje como si viniera del DataChannel
+          adapter._emitMessage(JSON.stringify(payload));
+        }
+        break;
+      }
+
       case 'error':
         this._logger.warn('[nodriza] Error:', msg.data?.message);
         break;
@@ -193,6 +221,18 @@ class NodrizaConnection {
     const dc = pc.createDataChannel('terminal');
     peerState.dc = dc;
     this._setupDataChannel(dc, peerId);
+
+    // Timeout: si el DataChannel no abre en 15s, caer a relay
+    const p2pTimeout = setTimeout(() => {
+      const peer = this._peers.get(peerId);
+      if (!peer?.dc || !peer.dc.isOpen()) {
+        this._logger.info(`[nodriza] P2P timeout para ${peerId} — solicitando relay`);
+        this._requestRelay(peerId);
+      }
+    }, 15000);
+
+    // Guardar el timer para limpiarlo si P2P abre a tiempo
+    peerState._p2pTimer = p2pTimeout;
   }
 
   _handleOffer(fromId, sdp) {
@@ -253,6 +293,15 @@ class NodrizaConnection {
   _setupDataChannel(dc, peerId) {
     dc.onOpen(() => {
       this._logger.info(`[nodriza] DataChannel abierto con ${peerId}`);
+
+      // P2P exitoso — limpiar timeout y notificar a nodriza
+      const peerData = this._peers.get(peerId);
+      if (peerData?._p2pTimer) {
+        clearTimeout(peerData._p2pTimer);
+        delete peerData._p2pTimer;
+      }
+      this._send({ event: 'p2p:established' });
+
       if (this._onPeerChannel) {
         const adapter = this._createDCAdapter(dc, peerId);
         this._onPeerChannel(adapter, peerId);
@@ -311,6 +360,63 @@ class NodrizaConnection {
     return adapter;
   }
 
+  // ── Relay fallback ──────────────────────────────────────────────────────
+
+  _requestRelay(peerId) {
+    // Cerrar el intento P2P fallido
+    const peer = this._peers.get(peerId);
+    if (peer) {
+      if (peer._p2pTimer) clearTimeout(peer._p2pTimer);
+      if (peer.dc) try { peer.dc.close(); } catch {}
+      if (peer.pc) try { peer.pc.close(); } catch {}
+      this._peers.delete(peerId);
+    }
+
+    // Pedir relay a nodriza
+    this._send({ event: 'p2p:failed' });
+  }
+
+  _createRelayAdapter(peerId) {
+    const self = this;
+    const handlers = { message: [], close: [] };
+
+    const relayAdapter = {
+      readyState: 1, // OPEN (compatible con dcAdapter)
+      OPEN: 1,
+      _peerId: peerId,
+
+      send(data) {
+        // Enviar vía nodriza WS como relay
+        self._send({
+          event: 'relay',
+          data: { targetId: peerId, payload: JSON.parse(data) },
+        });
+      },
+
+      on(event, handler) {
+        if (handlers[event]) handlers[event].push(handler);
+      },
+
+      close() {
+        relayAdapter.readyState = 3; // CLOSED
+        for (const h of handlers.close) h();
+        self._relayAdapters.delete(peerId);
+      },
+
+      // Método interno para inyectar mensajes recibidos
+      _emitMessage(data) {
+        for (const h of handlers.message) h(data);
+      },
+    };
+
+    this._relayAdapters.set(peerId, relayAdapter);
+
+    // Invocar el mismo callback que se usa para DataChannel P2P
+    if (this._onPeerChannel) {
+      this._onPeerChannel(relayAdapter, peerId);
+    }
+  }
+
   // ── Cleanup ───────────────────────────────────────────────────────────────
 
   /** Cerrar signaling WS sin disparar reconexión (P2P ya establecido) */
@@ -328,17 +434,29 @@ class NodrizaConnection {
 
   _closePeer(peerId) {
     const peerState = this._peers.get(peerId);
-    if (!peerState) return;
+    if (peerState) {
+      if (peerState._p2pTimer) clearTimeout(peerState._p2pTimer);
+      try { if (peerState.dc) peerState.dc.close(); } catch {}
+      try { peerState.pc.close(); } catch {}
+      this._peers.delete(peerId);
+    }
 
-    try { if (peerState.dc) peerState.dc.close(); } catch {}
-    try { peerState.pc.close(); } catch {}
-    this._peers.delete(peerId);
+    // Cerrar relay adapter si existe para este peer
+    const relayAdapter = this._relayAdapters.get(peerId);
+    if (relayAdapter) {
+      relayAdapter.close();
+    }
   }
 
   _closePeers() {
     for (const peerId of [...this._peers.keys()]) {
       this._closePeer(peerId);
     }
+    // Cerrar también las conexiones relay
+    for (const [, adapter] of this._relayAdapters) {
+      adapter.close();
+    }
+    this._relayAdapters.clear();
   }
 
   // ── Utils ─────────────────────────────────────────────────────────────────
