@@ -6,11 +6,34 @@ const tools  = require('../tools');
 
 const DEFAULT_BASE_URL = 'http://100.64.0.5:11434';
 
-// Modelos con soporte de visión
-const VISION_MODELS = ['minicpm-v', 'llava', 'llava:13b', 'llava:34b'];
+// Modelos con soporte de visión (prefijos, se matchean sin tag)
+const VISION_PREFIXES = ['minicpm-v', 'llava', 'llava-llama3', 'bakllava'];
+
+// Cache de modelos disponibles
+let cachedModels = null;
+let cacheExpiry = 0;
 
 function getBaseUrl() {
   return process.env.OLLAMA_URL || DEFAULT_BASE_URL;
+}
+
+function isVisionModel(model) {
+  const name = model.split(':')[0];
+  return VISION_PREFIXES.some(p => name === p || name.startsWith(p));
+}
+
+async function fetchAvailableModels() {
+  if (cachedModels && Date.now() < cacheExpiry) return cachedModels;
+  try {
+    const res = await fetch(`${getBaseUrl()}/api/tags`);
+    if (!res.ok) return cachedModels || [];
+    const data = await res.json();
+    cachedModels = (data.models || []).map(m => m.name);
+    cacheExpiry = Date.now() + 30000; // cache 30s
+    return cachedModels;
+  } catch {
+    return cachedModels || [];
+  }
 }
 
 /**
@@ -42,18 +65,27 @@ function ollamaNativeChat(baseUrl, model, messages) {
 module.exports = {
   name: 'ollama',
   label: 'Ollama (local)',
-  defaultModel: 'qwen2.5',
-  models: ['qwen2.5', 'minicpm-v', 'llama3.2', 'llama3.1', 'mistral', 'codellama', 'deepseek-coder'],
+  defaultModel: 'qwen2.5:7b',
+  models: [], // se llena dinámicamente con fetchModels()
+
+  async fetchModels() {
+    const models = await fetchAvailableModels();
+    this.models = models.length ? models : ['qwen2.5:7b'];
+    return this.models;
+  },
 
   async *chat({ systemPrompt, history, model, images, executeTool: execToolFn, channel }) {
     const baseUrl   = getBaseUrl();
+    // Cargar modelos disponibles si no hay
+    if (!this.models.length) await this.fetchModels();
     const usedModel = model || this.defaultModel;
     const hasImages = images && images.length > 0;
 
     // Si hay imágenes, usar la API nativa de Ollama (no la compatible con OpenAI)
     // El path de visión no soporta tools (API nativa no los maneja)
     if (hasImages) {
-      const visionModel = VISION_MODELS.includes(usedModel) ? usedModel : 'minicpm-v';
+      const visionModel = isVisionModel(usedModel) ? usedModel
+        : this.models.find(m => isVisionModel(m)) || 'minicpm-v:latest';
       const messages = [];
       if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
 
@@ -206,6 +238,8 @@ module.exports = {
       content: prompt,
       images: resized,
     }];
-    return ollamaNativeChat(baseUrl, 'minicpm-v', messages);
+    const models = await fetchAvailableModels();
+    const visionModel = models.find(m => isVisionModel(m)) || 'minicpm-v:latest';
+    return ollamaNativeChat(baseUrl, visionModel, messages);
   },
 };
