@@ -555,7 +555,14 @@ export default function WebChatPanel({ onClose }) {
           <select
             className="wc-select"
             value={provider}
-            onChange={e => setProvider(e.target.value)}
+            onChange={e => {
+              const val = e.target.value;
+              setProvider(val);
+              const ws = wsRef.current;
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'chat:settings', provider: val }));
+              }
+            }}
           >
             {providers.filter(p => p.configured).map(p => (
               <option key={p.name} value={p.name}>{p.label || p.name}</option>
@@ -564,7 +571,14 @@ export default function WebChatPanel({ onClose }) {
           <select
             className="wc-select"
             value={agent || ''}
-            onChange={e => setAgent(e.target.value || null)}
+            onChange={e => {
+              const val = e.target.value || null;
+              setAgent(val);
+              const ws = wsRef.current;
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'chat:settings', agent: val }));
+              }
+            }}
           >
             <option value="">Sin agente</option>
             {agentsList.map(a => (
