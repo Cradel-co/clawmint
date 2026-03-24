@@ -1263,9 +1263,10 @@ function startAISession(ws, opts) {
 // ─── Providers API ────────────────────────────────────────────────────────────
 
 // GET /api/providers — lista providers con label, models, si está configurado
-app.get('/api/providers', (_req, res) => {
+app.get('/api/providers', async (_req, res) => {
   const cfg = providerConfig.getConfig();
-  const list = providersModule.list().map(p => ({
+  const providers = await providersModule.listAsync();
+  const list = providers.map(p => ({
     ...p,
     configured: ['claude-code', 'ollama'].includes(p.name) ? true : !!(providerConfig.getApiKey(p.name)),
     currentModel: cfg.providers?.[p.name]?.model || p.defaultModel,

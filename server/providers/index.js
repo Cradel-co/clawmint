@@ -18,6 +18,13 @@ module.exports = {
       defaultModel: p.defaultModel,
     }));
   },
+  async listAsync() {
+    const ollama = providers['ollama'];
+    if (ollama && typeof ollama.fetchModels === 'function') {
+      await ollama.fetchModels();
+    }
+    return this.list();
+  },
   get(name) {
     return providers[name] || providers['anthropic'];
   },
