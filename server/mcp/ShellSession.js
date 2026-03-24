@@ -122,6 +122,9 @@ class ShellSession {
     if (this._destroyed) return;
     this._destroyed = true;
     if (this._idleTimer) { clearTimeout(this._idleTimer); this._idleTimer = null; }
+    try { this._proc.removeAllListeners(); } catch {}
+    if (this._proc.stdout) try { this._proc.stdout.removeAllListeners(); } catch {}
+    if (this._proc.stderr) try { this._proc.stderr.removeAllListeners(); } catch {}
     try { this._proc.kill('SIGTERM'); } catch {}
   }
 }

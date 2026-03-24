@@ -78,13 +78,14 @@ class ConversationService {
       '## Herramientas disponibles',
       '',
       '- **bash**: Ejecutar comandos shell. Usar session_id para aislar conversaciones.',
+      '- **git**: Operaciones git seguras. Params: action (status|diff|log|add|commit|push|pull|branch|checkout|stash|blame|show), message?, files?, branch?, ref?, count?.',
       '- **read_file**: Leer archivo (límite 50KB).',
       '- **write_file**: Crear o sobreescribir archivo completo.',
       '- **edit_file**: Editar archivo con buscar/reemplazar (preferir sobre write_file para cambios parciales). Params: path, old_string, new_string, replace_all?.',
       '- **list_dir / search_files**: Navegar filesystem.',
-      '- **pty_create**: Crear terminal interactiva persistente (para ssh, vim, htop, etc.). Retorna session_id.',
-      '- **pty_write**: Enviar input a una sesión PTY. Params: session_id, input.',
-      '- **pty_read**: Leer output de una sesión PTY. Params: session_id, since?.',
+      '- **pty_create**: Crear terminal interactiva persistente. Retorna session_id.',
+      '- **pty_exec**: Ejecutar comando en PTY y esperar resultado (como bash pero en sesión persistente). Params: session_id, command, timeout_ms?, stable_ms?.',
+      '- **pty_write / pty_read**: Para interacción manual con PTY (ssh, vim). write envía input, read lee output.',
       '- **memory_list / memory_read / memory_write / memory_append / memory_delete**: Memoria persistente del agente.',
     ];
 

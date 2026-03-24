@@ -586,6 +586,17 @@ function initDB() {
     db.pragma('foreign_keys = ON');
     db.exec(DB_SCHEMA);
 
+    // Índices para performance
+    try {
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_notes_agent ON notes(agent_key);
+        CREATE INDEX IF NOT EXISTS idx_queue_status ON consolidation_queue(status);
+        CREATE INDEX IF NOT EXISTS idx_note_links_from ON note_links(from_id);
+        CREATE INDEX IF NOT EXISTS idx_note_links_to ON note_links(to_id);
+        CREATE INDEX IF NOT EXISTS idx_embeddings_note ON note_embeddings(note_id);
+      `);
+    } catch (e) { console.error('[Memory] Error creando índices:', e.message); }
+
     // Crear defaults.json si no existe (primera vez)
     const defaultsPath = path.join(MEMORY_DIR, 'defaults.json');
     if (!fs.existsSync(defaultsPath)) {

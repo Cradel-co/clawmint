@@ -60,4 +60,38 @@ const PTY_READ = {
   },
 };
 
-module.exports = [PTY_CREATE, PTY_WRITE, PTY_READ];
+const PTY_EXEC = {
+  name: 'pty_exec',
+  description: 'Ejecuta un comando en una sesión PTY y espera a que el output se estabilice antes de retornar. Ideal para comandos que producen output (ls, npm test, cat, etc.). Para comandos interactivos que piden input (ssh, vim), usá pty_write + pty_read.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      session_id: { type: 'string', description: 'ID de la sesión PTY (obtenido de pty_create)' },
+      command:    { type: 'string', description: 'Comando a ejecutar' },
+      timeout_ms: { type: 'string', description: 'Tiempo máximo de espera en ms (default: 30000)' },
+      stable_ms:  { type: 'string', description: 'Ms sin output nuevo para considerar "listo" (default: 2000)' },
+    },
+    required: ['session_id', 'command'],
+  },
+
+  async execute({ session_id, command, timeout_ms, stable_ms } = {}, ctx = {}) {
+    if (!session_id) return 'Error: parámetro session_id requerido';
+    if (!command)    return 'Error: parámetro command requerido';
+    const sm = ctx.sessionManager;
+    if (!sm) return 'Error: sessionManager no disponible en este contexto';
+    const session = sm.get(session_id);
+    if (!session) return `Error: sesión no encontrada: ${session_id}`;
+
+    try {
+      const result = await session.sendMessage(command, {
+        timeout: parseInt(timeout_ms, 10) || 30000,
+        stableMs: parseInt(stable_ms, 10) || 2000,
+      });
+      return result.response || result.raw || '(sin output)';
+    } catch (err) {
+      return `Error: ${err.message}`;
+    }
+  },
+};
+
+module.exports = [PTY_CREATE, PTY_EXEC, PTY_WRITE, PTY_READ];

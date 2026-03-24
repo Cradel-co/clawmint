@@ -13,6 +13,7 @@ class Logger {
     this._configFile = configFile || path.join(__dirname, '..', 'logs.json');
     if (!fs.existsSync(this._configFile)) this._saveConfig({ enabled: true });
     this._logConfig = this._loadConfig();
+    this._logCount = 0;
   }
 
   _loadConfig() {
@@ -27,6 +28,18 @@ class Logger {
     try { fs.writeFileSync(this._configFile, JSON.stringify(cfg, null, 2), 'utf8'); } catch {}
   }
 
+  _rotate() {
+    try {
+      const stat = fs.statSync(this._logFile);
+      if (stat.size < 50 * 1024 * 1024) return; // < 50MB
+      const rotated1 = this._logFile + '.1';
+      const rotated2 = this._logFile + '.2';
+      try { fs.unlinkSync(rotated2); } catch {}
+      try { fs.renameSync(rotated1, rotated2); } catch {}
+      fs.renameSync(this._logFile, rotated1);
+    } catch {}
+  }
+
   _log(level, ...args) {
     this._logConfig = this._loadConfig(); // hot-reload
     const isError = level.trim() === 'ERROR';
@@ -34,7 +47,10 @@ class Logger {
     const ts   = new Date().toISOString();
     const line = `[${ts}] [${level}] ${args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')}\n`;
     process.stdout.write(line);
-    try { fs.appendFileSync(this._logFile, line); } catch {}
+    try {
+      if (++this._logCount % 1000 === 0) this._rotate();
+      fs.appendFileSync(this._logFile, line);
+    } catch {}
   }
 
   info(...a)  { this._log('INFO ', ...a); }
