@@ -22,6 +22,7 @@ module.exports = {
     const usedModel = model || this.defaultModel;
 
     let fullText = '';
+    let totalPromptTokens = 0, totalCompletionTokens = 0;
 
     while (true) {
       let response;
@@ -37,6 +38,9 @@ module.exports = {
         yield { type: 'done', fullText: `Error Anthropic: ${err.message}` };
         return;
       }
+
+      const u = response.usage;
+      if (u) { totalPromptTokens += u.input_tokens || 0; totalCompletionTokens += u.output_tokens || 0; }
 
       // Acumular texto de los content blocks
       let assistantText = '';
@@ -56,6 +60,7 @@ module.exports = {
       }
 
       if (toolUses.length === 0 || response.stop_reason === 'end_turn') {
+        yield { type: 'usage', promptTokens: totalPromptTokens, completionTokens: totalCompletionTokens };
         yield { type: 'done', fullText };
         return;
       }

@@ -37,6 +37,7 @@ module.exports = {
     if (systemPrompt) config.systemInstruction = systemPrompt;
 
     let fullText = '';
+    let totalPromptTokens = 0, totalCompletionTokens = 0;
     // Construir parts del último mensaje con imágenes si las hay
     const lastParts = [];
     if (images && images.length > 0) {
@@ -66,6 +67,8 @@ module.exports = {
       }
 
       const candidate = response.candidates?.[0];
+      const um = response.usageMetadata;
+      if (um) { totalPromptTokens += um.promptTokenCount || 0; totalCompletionTokens += um.candidatesTokenCount || 0; }
       const parts = candidate?.content?.parts || [];
 
       let assistantText = '';
@@ -85,6 +88,7 @@ module.exports = {
       }
 
       if (functionCalls.length === 0) {
+        yield { type: 'usage', promptTokens: totalPromptTokens, completionTokens: totalCompletionTokens };
         yield { type: 'done', fullText };
         return;
       }

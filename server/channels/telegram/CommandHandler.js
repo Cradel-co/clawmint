@@ -149,6 +149,8 @@ class CommandHandler {
             [[{ text: '🤖 Menú', callback_data: 'menu' }]]
           );
         } else {
+          chat.aiHistory = [];
+          chat.usage = null;
           const s = await bot.getOrCreateSession(chatId, chat, true);
           await bot.sendWithButtons(chatId,
             `✅ Nueva sesión *${s.title}* creada (\`${s.id.slice(0,8)}…\`)`,
@@ -251,18 +253,46 @@ class CommandHandler {
       // ── Costo ─────────────────────────────────────────────────────────────
       case 'costo':
       case 'cost': {
-        if (!bot._isClaudeBased() || !chat.claudeSession) {
-          await bot.sendText(chatId, '❌ Sin sesión Claude activa.');
-          return;
+        // Claude Code: usa tracking interno del CLI
+        if (bot._isClaudeBased(chat.provider) && chat.claudeSession) {
+          const cs = chat.claudeSession;
+          const total  = cs.totalCostUsd.toFixed(4);
+          const ultimo = cs.lastCostUsd.toFixed(4);
+          await bot.sendText(chatId,
+            `💰 *Costo de sesión (Claude Code)*\n\n` +
+            `Último mensaje: $${ultimo} USD\n` +
+            `Total sesión: $${total} USD\n` +
+            `Mensajes: ${cs.messageCount}`
+          );
+          break;
         }
-        const cs = chat.claudeSession;
-        const total  = cs.totalCostUsd.toFixed(4);
-        const ultimo = cs.lastCostUsd.toFixed(4);
+        // Providers API: usar usage acumulado
+        const u = chat.usage;
+        if (!u || u.messageCount === 0) {
+          await bot.sendText(chatId, '📊 Sin datos de uso todavía. Enviá un mensaje primero.');
+          break;
+        }
+        // Precios por 1M tokens (USD) — aproximados
+        const PRICES = {
+          gemini:    { input: 0.15,  output: 0.60, label: 'Gemini' },
+          anthropic: { input: 3.00,  output: 15.00, label: 'Anthropic' },
+          openai:    { input: 2.50,  output: 10.00, label: 'OpenAI' },
+          grok:      { input: 5.00,  output: 15.00, label: 'Grok' },
+          ollama:    { input: 0,     output: 0,     label: 'Ollama (local)' },
+        };
+        const p = PRICES[chat.provider] || { input: 0, output: 0, label: chat.provider };
+        const costInput  = (u.promptTokens / 1_000_000) * p.input;
+        const costOutput = (u.completionTokens / 1_000_000) * p.output;
+        const costTotal  = costInput + costOutput;
         await bot.sendText(chatId,
-          `💰 *Costo de sesión*\n\n` +
-          `Último mensaje: $${ultimo} USD\n` +
-          `Total sesión: $${total} USD\n` +
-          `Mensajes: ${cs.messageCount}`
+          `💰 *Costo estimado (${p.label})*\n\n` +
+          `Tokens entrada: ${u.promptTokens.toLocaleString()}\n` +
+          `Tokens salida: ${u.completionTokens.toLocaleString()}\n` +
+          `Costo entrada: ~$${costInput.toFixed(4)} USD\n` +
+          `Costo salida: ~$${costOutput.toFixed(4)} USD\n` +
+          `*Total: ~$${costTotal.toFixed(4)} USD*\n` +
+          `Mensajes: ${u.messageCount}\n\n` +
+          `_Usar /nueva para resetear contadores._`
         );
         break;
       }
@@ -749,16 +779,12 @@ class CommandHandler {
       // ── Modo / Provider ───────────────────────────────────────────────────
       case 'modo':
       case 'mode': {
-        if (!bot._isClaudeBased(chat.provider)) {
-          await bot.sendText(chatId, '❌ Solo disponible con Claude Code.');
-          break;
-        }
         if (args.length === 0) {
           const current = chat.claudeMode || 'auto';
           await bot.sendWithButtons(chatId,
             `🔐 *Modo de permisos actual*: \`${current}\`\n\n` +
-            `• \`ask\` — describe herramientas sin ejecutarlas (por defecto)\n` +
-            `• \`auto\` — ejecuta todo sin pedir (rápido, puede ser peligroso)\n` +
+            `• \`ask\` — pide permiso antes de cada herramienta\n` +
+            `• \`auto\` — ejecuta todo sin pedir (rápido)\n` +
             `• \`plan\` — solo planifica, no ejecuta nada`,
             [[
               { text: current === 'ask'  ? '✅ ask'  : 'ask',   callback_data: 'claudemode:ask'  },

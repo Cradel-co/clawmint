@@ -97,4 +97,54 @@ const SEARCH_FILES = {
   },
 };
 
-module.exports = [READ_FILE, WRITE_FILE, LIST_DIR, SEARCH_FILES];
+const EDIT_FILE = {
+  name: 'edit_file',
+  description: 'Edita un archivo reemplazando texto exacto. Más seguro que write_file para cambios parciales.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      path:        { type: 'string', description: 'Ruta del archivo a editar' },
+      old_string:  { type: 'string', description: 'Texto exacto a buscar en el archivo' },
+      new_string:  { type: 'string', description: 'Texto de reemplazo' },
+      replace_all: { type: 'string', description: 'Si es "true", reemplaza todas las ocurrencias. Default: solo la primera (debe ser única).' },
+    },
+    required: ['path', 'old_string', 'new_string'],
+  },
+
+  execute({ path: filePath, old_string, new_string, replace_all } = {}) {
+    if (!filePath)                return 'Error: parámetro path requerido';
+    if (old_string === undefined) return 'Error: parámetro old_string requerido';
+    if (new_string === undefined) return 'Error: parámetro new_string requerido';
+
+    const resolved = path.resolve(DEFAULT_CWD, filePath);
+    if (!fs.existsSync(resolved)) return `Error: archivo no encontrado: ${resolved}`;
+
+    const content = fs.readFileSync(resolved, 'utf8');
+
+    if (!content.includes(old_string)) {
+      return `Error: old_string no encontrado en ${resolved}. Verificá que el texto sea exacto (incluyendo espacios e indentación).`;
+    }
+
+    const doAll = replace_all === 'true' || replace_all === true;
+
+    if (!doAll) {
+      // Verificar unicidad
+      const firstIdx = content.indexOf(old_string);
+      const secondIdx = content.indexOf(old_string, firstIdx + 1);
+      if (secondIdx !== -1) {
+        const count = content.split(old_string).length - 1;
+        return `Error: old_string aparece ${count} veces en el archivo. Usá replace_all:"true" o proporcioná más contexto para que sea único.`;
+      }
+    }
+
+    const updated = doAll
+      ? content.split(old_string).join(new_string)
+      : content.replace(old_string, new_string);
+
+    fs.writeFileSync(resolved, updated, 'utf8');
+    const replacements = doAll ? content.split(old_string).length - 1 : 1;
+    return `OK: ${replacements} reemplazo(s) en ${resolved}`;
+  },
+};
+
+module.exports = [READ_FILE, WRITE_FILE, EDIT_FILE, LIST_DIR, SEARCH_FILES];

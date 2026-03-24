@@ -11,6 +11,7 @@ const ConsoleSession       = require('../../core/ConsoleSession');
 const CommandHandler       = require('./CommandHandler');
 const CallbackHandler      = require('./CallbackHandler');
 const PendingActionHandler = require('./PendingActionHandler');
+const dynamicRegistry      = require('./DynamicCallbackRegistry');
 const parseButtons         = require('../parseButtons');
 
 const TELEGRAM_HOST = 'api.telegram.org';
@@ -365,6 +366,10 @@ class TelegramBot {
   async start() {
     if (this.running) return { username: this.botInfo?.username };
     this.running = true;
+
+    // Limpiar webhook residual para evitar updates duplicados
+    try { await this._apiCall('deleteWebhook', { drop_pending_updates: false }); }
+    catch (e) { console.error(`[Telegram] deleteWebhook falló: ${e.message}`); }
 
     const me = await this._apiCall('getMe');
     this.botInfo = { id: me.id, username: me.username, firstName: me.first_name };
@@ -777,11 +782,17 @@ class TelegramBot {
           } else {
             await this._apiCall('editMessageText', { chat_id: chatId, message_id: sentMsg.message_id, text: chunks[0] });
           }
-        } catch (e) { tdbg('result', `editMsg FAIL: ${e.message}`); await this.sendText(chatId, chunks[0]); }
+        } catch (e) {
+          tdbg('result', `editMsg FAIL: ${e.message}`);
+          if (!e.message?.includes('message is not modified')) await this.sendText(chatId, chunks[0]);
+        }
       } else {
         try {
           await this._apiCall('editMessageText', { chat_id: chatId, message_id: sentMsg.message_id, text: chunks[0] });
-        } catch (e) { tdbg('result', `editMsg FAIL: ${e.message}`); await this.sendText(chatId, chunks[0]); }
+        } catch (e) {
+          tdbg('result', `editMsg FAIL: ${e.message}`);
+          if (!e.message?.includes('message is not modified')) await this.sendText(chatId, chunks[0]);
+        }
         for (let i = 1; i < lastIdx; i++) await this.sendText(chatId, chunks[i]);
         // Último chunk: con botones si hay
         if (buttons) {
@@ -851,7 +862,7 @@ class TelegramBot {
     // ── Ruta ConversationService: claude-code y providers API ────────────────
     tdbg('send', `→ ruta ConvSvc`);
     const mode = chat.claudeMode || 'auto';
-    const isMcpMode = chatProvider === 'claude-code' && mode === 'auto';
+    const isMcpMode = mode === 'auto';
     tdbg('send', `mode=${mode} model=${chat.model} isMcpMode=${isMcpMode} hasClaudeSession=${!!chat.claudeSession} msgCount=${chat.claudeSession?.messageCount || 0}`);
     // Reutilizar mensaje de status existente (ej: transcripción de audio) o crear animación nueva
     let sentMsg, stopAnim;
@@ -919,7 +930,39 @@ class TelegramBot {
         tdbg('send', `injected saved notes: ${chat._savedInSession.join(', ')}`);
       }
 
-      tdbg('send', `→ convSvc.processMessage() provider=${chatProvider} agent=${agentKey} textLen=${messageText.length}`);
+      // Callback de aprobación para modo ask (providers API)
+      const onAskPermission = mode === 'ask' && chatProvider !== 'claude-code'
+        ? async (toolName, toolArgs) => {
+            return new Promise((resolve) => {
+              const ts = Date.now();
+              const approveId = `ask:${ts}:y`;
+              const rejectId  = `ask:${ts}:n`;
+              const timeout = setTimeout(() => {
+                dynamicRegistry.remove(approveId);
+                dynamicRegistry.remove(rejectId);
+                resolve(false);
+              }, 60000);
+              dynamicRegistry.register(approveId, {
+                type: 'func', fn: () => { clearTimeout(timeout); resolve(true); },
+                once: true, ttl: 60000,
+              });
+              dynamicRegistry.register(rejectId, {
+                type: 'func', fn: () => { clearTimeout(timeout); resolve(false); },
+                once: true, ttl: 60000,
+              });
+              const preview = JSON.stringify(toolArgs || {}).slice(0, 300);
+              this.sendWithButtons(chatId,
+                `🔧 *${toolName}*\n\`\`\`\n${preview}\n\`\`\`\n¿Permitir?`,
+                [[
+                  { text: '✅ Permitir', callback_data: approveId },
+                  { text: '❌ Rechazar', callback_data: rejectId },
+                ]]
+              ).catch(() => { clearTimeout(timeout); resolve(false); });
+            });
+          }
+        : null;
+
+      tdbg('send', `→ convSvc.processMessage() provider=${chatProvider} agent=${agentKey} textLen=${messageText.length} mode=${mode}`);
       const t0 = Date.now();
       const result = await this._convSvc.processMessage({
         chatId,
@@ -933,11 +976,20 @@ class TelegramBot {
         claudeMode:    mode,
         onChunk,
         onStatus,
+        onAskPermission,
         shellId:       String(chatId),
         botKey:        this.key,
         channel:       'telegram',
       });
       tdbg('send', `← convSvc.processMessage() ${Date.now() - t0}ms chunks=${chunkCount} resultText=${(result.text || '').length} chars usedMcpTools=${result.usedMcpTools} newSession=${!!result.newSession} savedFiles=${result.savedMemoryFiles?.length || 0}`);
+
+      // Acumular usage de providers API
+      if (result.usage) {
+        if (!chat.usage) chat.usage = { promptTokens: 0, completionTokens: 0, messageCount: 0 };
+        chat.usage.promptTokens += result.usage.promptTokens || 0;
+        chat.usage.completionTokens += result.usage.completionTokens || 0;
+        chat.usage.messageCount++;
+      }
 
       stopAnim();
 
@@ -981,8 +1033,8 @@ class TelegramBot {
         tdbg('send', `← _sendResult() OK`);
       }
 
-      // TTS: enviar audio si está habilitado (solo en modo normal)
-      if (!isMcpMode && this._tts && this._tts.isEnabled() && result.text) {
+      // TTS: enviar audio si está habilitado
+      if (this._tts && this._tts.isEnabled() && result.text) {
         try {
           const audioBuffer = await this._tts.synthesize(result.text);
           if (audioBuffer) await this.sendVoice(chatId, audioBuffer);

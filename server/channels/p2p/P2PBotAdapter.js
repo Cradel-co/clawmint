@@ -99,7 +99,11 @@ class P2PBotAdapter {
     const convSvc = this._container.convSvc;
     let lastChunkSent = '';
 
-    const onChunk = (accumulated) => {
+    const mode = chat.claudeMode || 'auto';
+    const isMcpMode = mode === 'auto';
+    const provider = chat.provider || 'claude-code';
+
+    const onChunk = isMcpMode ? null : (accumulated) => {
       const delta = accumulated.slice(lastChunkSent.length);
       if (delta) {
         this._send({ type: 'output', data: delta });
@@ -107,18 +111,57 @@ class P2PBotAdapter {
       }
     };
 
+    const onStatus = isMcpMode ? (status, detail) => {
+      this._send({ type: 'status', data: { status, detail } });
+    } : null;
+
+    // Callback de aprobación para modo ask (providers API)
+    const dynamicRegistry = require('../telegram/DynamicCallbackRegistry');
+    const onAskPermission = mode === 'ask' && provider !== 'claude-code'
+      ? async (toolName, toolArgs) => {
+          return new Promise((resolve) => {
+            const ts = Date.now();
+            const approveId = `ask:${ts}:y`;
+            const rejectId  = `ask:${ts}:n`;
+            const timeout = setTimeout(() => {
+              dynamicRegistry.remove(approveId);
+              dynamicRegistry.remove(rejectId);
+              resolve(false);
+            }, 60000);
+            dynamicRegistry.register(approveId, {
+              type: 'func', fn: () => { clearTimeout(timeout); resolve(true); },
+              once: true, ttl: 60000,
+            });
+            dynamicRegistry.register(rejectId, {
+              type: 'func', fn: () => { clearTimeout(timeout); resolve(false); },
+              once: true, ttl: 60000,
+            });
+            const preview = JSON.stringify(toolArgs || {}).slice(0, 300);
+            this.sendWithButtons(chatId,
+              `🔧 ${toolName}\n${preview}\n¿Permitir?`,
+              [[
+                { text: '✅ Permitir', callback_data: approveId },
+                { text: '❌ Rechazar', callback_data: rejectId },
+              ]]
+            );
+          });
+        }
+      : null;
+
     try {
       chat.busy = true;
       const result = await convSvc.processMessage({
         chatId,
         agentKey: this.defaultAgent,
-        provider: chat.provider || 'claude-code',
+        provider,
         model: chat.model || null,
         text,
         history: chat.aiHistory || [],
         claudeSession: chat.claudeSession,
-        claudeMode: chat.claudeMode || 'auto',
+        claudeMode: mode,
         onChunk,
+        onStatus,
+        onAskPermission,
         shellId: `p2p-${chatId}`,
       });
 

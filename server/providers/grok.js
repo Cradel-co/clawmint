@@ -29,6 +29,7 @@ module.exports = {
     }
 
     let fullText = '';
+    let totalPromptTokens = 0, totalCompletionTokens = 0;
 
     while (true) {
       let response;
@@ -44,10 +45,14 @@ module.exports = {
         return;
       }
 
+      const u = response.usage;
+      if (u) { totalPromptTokens += u.prompt_tokens || 0; totalCompletionTokens += u.completion_tokens || 0; }
+
       const choice = response.choices?.[0];
       const msg = choice?.message;
 
       if (!msg) {
+        yield { type: 'usage', promptTokens: totalPromptTokens, completionTokens: totalCompletionTokens };
         yield { type: 'done', fullText };
         return;
       }
@@ -60,6 +65,7 @@ module.exports = {
       const toolCalls = msg.tool_calls || [];
 
       if (toolCalls.length === 0 || choice.finish_reason === 'stop') {
+        yield { type: 'usage', promptTokens: totalPromptTokens, completionTokens: totalCompletionTokens };
         yield { type: 'done', fullText };
         return;
       }
