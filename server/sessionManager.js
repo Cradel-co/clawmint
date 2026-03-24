@@ -6,6 +6,8 @@ const crypto = require('crypto');
 
 const DEFAULT_SHELL = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
 const MAX_BUFFER = 5000;
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutos
+const PRUNE_INTERVAL_MS = 5 * 60 * 1000; // cada 5 minutos
 
 function stripAnsi(str) {
   return str
@@ -23,6 +25,7 @@ class PtySession {
     this.type = type;
     this.title = command || DEFAULT_SHELL;
     this.createdAt = Date.now();
+    this.lastAccessAt = Date.now();
     this.active = true;
 
     this._outputBuffer = []; // { ts, data }[]
@@ -51,6 +54,7 @@ class PtySession {
     });
 
     this._pty.onData((data) => {
+      this.lastAccessAt = Date.now();
       const entry = { ts: Date.now(), data };
       this._outputBuffer.push(entry);
       if (this._outputBuffer.length > MAX_BUFFER) this._outputBuffer.shift();
@@ -70,6 +74,7 @@ class PtySession {
 
   /** Escribe texto raw al PTY */
   input(text) {
+    this.lastAccessAt = Date.now();
     if (this._pty && this.active) this._pty.write(text);
   }
 
@@ -99,6 +104,7 @@ class PtySession {
    * @param {{ timeout?: number, stableMs?: number }} opts
    */
   sendMessage(text, { timeout = 1080000, stableMs = 1500 } = {}) {
+    this.lastAccessAt = Date.now();
     return new Promise((resolve) => {
       const accumulated = [];
       let stableTimer = null;
@@ -152,6 +158,7 @@ class PtySession {
    * @param {number} ts  — timestamp en ms (0 = todo el historial)
    */
   getOutputSince(ts = 0) {
+    this.lastAccessAt = Date.now();
     return this._outputBuffer
       .filter(e => e.ts >= ts)
       .map(e => e.data)
@@ -166,6 +173,7 @@ class PtySession {
       this._pty = null;
     }
     this._outputListeners.clear();
+    this._outputBuffer.length = 0;
   }
 
   toJSON() {
@@ -182,6 +190,19 @@ class PtySession {
 // ─── Manager ─────────────────────────────────────────────────────────────────
 
 const sessions = new Map();
+
+// Cleanup automático de sesiones idle
+const _pruneTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [id, session] of sessions) {
+    if (!session.active || (now - session.lastAccessAt > IDLE_TIMEOUT_MS)) {
+      console.log(`[sessionManager] Pruning idle session ${id} (idle ${Math.round((now - session.lastAccessAt) / 60000)}min)`);
+      session.destroy();
+      sessions.delete(id);
+    }
+  }
+}, PRUNE_INTERVAL_MS);
+if (_pruneTimer.unref) _pruneTimer.unref();
 
 module.exports = {
   create(opts = {}) {

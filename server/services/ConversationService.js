@@ -48,6 +48,15 @@ class ConversationService {
     this._providers          = providers;
     this._providerConfig     = providerConfig;
     this._memory             = memory;
+    this._rateLimits         = new Map(); // chatId → { count, resetAt }
+    // Limpiar rate limits expirados cada 5 minutos
+    this._rlCleanup = setInterval(() => {
+      const now = Date.now();
+      for (const [k, v] of this._rateLimits) {
+        if (now > v.resetAt) this._rateLimits.delete(k);
+      }
+    }, 5 * 60 * 1000);
+    if (this._rlCleanup.unref) this._rlCleanup.unref();
     this._agents             = agents;
     this._skills             = skills;
     this._ClaudePrintSession = ClaudePrintSession;
@@ -78,13 +87,14 @@ class ConversationService {
       '## Herramientas disponibles',
       '',
       '- **bash**: Ejecutar comandos shell. Usar session_id para aislar conversaciones.',
+      '- **git**: Operaciones git seguras. Params: action (status|diff|log|add|commit|push|pull|branch|checkout|stash|blame|show), message?, files?, branch?, ref?, count?.',
       '- **read_file**: Leer archivo (límite 50KB).',
       '- **write_file**: Crear o sobreescribir archivo completo.',
       '- **edit_file**: Editar archivo con buscar/reemplazar (preferir sobre write_file para cambios parciales). Params: path, old_string, new_string, replace_all?.',
       '- **list_dir / search_files**: Navegar filesystem.',
-      '- **pty_create**: Crear terminal interactiva persistente (para ssh, vim, htop, etc.). Retorna session_id.',
-      '- **pty_write**: Enviar input a una sesión PTY. Params: session_id, input.',
-      '- **pty_read**: Leer output de una sesión PTY. Params: session_id, since?.',
+      '- **pty_create**: Crear terminal interactiva persistente. Retorna session_id.',
+      '- **pty_exec**: Ejecutar comando en PTY y esperar resultado (como bash pero en sesión persistente). Params: session_id, command, timeout_ms?, stable_ms?.',
+      '- **pty_write / pty_read**: Para interacción manual con PTY (ssh, vim). write envía input, read lee output.',
       '- **memory_list / memory_read / memory_write / memory_append / memory_delete**: Memoria persistente del agente.',
     ];
 
@@ -214,6 +224,24 @@ class ConversationService {
 
     const resolvedShellId = shellId || String(chatId);
     csdbg('msg', `chatId=${chatId} provider=${provider} agent=${agentKey} model=${model} textLen=${text.length} images=${images?.length || 0} histLen=${history.length} hasSession=${!!claudeSession}`);
+
+    // Rate limiting: 10 mensajes/minuto por chat (solo providers API)
+    if (provider !== 'claude-code') {
+      const MAX_PER_MIN = 10;
+      const now = Date.now();
+      const key = `${botKey || 'web'}:${chatId}`;
+      let rl = this._rateLimits.get(key);
+      if (!rl || now > rl.resetAt) {
+        rl = { count: 0, resetAt: now + 60000 };
+        this._rateLimits.set(key, rl);
+      }
+      rl.count++;
+      if (rl.count > MAX_PER_MIN) {
+        const waitSec = Math.ceil((rl.resetAt - now) / 1000);
+        return { text: `⏳ Rate limit: máximo ${MAX_PER_MIN} mensajes por minuto. Esperá ${waitSec}s.`, history };
+      }
+      this._rateLimits.set(key, rl);
+    }
 
     if (provider !== 'claude-code' && this._providers) {
       csdbg('msg', `→ _processApiProvider mode=${claudeMode}`);
@@ -604,25 +632,65 @@ class ConversationService {
     // Detectar channel para filtrar critter tools (p2p desde shellId, o el channel del caller)
     const toolChannel = shellId?.startsWith('p2p-') ? 'p2p' : channel || undefined;
 
-    const gen = provObj.chat({ systemPrompt, history: updatedHistory, apiKey, model: useModel, executeTool: execToolFn, channel: toolChannel, ...extraOpts });
+    const MAX_RETRIES = 3;
+    const GLOBAL_TIMEOUT_MS = 120000;
     let accumulated = '';
     let usedTools = false;
+    let usedToolsEver = false;
     let usage = null;
 
     if (onStatus) onStatus('thinking');
 
-    for await (const event of gen) {
-      if (event.type === 'text') {
-        accumulated += event.text;
-        if (onChunk) onChunk(accumulated);
-      } else if (event.type === 'tool_call') {
-        usedTools = true;
-        if (onStatus) onStatus('tool_use', event.name);
-      } else if (event.type === 'usage') {
-        usage = { promptTokens: event.promptTokens, completionTokens: event.completionTokens };
-      } else if (event.type === 'done') {
-        accumulated = event.fullText || accumulated;
+    const chatArgs = { systemPrompt, history: updatedHistory, apiKey, model: useModel, executeTool: execToolFn, channel: toolChannel, ...extraOpts };
+
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      // No reintentar si ya se ejecutaron tools (side effects no son idempotentes)
+      if (attempt > 0 && usedToolsEver) break;
+
+      accumulated = '';
+      usedTools = false;
+      usage = null;
+      let timedOut = false;
+
+      const gen = provObj.chat(chatArgs);
+      const timeoutId = setTimeout(() => { timedOut = true; }, GLOBAL_TIMEOUT_MS);
+
+      try {
+        for await (const event of gen) {
+          if (timedOut) {
+            accumulated = 'Error: timeout — el provider no respondió en 120s.';
+            break;
+          }
+          if (event.type === 'text') {
+            accumulated += event.text;
+            if (onChunk) onChunk(accumulated);
+          } else if (event.type === 'tool_call') {
+            usedTools = true;
+            usedToolsEver = true;
+            if (onStatus) onStatus('tool_use', event.name);
+          } else if (event.type === 'usage') {
+            usage = { promptTokens: event.promptTokens, completionTokens: event.completionTokens };
+          } else if (event.type === 'done') {
+            accumulated = event.fullText || accumulated;
+          }
+        }
+      } catch (err) {
+        accumulated = `Error ${provider}: ${err.message}`;
+      } finally {
+        clearTimeout(timeoutId);
       }
+
+      // Verificar si es error transitorios que amerita retry
+      const isError = accumulated.startsWith('Error');
+      const isTransient = isError && /timeout|429|500|502|503|ECONNRESET|ETIMEDOUT|rate.limit/i.test(accumulated);
+
+      if (!isError || !isTransient || attempt === MAX_RETRIES - 1) break;
+
+      // Backoff exponencial con jitter
+      const delay = Math.pow(2, attempt) * 1000 + Math.random() * 500;
+      csdbg('retry', `attempt ${attempt + 1}/${MAX_RETRIES}, waiting ${Math.round(delay)}ms — ${accumulated.slice(0, 100)}`);
+      if (onStatus) onStatus('thinking', `reintento ${attempt + 2}/${MAX_RETRIES}`);
+      await new Promise(r => setTimeout(r, delay));
     }
 
     if (onStatus && usedTools) onStatus('done');

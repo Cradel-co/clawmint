@@ -107,7 +107,7 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
 
     connect();
 
-    term.onData((data) => {
+    const onDataDisposable = term.onData((data) => {
       const ws = wsRef.current;
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'input', data }));
@@ -130,6 +130,7 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
       clearTimeout(reconnectTimerRef.current);
       manualCloseRef.current = true;
       wsRef.current?.close();
+      onDataDisposable.dispose();
       term.dispose();
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
