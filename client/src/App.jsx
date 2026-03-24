@@ -69,7 +69,9 @@ export default function App() {
             return [...prev, s];
           });
         }
-      } catch { /* ignorar */ }
+      } catch (err) {
+        console.warn('[App] Error procesando mensaje WS:', err.message);
+      }
     };
     return () => ws.close();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -85,7 +87,9 @@ export default function App() {
             ? bots.reduce((n, b) => n + (b.chats?.length || 0), 0)
             : 0;
           setTelegramChatsCount(chats);
-        } catch { /* ignorar */ }
+        } catch (err) {
+          console.warn('[App] Error obteniendo bots de Telegram:', err.message);
+        }
       }, 5000);
       return () => clearInterval(interval);
     }

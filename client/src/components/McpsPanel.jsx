@@ -245,10 +245,11 @@ export default function McpsPanel({ onClose }) {
 
   const fetchMcps = useCallback(async () => {
     try {
+      setCliError('');
       const res = await fetch(API);
       const data = await res.json();
       setMcpList(Array.isArray(data) ? data : []);
-    } catch { /* ignorar */ }
+    } catch { setCliError('Error cargando MCPs'); }
   }, []);
 
   useEffect(() => { fetchMcps(); }, [fetchMcps]);
@@ -269,7 +270,7 @@ export default function McpsPanel({ onClose }) {
     try {
       await fetch(`${API}/${name}`, { method: 'DELETE' });
       fetchMcps();
-    } catch { /* ignorar */ }
+    } catch { setCliError('Error eliminando MCP'); }
   };
 
   const handleToggle = async (mcp) => {

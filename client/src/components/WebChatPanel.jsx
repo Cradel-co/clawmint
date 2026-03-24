@@ -44,11 +44,11 @@ export default function WebChatPanel({ onClose }) {
         setProviders(data.providers || []);
         if (data.default) setProvider(data.default);
       })
-      .catch(() => {});
+      .catch(() => setStatusText('Error cargando providers'));
     fetch(`${API_BASE}/api/agents`)
       .then(r => r.json())
       .then(data => setAgentsList(Array.isArray(data) ? data : []))
-      .catch(() => {});
+      .catch(() => setStatusText('Error cargando agentes'));
   }, []);
 
   // Conectar WebSocket
@@ -233,13 +233,24 @@ export default function WebChatPanel({ onClose }) {
             if (msg.cwd) setCwd(msg.cwd);
             break;
         }
-      } catch { /* ignorar */ }
+      } catch (err) {
+        console.warn('[WebChat] Error procesando mensaje WS:', err.message);
+      }
     };
 
     ws.onclose = () => setConnected(false);
-    ws.onerror = () => {};
+    ws.onerror = () => setStatusText('Error de conexión WebSocket');
 
     return () => ws.close();
+  }, []);
+
+  // Cleanup de grabación al desmontar el componente
+  useEffect(() => {
+    return () => {
+      streamRef.current?.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+      clearInterval(recTimerRef.current);
+    };
   }, []);
 
   // ── Enviar mensaje ─────────────────────────────────────────────────────────
@@ -465,6 +476,11 @@ export default function WebChatPanel({ onClose }) {
         }));
       }
     };
+    reader.onerror = () => {
+      setSending(false);
+      setStatusText(`Error leyendo archivo: ${file.name}`);
+      setTimeout(() => setStatusText(null), 5000);
+    };
     reader.readAsDataURL(file);
     // Reset input para permitir seleccionar el mismo archivo
     e.target.value = '';
@@ -518,6 +534,11 @@ export default function WebChatPanel({ onClose }) {
           files: [{ base64, mediaType, name: file.name }],
         }));
       }
+    };
+    reader.onerror = () => {
+      setSending(false);
+      setStatusText(`Error leyendo archivo: ${file.name}`);
+      setTimeout(() => setStatusText(null), 5000);
     };
     reader.readAsDataURL(file);
   }, [input, provider, agent]);

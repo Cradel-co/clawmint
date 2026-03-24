@@ -11,6 +11,15 @@
   flex-shrink: 0;
 }
 
+@media (max-width: 768px) {
+  .ap-panel {
+    width: 100%;
+    min-width: 0;
+    border-left: none;
+    border-top: 1px solid #333;
+  }
+}
+
 .ap-header {
   display: flex;
   align-items: center;
@@ -86,7 +95,7 @@
 
 .ap-agent-desc {
   font-size: 11px;
-  color: #888;
+  color: #aaa;
   margin: 4px 0 0;
 }
 
@@ -138,7 +147,7 @@
 
 .ap-label {
   font-size: 11px;
-  color: #888;
+  color: #aaa;
   margin-bottom: 4px;
   display: block;
 }
@@ -177,7 +186,7 @@
 
 .ap-hint {
   font-size: 10px;
-  color: #555;
+  color: #999;
   margin: 4px 0 0;
 }
 
@@ -238,14 +247,14 @@
 
 .ap-empty-state {
   text-align: center;
-  color: #666;
+  color: #999;
   padding: 24px 12px;
   font-size: 13px;
 }
 
 .ap-empty-hint {
   font-size: 11px;
-  color: #555;
+  color: #999;
   margin-top: 6px;
 }
 
@@ -274,7 +283,7 @@
 
 .ap-skills-hint {
   font-size: 10px;
-  color: #555;
+  color: #999;
   margin: 0 0 6px;
 }
 
@@ -290,7 +299,7 @@
 
 .ap-skills-empty {
   font-size: 11px;
-  color: #555;
+  color: #999;
   text-align: center;
   padding: 8px 0;
 }
@@ -327,7 +336,7 @@
 
 .ap-skill-desc {
   font-size: 10px;
-  color: #666;
+  color: #999;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

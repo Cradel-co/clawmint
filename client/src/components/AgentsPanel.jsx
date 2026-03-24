@@ -121,7 +121,7 @@ function SkillsSection() {
   const [error, setError] = useState('');
 
   const loadSkills = useCallback(() => {
-    fetch(SKILLS_API).then(r => r.json()).then(setSkillsList).catch(() => {});
+    fetch(SKILLS_API).then(r => r.json()).then(setSkillsList).catch(() => setError('Error cargando skills'));
   }, []);
 
   useEffect(() => { loadSkills(); }, [loadSkills]);
@@ -190,13 +190,15 @@ export default function AgentsPanel({ onClose }) {
   const [agents, setAgents] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editAgent, setEditAgent] = useState(null);
+  const [loadError, setLoadError] = useState('');
 
   const fetchAgents = useCallback(async () => {
     try {
+      setLoadError('');
       const res = await fetch(API);
       const data = await res.json();
       setAgents(Array.isArray(data) ? data : []);
-    } catch { /* ignorar */ }
+    } catch { setLoadError('Error cargando agentes'); }
   }, []);
 
   useEffect(() => { fetchAgents(); }, [fetchAgents]);
@@ -217,7 +219,7 @@ export default function AgentsPanel({ onClose }) {
     try {
       await fetch(`${API}/${key}`, { method: 'DELETE' });
       fetchAgents();
-    } catch { /* ignorar */ }
+    } catch { setLoadError('Error eliminando agente'); }
   };
 
   const handleNewClick = () => {
@@ -235,6 +237,7 @@ export default function AgentsPanel({ onClose }) {
         <button className="ap-close" onClick={onClose} title="Cerrar"><X size={16} /></button>
       </div>
 
+      {loadError && <div className="ap-error" style={{ padding: '6px 14px' }}>{loadError}</div>}
       <div className="ap-body">
         {agents.length === 0 && !showForm && (
           <div className="ap-empty-state">
