@@ -6,6 +6,84 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
 ---
 
+## [1.3.0] — 2026-03-24
+
+### Added
+- Canal WebChat completo con ConversationService integration (`server/channels/web/`)
+- Reproductor de audio personalizado con visualización de transcripción en WebChat
+- Renderizado HTML en mensajes del chat WebChat
+- Persistencia de historial y grabación de audio en WebChat
+- Panel de MCPs con iconos Lucide y mejoras de UX en frontend (#39)
+- MCP tools para WebChat — paridad con Telegram (`webchat_send_message`, etc.)
+- MCP client pool para herramientas externas (`server/mcp-pool/`)
+- Providers API con tools, modos, costo, `edit_file` y PTY interactivo
+- Resiliencia de providers — retry, rate limit, timeout, resume
+- Critter tools, relay fallback, channel filtering y Ollama tool-use
+- Módulo Nodriza: configuración, conexión WebRTC con señalización, rutas REST y sesión P2P
+- Adaptador P2PBotAdapter para DataChannel
+- `transcribePCM` para audio P2P en transcriber
+- Telegram: 4 nuevas MCP tools expandidas
+
+### Fixed
+- Dropdown sync al cambiar provider/agente en WebChat (#32)
+- Contraste WCAG AA en todos los CSS (#50)
+- Error handling silencioso + mejoras UX (#52)
+- Estabilidad crítica: pty_exec, git tool
+- Ollama: carga dinámica de modelos desde API
+- Ollama marcado como siempre configurado
+- WebChat: file upload, TTS error, mic validation, inline buttons
+- WebChat: persist history for all providers
+- WebChat: tools en system prompt
+- Telegram: await consolidator processQueue
+- Telegram: unificar audio status con msg flow
+- Timers persistentes con `unref()`
+- MCP pool: cerrar transport al desconectar
+- Transcriber: usar ffmpeg en vez de ogg-opus-decoder
+- Dependencias: agregar sharp, remover ogg-opus-decoder no usado
+- Seguridad: remover provider-config.json del tracking
+
+### Changed
+- Refactor: `index.js` de 1704 → 170 LOC — rutas y WS handlers extraídos a módulos
+
+### Docs
+- Actualización de CLAUDE.md y ROADMAP.md
+- Documentación de providers, channel filtering, critter tools
+
+---
+
+## [1.2.0] — 2026-03-22
+
+### Added
+- MCP memory tools con tags IDF-weighted y continuidad de sesión
+
+---
+
+## [1.1.0] — 2026-03-22
+
+### Added
+- Panel WebChat, MCP telegram tools, botones inline dinámicos con callbacks
+- Visión multi-provider: fotos en Telegram con OCR kheiron-tools + fallback minicpm-v
+- Ollama: visión con minicpm-v y fallback para claude-code
+- Git hooks para proteger rama main y conventional commits
+
+### Fixed
+- Ollama: redimensionar imágenes a 512px antes de enviar a minicpm-v
+- Vision: parsear output de kheiron OCR correctamente
+- Telegram: diagnóstico de errores en fotos, silenciar stderr de OCR
+- Telegram: fallback sin parse_mode en editMessageText
+- TTS: carga resiliente de voice-providers y mejoras en comandos Telegram
+
+### Changed
+- Ollama: usar sharp en vez de Python para redimensionar imágenes
+
+### Docs
+- Plan de WebChannel desacoplado de Telegram
+- Reescribir ARQUITECTURA.md y completar CLAUDE.md
+- Actualizar estado de implementación en planes
+- Plan P2P y docs de ia-local
+
+---
+
 ## [0.9.0] — 2026-03-19
 
 ### Added
