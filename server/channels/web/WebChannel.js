@@ -476,7 +476,10 @@ class WebChannel extends BaseChannel {
           this._sendJson(ws, { type: 'command_result', text: `Directorio actual: ${state.cwd}`, cwd: state.cwd });
           return;
         }
-        const resolved = path.resolve(state.cwd, arg);
+        const expanded = arg === '~' ? process.env.HOME
+          : arg.startsWith('~/') ? path.join(process.env.HOME, arg.slice(2))
+          : arg;
+        const resolved = path.isAbsolute(expanded) ? expanded : path.resolve(state.cwd, expanded);
         try {
           const stat = fs.statSync(resolved);
           if (!stat.isDirectory()) {

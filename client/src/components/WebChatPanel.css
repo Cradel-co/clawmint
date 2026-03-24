@@ -12,6 +12,16 @@
   flex-shrink: 0;
 }
 
+@media (max-width: 768px) {
+  .wc-panel {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    border-left: none;
+    border-top: 1px solid #444;
+  }
+}
+
 .wc-header {
   display: flex;
   align-items: center;
@@ -81,7 +91,7 @@
   background: #1e1e1e;
   border-bottom: 1px solid #2a2a2a;
   font-size: 11px;
-  color: #888;
+  color: #aaa;
   flex-shrink: 0;
 }
 
@@ -116,13 +126,13 @@
   align-items: center;
   justify-content: center;
   flex: 1;
-  color: #666;
+  color: #999;
   text-align: center;
   font-size: 13px;
 }
 .wc-hint {
   font-size: 11px;
-  color: #555;
+  color: #999;
   margin-top: 4px;
 }
 
@@ -154,7 +164,7 @@
 
 .wc-msg-label {
   font-size: 10px;
-  color: #888;
+  color: #aaa;
   margin-bottom: 2px;
   padding-left: 4px;
 }
@@ -294,7 +304,7 @@
   border-color: #007aff;
 }
 .wc-input::placeholder {
-  color: #666;
+  color: #999;
 }
 
 .wc-send {
@@ -442,7 +452,7 @@
   font-size: 11px;
 }
 .wc-code-lang {
-  color: #888;
+  color: #aaa;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }

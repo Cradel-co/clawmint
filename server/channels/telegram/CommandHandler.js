@@ -457,6 +457,7 @@ class CommandHandler {
       case 'cd': {
         const target = args.join(' ').trim() || process.env.HOME;
         const resolved = target === '~' ? process.env.HOME
+          : target.startsWith('~/') ? path.join(process.env.HOME, target.slice(2))
           : target.startsWith('/') ? target
           : path.resolve(chat.monitorCwd || process.env.HOME, target);
         try {
