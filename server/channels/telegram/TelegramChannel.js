@@ -1023,9 +1023,12 @@ class TelegramBot {
         if (sentMsg) {
           try { await this._apiCall('deleteMessage', { chat_id: chatId, message_id: sentMsg.message_id }); } catch (e) { tdbg('send', `deleteStatusMsg FAIL: ${e.message}`); }
         }
-        if (result.text) {
-          tdbg('send', `MCP mode: enviando texto (${result.text.length} chars) usedMcpTools=${result.usedMcpTools}`);
+        // Si el modelo ya envió via telegram_send_message (usedMcpTools), no enviar result.text
+        if (result.text && !result.usedMcpTools) {
+          tdbg('send', `MCP mode: enviando texto (${result.text.length} chars)`);
           await this._sendResult(chatId, result.text, null);
+        } else {
+          tdbg('send', `MCP mode: modelo ya envió via tools, skip _sendResult`);
         }
       } else {
         // Modo normal: streaming de texto

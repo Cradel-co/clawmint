@@ -101,25 +101,43 @@ class ConversationService {
     if (channel === 'telegram' && botKey && chatId) {
       parts.push(
         '',
+        '## REGLA DE COMUNICACIÓN',
+        '',
+        'TODA tu comunicación con el usuario DEBE ser a través de herramientas.',
+        'NO devuelvas texto plano como respuesta — el usuario NO lo verá.',
+        '',
+        `Para responder con texto: usá \`telegram_send_message\` con bot="${botKey}" y chat_id=${chatId}.`,
+        'Para enviar imágenes: usá `telegram_send_photo`.',
+        'Para enviar archivos: usá `telegram_send_document`.',
+        'Para enviar audio: usá `telegram_send_voice`.',
+        '',
+        'Si tu respuesta es larga, dividila en múltiples llamadas a `telegram_send_message` (un párrafo por mensaje).',
+        '',
         '## Telegram',
         `Contexto: bot="${botKey}", chat_id=${chatId}, agent="${agentKey || 'claude'}"`,
-        '- **telegram_send_message**: Enviar texto adicional (con botones opcionales).',
-        '- **telegram_send_photo / telegram_send_document / telegram_send_voice / telegram_send_video**: Enviar multimedia.',
+        '- **telegram_send_message**: Enviar texto al chat. Params: bot, chat_id, text, parse_mode?, reply_markup?.',
+        '  Soporta botones inline: reply_markup=`{"inline_keyboard":[[{"text":"Opción","callback_data":"dato"}]]}`',
+        '- **telegram_send_photo / telegram_send_document / telegram_send_voice / telegram_send_video**: Enviar multimedia. Params: bot, chat_id, file_path, caption?.',
         '- **telegram_edit_message / telegram_delete_message**: Editar/borrar mensajes.',
         '',
-        'IMPORTANTE: Tu respuesta de texto se envía automáticamente al chat — NO necesitás usar telegram_send_message para responder.',
-        'Usá telegram_send_message SOLO para enviar mensajes adicionales (ej: dividir respuesta larga, enviar extras).',
-        'Usá telegram_send_photo/document/voice/video cuando generes archivos y quieras enviarlos al chat.',
+        'Usá botones proactivamente cuando ofrezcas opciones o alternativas.',
       );
     } else if (channel === 'webchat') {
       parts.push(
         '',
+        '## REGLA DE COMUNICACIÓN',
+        '',
+        'TODA tu comunicación con el usuario DEBE ser a través de herramientas.',
+        'NO devuelvas texto plano como respuesta — el usuario NO lo verá.',
+        '',
+        'Para responder: usá `webchat_send_message`.',
+        'Si tu respuesta es larga, dividila en múltiples llamadas (un párrafo por mensaje).',
+        '',
         '## WebChat',
         `Contexto: agent="${agentKey || 'claude'}"`,
-        '- **webchat_send_message**: Enviar texto adicional.',
+        '- **webchat_send_message**: Enviar texto al chat. Params: session_id, text, buttons?, callbacks?.',
         '- **webchat_send_photo / webchat_send_document / webchat_send_voice / webchat_send_video**: Enviar multimedia.',
-        '',
-        'IMPORTANTE: Tu respuesta de texto se envía automáticamente — NO necesitás usar webchat_send_message para responder.',
+        '- **webchat_edit_message / webchat_delete_message**: Editar/borrar mensajes.',
       );
     }
 
@@ -719,6 +737,7 @@ class ConversationService {
       text:    finalText || '',
       history: updatedHistory,
       savedMemoryFiles,
+      usedMcpTools: usedToolsEver,
       usage,
     };
   }
