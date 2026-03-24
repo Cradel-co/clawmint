@@ -474,11 +474,16 @@ class ConversationService {
 
     // Construir mensaje con contexto de memoria inyectado
     let messageText = text;
+    csdbg('claude', `messageCount=${session.messageCount} agentKey=${agentKey} hasMemory=${!!this._memory}`);
     if (agentKey && this._memory) {
-      if (session.messageCount === 0) {
-        const memCtx    = this._memory.buildMemoryContext(agentKey, text);
+      if (session.messageCount <= 1 || isNewSession) {
+        // buildMemoryContext puede retornar string o Promise (si usa embeddings locales)
+        let memCtxRaw = this._memory.buildMemoryContext(agentKey, text, { provider: 'local' });
+        if (memCtxRaw && typeof memCtxRaw.then === 'function') {
+          memCtxRaw = await memCtxRaw.catch(() => '');
+        }
+        const memCtx = memCtxRaw || '';
         const toolInstr = shouldNudge ? this._memory.TOOL_INSTRUCTIONS : '';
-        // Inyectar resumen de sesión anterior si existe (continuidad post-reset)
         let sessionSummary = '';
         try {
           const summary = this._memory.read(agentKey, 'last-session-summary.md');
