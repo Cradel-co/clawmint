@@ -22,6 +22,7 @@ class ChatSettingsRepository {
     `ALTER TABLE chat_settings ADD COLUMN claude_session_id TEXT`,
     `ALTER TABLE chat_settings ADD COLUMN message_count INTEGER DEFAULT 0`,
     `ALTER TABLE chat_settings ADD COLUMN claude_mode TEXT DEFAULT 'ask'`,
+    `ALTER TABLE chat_settings ADD COLUMN ai_history TEXT`,
   ];
 
   constructor(db) {
@@ -45,7 +46,7 @@ class ChatSettingsRepository {
   load(botKey, chatId) {
     if (!this._db) return null;
     return this._db.prepare(
-      'SELECT provider, model, cwd, claude_session_id, message_count, claude_mode FROM chat_settings WHERE bot_key = ? AND chat_id = ?'
+      'SELECT provider, model, cwd, claude_session_id, message_count, claude_mode, ai_history FROM chat_settings WHERE bot_key = ? AND chat_id = ?'
     ).get(String(botKey), String(chatId)) || null;
   }
 
@@ -111,9 +112,39 @@ class ChatSettingsRepository {
   clearSession(botKey, chatId) {
     if (!this._db) return;
     this._db.prepare(`
-      UPDATE chat_settings SET claude_session_id = NULL, message_count = 0
+      UPDATE chat_settings SET claude_session_id = NULL, message_count = 0, ai_history = NULL
       WHERE bot_key = ? AND chat_id = ?
     `).run(String(botKey), String(chatId));
+  }
+
+  /**
+   * Persiste el historial de conversación (providers API).
+   */
+  saveHistory(botKey, chatId, history) {
+    if (!this._db || !history) return;
+    try {
+      const json = JSON.stringify(history);
+      this._db.prepare(`
+        INSERT INTO chat_settings (bot_key, chat_id, provider, ai_history)
+        VALUES (?, ?, 'claude-code', ?)
+        ON CONFLICT(bot_key, chat_id) DO UPDATE SET ai_history = excluded.ai_history
+      `).run(String(botKey), String(chatId), json);
+    } catch {}
+  }
+
+  /**
+   * Carga el historial de conversación persistido.
+   * @returns {object[]|null}
+   */
+  loadHistory(botKey, chatId) {
+    if (!this._db) return null;
+    try {
+      const row = this._db.prepare(
+        'SELECT ai_history FROM chat_settings WHERE bot_key = ? AND chat_id = ?'
+      ).get(String(botKey), String(chatId));
+      if (row?.ai_history) return JSON.parse(row.ai_history);
+    } catch {}
+    return null;
   }
 }
 

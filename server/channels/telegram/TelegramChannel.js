@@ -660,7 +660,7 @@ class TelegramBot {
         busy:           false,
         provider:       saved?.provider || 'claude-code',
         model:          saved?.model    || 'sonnet',
-        aiHistory:      [],
+        aiHistory:      (this._chatSettings?.loadHistory(this.key, chatId)) || [],
         claudeMode:     saved?.claude_mode || 'auto',
         consoleMode:    false,
         lastButtonsMsgId: null,
@@ -1003,6 +1003,11 @@ class TelegramBot {
           messageCount:    chat.claudeSession.messageCount,
           cwd:             chat.monitorCwd || chat.claudeSession.cwd,
         });
+      }
+
+      // Persistir historial de providers API para sobrevivir reinicios
+      if (result.history && this._chatSettings && chatProvider !== 'claude-code') {
+        this._chatSettings.saveHistory(this.key, chatId, result.history);
       }
 
       if (result.savedMemoryFiles?.length > 0) {

@@ -151,6 +151,7 @@ class CommandHandler {
         } else {
           chat.aiHistory = [];
           chat.usage = null;
+          if (this.chatSettings) this.chatSettings.saveHistory(bot.key, chatId, []);
           const s = await bot.getOrCreateSession(chatId, chat, true);
           await bot.sendWithButtons(chatId,
             `✅ Nueva sesión *${s.title}* creada (\`${s.id.slice(0,8)}…\`)`,
@@ -838,6 +839,7 @@ class CommandHandler {
             if (this.chatSettings) this.chatSettings.clearSession(bot.key, chatId);
           } else {
             chat.aiHistory = [];
+            if (this.chatSettings) this.chatSettings.saveHistory(bot.key, chatId, []);
           }
           const label = this.providers.get(newProvider).label;
           await bot.sendText(chatId, `✅ Provider cambiado a *${label}*`);
