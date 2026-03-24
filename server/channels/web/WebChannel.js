@@ -184,6 +184,24 @@ class WebChannel extends BaseChannel {
             break;
           }
 
+          case 'chat:settings': {
+            // Sync de settings desde el dropdown del cliente
+            if (msg.provider) {
+              const p = this.providers.get(msg.provider);
+              if (p) {
+                state.provider = msg.provider;
+                state.history = [];
+                try { this.messagesRepo?.clear(sessionId); } catch {}
+                this._saveSettings(sessionId, state);
+              }
+            }
+            if (msg.agent !== undefined) {
+              state.agent = msg.agent || null;
+              this._saveSettings(sessionId, state);
+            }
+            break;
+          }
+
           default:
             break;
         }
