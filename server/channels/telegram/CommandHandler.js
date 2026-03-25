@@ -525,10 +525,23 @@ class CommandHandler {
 
       case 'agente': {
         if (args.length === 0) {
-          const available = this.agents.list().map(a => `• ${a.key} — ${a.description || a.command || 'bash'}`).join('\n');
-          await bot.sendText(chatId,
-            `⚙️ *Agente actual*: ${bot.defaultAgent}\n\n*Disponibles:*\n${available}\n\n` +
-            `Usá /agente <key> para cambiar.`
+          const globalDefault = this.chatSettings?.getGlobal?.('default_agent') || 'claude';
+          const available = this.agents.list().map(a => {
+            const isDefault = a.key === globalDefault ? ' ⭐' : '';
+            const isBotDefault = a.key === bot.defaultAgent ? ' (bot)' : '';
+            return `• ${a.key}${isDefault}${isBotDefault} — ${a.description || a.command || 'bash'}`;
+          }).join('\n');
+          const buttons = this.agents.list().map(a => {
+            const star = a.key === globalDefault ? '⭐ ' : '';
+            return [{ text: `${star}${a.key}`, callback_data: `set_default_agent:${a.key}` }];
+          });
+          await bot.sendWithButtons(chatId,
+            `⚙️ *Agente del bot*: ${bot.defaultAgent}\n` +
+            `⭐ *Default global*: ${globalDefault}\n\n` +
+            `*Disponibles:*\n${available}\n\n` +
+            `Tocá un botón para setear el *default global*.\n` +
+            `Usá /agente <key> para cambiar solo este bot.`,
+            buttons
           );
         } else {
           const agentKey = args[0].toLowerCase();
@@ -537,7 +550,7 @@ class CommandHandler {
             await bot.sendText(chatId, `❌ Agente "${agentKey}" no encontrado. Usá /agente para ver la lista.`);
           } else {
             bot.defaultAgent = agentKey;
-            await bot.sendText(chatId, `✅ Agente cambiado a *${agentKey}* (${agent.description || agent.command || 'bash'})`);
+            await bot.sendText(chatId, `✅ Agente del bot cambiado a *${agentKey}* (${agent.description || agent.command || 'bash'})`);
           }
         }
         break;

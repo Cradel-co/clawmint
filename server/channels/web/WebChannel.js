@@ -24,7 +24,7 @@ const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
  * y upload de imágenes.
  */
 class WebChannel extends BaseChannel {
-  constructor({ convSvc, providers, providerConfig, agents, chatSettingsRepo, messagesRepo, eventBus, logger, transcriber, tts } = {}) {
+  constructor({ convSvc, providers, providerConfig, agents, chatSettingsRepo, messagesRepo, eventBus, logger, transcriber, tts, usersRepo, scheduler } = {}) {
     super({ eventBus, logger });
     this.convSvc          = convSvc;
     this.providers        = providers;
@@ -34,6 +34,8 @@ class WebChannel extends BaseChannel {
     this.messagesRepo     = messagesRepo;
     this.transcriber      = transcriber;
     this.tts              = tts;
+    this._usersRepo       = usersRepo || null;
+    this._scheduler       = scheduler || null;
     /** @type {Map<string, object>} sessionId → { ws, state } */
     this.sessions         = new Map();
     /** @type {Map<string, { state: object, parkedAt: number }>} */
@@ -78,6 +80,18 @@ class WebChannel extends BaseChannel {
 
     const sessionId = opts.sessionId || crypto.randomUUID();
     this._sendJson(ws, { type: 'session_id', id: sessionId });
+
+    // Auto-crear usuario en el sistema unificado
+    if (this._usersRepo) {
+      try {
+        this._usersRepo.getOrCreate('web', sessionId, opts.userName || 'Web User', 'web');
+      } catch { /* no bloquear */ }
+    }
+
+    // Entregar mensajes pendientes
+    if (this._scheduler) {
+      this._scheduler.deliverPending('web', sessionId).catch(() => {});
+    }
 
     // Restaurar sesión parked
     const parked = this._parked.get(sessionId);
@@ -621,7 +635,7 @@ class WebChannel extends BaseChannel {
 
       const result = await this.convSvc.processMessage({
         chatId: sessionId,
-        agentKey: state.agent,
+        agentKey: state.agent || (this._scheduler && this._scheduler.getDefaultAgent()) || null,
         provider: state.provider,
         model: state.model,
         text,

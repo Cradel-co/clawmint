@@ -812,6 +812,23 @@ class CallbackHandler {
       return;
     }
 
+    // Default agent global
+    if (data.startsWith('set_default_agent:')) {
+      const agentKey = data.slice(18);
+      const agent = this.agents?.get(agentKey);
+      if (!agent) {
+        await bot.sendText(chatId, `❌ Agente "${agentKey}" no encontrado.`);
+        return;
+      }
+      if (this.chatSettings?.setGlobal) {
+        this.chatSettings.setGlobal('default_agent', agentKey);
+        await bot.sendText(chatId, `⭐ Default global cambiado a *${agentKey}* (${agent.description || ''})\n\nTodas las acciones programadas y canales sin agente usarán este agente.`);
+      } else {
+        await bot.sendText(chatId, '❌ No se pudo guardar la configuración.');
+      }
+      return;
+    }
+
     // Recordatorios
     if (data.startsWith('reminder_cancel:')) {
       if (!this.reminders) return;

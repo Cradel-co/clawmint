@@ -59,7 +59,7 @@ const _modulesReady = (async function loadModules() {
     convSvc      = _c.convSvc;
     try {
       const { createMcpRouter } = require('./mcp');
-      mcpRouter = createMcpRouter({ sessionManager: _c.sessionManager, memory: _c.memory });
+      mcpRouter = createMcpRouter({ sessionManager: _c.sessionManager, memory: _c.memory, scheduler: _c.scheduler, usersRepo: _c.usersRepo });
       logger.info('MCP router creado OK');
     } catch (mcpErr) {
       logger.warn('MCP router no disponible:', mcpErr.message);

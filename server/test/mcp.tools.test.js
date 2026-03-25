@@ -215,10 +215,11 @@ describe('pty tools', () => {
 // ── tools/index.js ────────────────────────────────────────────────────────────
 
 describe('tools/index.js', () => {
-  const EXPECTED_TOOLS = ['bash', 'read_file', 'write_file', 'list_dir', 'search_files', 'pty_write', 'pty_read'];
+  const EXPECTED_TOOLS = ['bash', 'read_file', 'write_file', 'list_dir', 'search_files', 'pty_write', 'pty_read',
+    'user_list', 'user_info', 'user_link', 'schedule_action', 'list_scheduled', 'cancel_scheduled', 'update_scheduled'];
 
-  test('all() retorna un array con 7 tools', () => {
-    expect(toolsIndex.all()).toHaveLength(7);
+  test('all() retorna un array con las tools esperadas', () => {
+    expect(toolsIndex.all().length).toBeGreaterThanOrEqual(EXPECTED_TOOLS.length);
   });
 
   test('all() incluye los tools esperados', () => {

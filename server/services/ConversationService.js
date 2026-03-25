@@ -65,6 +65,16 @@ class ConversationService {
 
     // Lazy-load para evitar dependencias circulares
     this._mcpExecuteTool = null;
+
+    // Inyectados vía setter (evita dependencias circulares)
+    this._scheduler  = null;
+    this._usersRepo  = null;
+  }
+
+  /** Inyecta scheduler y usersRepo para que las MCP tools los reciban en ctx */
+  setSchedulerDeps({ scheduler, usersRepo }) {
+    this._scheduler = scheduler;
+    this._usersRepo = usersRepo;
   }
 
   _getExecuteTool() {
@@ -147,6 +157,34 @@ class ConversationService {
       `Agente actual: "${agentKey || 'claude'}"`,
       'Guardá información importante proactivamente con memory_write (datos personales, preferencias, soluciones técnicas).',
       'Usá nombres descriptivos en español para los archivos (ej: preferencias-usuario.md).',
+      '',
+      '## Acciones Programadas',
+      '- **schedule_action**: Programar acción futura. Tipos: "notification" (texto directo) o "ai_task" (despierta al agente para ejecutar tarea compleja).',
+      '  Triggers: "once" (fecha/hora o delay "30m","2h") o "cron" ("0 8 * * *" = todos los días a las 8).',
+      '  Destinos: "self" (al usuario), "users" (lista de IDs), "whitelist", "all".',
+      '- **list_scheduled**: Ver acciones programadas.',
+      '- **cancel_scheduled**: Cancelar por ID.',
+      '- **update_scheduled**: Modificar acción existente.',
+      '',
+      'Usá schedule_action proactivamente cuando el usuario mencione fechas, horas, recordatorios o tareas recurrentes.',
+      '',
+      '## Usuarios',
+      '- **user_list**: Lista usuarios registrados con sus canales (Telegram, WebChat, P2P).',
+      '- **user_info**: Info detallada de un usuario por ID o nombre.',
+      '- **user_link**: Vincular identidad de otro canal a un usuario.',
+      '',
+      'Usá user_list cuando necesites saber a quién enviar mensajes o programar acciones para otros usuarios.',
+      '',
+      '## Agenda de Contactos',
+      '- **contact_add**: Agregar contacto (nombre, teléfono, email, notas, telegram_id para vincular).',
+      '- **contact_list**: Listar contactos (filtro: favorites).',
+      '- **contact_info**: Detalle por ID o nombre.',
+      '- **contact_update**: Modificar datos.',
+      '- **contact_delete**: Eliminar contacto.',
+      '- **contact_link**: Vincular contacto con usuario del sistema (por telegram_id, user_id o nombre).',
+      '',
+      'Usá contact_add proactivamente cuando el usuario mencione personas, teléfonos o emails.',
+      'Los contactos favoritos pueden ser destino de acciones programadas (target_type="favorites").',
     );
 
     return parts.join('\n');
@@ -579,7 +617,17 @@ class ConversationService {
     // Inyectar executor con contexto de shell para persistencia de cwd/env
     const mcpExec  = this._getExecuteTool();
     const rawExecFn = mcpExec
-      ? (name, args) => mcpExec(name, args, { shellId, sessionManager: this._sessionManager })
+      ? (name, args) => mcpExec(name, args, {
+          shellId,
+          sessionManager: this._sessionManager,
+          memory: this._memory,
+          scheduler: this._scheduler,
+          usersRepo: this._usersRepo,
+          chatId,
+          channel: channel || 'telegram',
+          agentKey,
+          botKey,
+        })
       : undefined;
 
     // Wrappear execToolFn según modo
