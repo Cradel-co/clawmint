@@ -75,10 +75,10 @@ export default function ProvidersPanel({ onClose }) {
   const configurable = providers.filter(p => p.name !== 'claude-code');
 
   return (
-    <div className="ap-panel">
+    <div className="ap-panel" role="region" aria-label="Panel de proveedores">
       <div className="ap-header">
         <span className="ap-title"><Settings size={16} style={{ marginRight: 6, verticalAlign: 'middle' }} />Providers de IA</span>
-        <button className="ap-close" onClick={onClose}><X size={16} /></button>
+        <button className="ap-close" onClick={onClose} aria-label="Cerrar panel de proveedores"><X size={16} /></button>
       </div>
 
       <div className="ap-body">

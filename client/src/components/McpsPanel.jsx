@@ -290,13 +290,13 @@ export default function McpsPanel({ onClose }) {
   };
 
   return (
-    <div className="ap-panel">
+    <div className="ap-panel" role="region" aria-label="Panel de MCPs">
       <div className="ap-header">
         <span className="ap-header-title">
           <span className="ap-icon"><Plug size={16} /></span>
           MCPs
         </span>
-        <button className="ap-close" onClick={onClose} title="Cerrar"><X size={16} /></button>
+        <button className="ap-close" onClick={onClose} aria-label="Cerrar panel de MCPs"><X size={16} /></button>
       </div>
 
       <div className="ap-body">

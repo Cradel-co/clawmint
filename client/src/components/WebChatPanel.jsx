@@ -548,13 +548,14 @@ export default function WebChatPanel({ onClose }) {
   const providerLabel = providers.find(p => p.name === provider)?.label || provider;
 
   return (
-    <div className="wc-panel" onDrop={handleDrop} onDragOver={handleDragOver}>
+    <div className="wc-panel" onDrop={handleDrop} onDragOver={handleDragOver} role="region" aria-label="Panel de chat web">
       <div className="wc-header">
         <span className="wc-header-title">Chat</span>
         <div className="wc-header-controls">
           <select
             className="wc-select"
             value={provider}
+            aria-label="Proveedor"
             onChange={e => {
               const val = e.target.value;
               setProvider(val);
@@ -571,6 +572,7 @@ export default function WebChatPanel({ onClose }) {
           <select
             className="wc-select"
             value={agent || ''}
+            aria-label="Agente"
             onChange={e => {
               const val = e.target.value || null;
               setAgent(val);
@@ -585,8 +587,8 @@ export default function WebChatPanel({ onClose }) {
               <option key={a.key} value={a.key}>{a.key}</option>
             ))}
           </select>
-          <button className="wc-btn-icon" onClick={clearChat} title="Nueva conversación"><Trash2 size={14} /></button>
-          <button className="wc-close" onClick={onClose}><X size={16} /></button>
+          <button className="wc-btn-icon" onClick={clearChat} title="Nueva conversación" aria-label="Nueva conversación"><Trash2 size={14} /></button>
+          <button className="wc-close" onClick={onClose} aria-label="Cerrar panel de chat"><X size={16} /></button>
         </div>
       </div>
 

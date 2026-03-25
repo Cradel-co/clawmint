@@ -5,11 +5,11 @@
   flex-direction: column;
   width: 340px;
   height: 100%;
-  background: #1e1e1e;
-  border-left: 1px solid #333;
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border-secondary);
   overflow: hidden;
   font-size: 13px;
-  color: #ccc;
+  color: var(--text-secondary);
 }
 
 /* ─── Header ──────────────────────────────────────────────────────────────── */
@@ -20,14 +20,14 @@
   justify-content: space-between;
   padding: 10px 14px;
   background: #252525;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--border-secondary);
   flex-shrink: 0;
 }
 
 .tg-header-title {
   font-size: 13px;
   font-weight: 600;
-  color: #e0e0e0;
+  color: var(--text-primary);
   display: flex;
   align-items: center;
   gap: 7px;
@@ -37,7 +37,7 @@
 
 .tg-header-badge {
   background: #28c84022;
-  color: #28c840;
+  color: var(--accent-green);
   border: 1px solid #28c84044;
   border-radius: 10px;
   font-size: 10px;
@@ -48,7 +48,7 @@
 .tg-close {
   background: none;
   border: none;
-  color: #aaa;
+  color: var(--text-muted);
   font-size: 18px;
   cursor: pointer;
   padding: 2px 4px;
@@ -56,7 +56,7 @@
   transition: color 0.15s;
   line-height: 1;
 }
-.tg-close:hover { color: #ff5f57; }
+.tg-close:hover { color: var(--accent-red); }
 
 /* ─── Body ────────────────────────────────────────────────────────────────── */
 
@@ -75,7 +75,7 @@
   display: flex;
   gap: 6px;
   font-size: 11px;
-  color: #999;
+  color: var(--text-hint);
   padding: 0 2px;
 }
 
@@ -84,20 +84,20 @@
 .tg-empty-state {
   text-align: center;
   padding: 24px 0 8px;
-  color: #999;
+  color: var(--text-hint);
   font-size: 13px;
   line-height: 1.6;
 }
 
 .tg-empty-hint {
   font-size: 11px;
-  color: #999;
+  color: var(--text-hint);
   margin-top: 4px;
 }
 
 .tg-empty-small {
   font-size: 11px;
-  color: #999;
+  color: var(--text-hint);
   margin: 4px 0;
   padding: 0 2px;
 }
@@ -105,7 +105,7 @@
 /* ─── Bot card ────────────────────────────────────────────────────────────── */
 
 .tg-bot-card {
-  border: 1px solid #2e2e2e;
+  border: 1px solid var(--bg-hover);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -124,7 +124,7 @@
   user-select: none;
   transition: background 0.1s;
 }
-.tg-bot-header:hover { background: #2a2a2a; }
+.tg-bot-header:hover { background: var(--border-subtle); }
 
 .tg-bot-info {
   display: flex;
@@ -135,13 +135,13 @@
 
 .tg-bot-key {
   font-weight: 600;
-  color: #e0e0e0;
+  color: var(--text-primary);
   font-size: 13px;
 }
 
 .tg-bot-username {
   font-size: 11px;
-  color: #29b6f6;
+  color: var(--accent-cyan);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -156,24 +156,24 @@
 
 .tg-bot-expand {
   font-size: 10px;
-  color: #999;
+  color: var(--text-hint);
   margin-left: 2px;
 }
 
 .tg-bot-body {
-  border-top: 1px solid #2e2e2e;
+  border-top: 1px solid var(--bg-hover);
   padding: 10px 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: #1e1e1e;
+  background: var(--bg-secondary);
 }
 
 /* ─── Chat row ────────────────────────────────────────────────────────────── */
 
 .tg-chat-row {
   background: #252525;
-  border: 1px solid #2e2e2e;
+  border: 1px solid var(--bg-hover);
   border-radius: 6px;
   padding: 8px 10px;
   display: flex;
@@ -190,17 +190,17 @@
 .tg-chat-name {
   font-size: 12px;
   font-weight: 600;
-  color: #29b6f6;
+  color: var(--accent-cyan);
 }
 
 .tg-chat-time {
   font-size: 10px;
-  color: #999;
+  color: var(--text-hint);
 }
 
 .tg-chat-preview {
   font-size: 11px;
-  color: #999;
+  color: var(--text-hint);
   font-style: italic;
   margin: 0;
   white-space: nowrap;
@@ -210,7 +210,7 @@
 
 .tg-chat-session {
   font-size: 10px;
-  color: #999;
+  color: var(--text-hint);
   margin: 0;
 }
 
@@ -218,7 +218,7 @@
   background: #2a2a2a;
   border-radius: 3px;
   padding: 1px 4px;
-  color: #aaa;
+  color: var(--text-muted);
 }
 
 .tg-chat-btns {
@@ -231,7 +231,7 @@
 
 .tg-add-form {
   background: #252525;
-  border: 1px solid #333;
+  border: 1px solid var(--border-secondary);
   border-radius: 8px;
   padding: 12px;
   display: flex;
@@ -242,14 +242,14 @@
 .tg-form-title {
   font-size: 12px;
   font-weight: 600;
-  color: #e0e0e0;
+  color: var(--text-primary);
   margin: 0 0 4px 0;
 }
 
 .tg-form-help {
   font-size: 11px;
-  color: #999;
-  background: #1e1e1e;
+  color: var(--text-hint);
+  background: var(--bg-secondary);
   border-radius: 5px;
   padding: 7px 9px;
   margin: 2px 0;
@@ -257,13 +257,13 @@
 
 .tg-form-help p { margin: 0; }
 
-.tg-form-help strong { color: #29b6f6; }
+.tg-form-help strong { color: var(--accent-cyan); }
 
 /* ─── Inputs ──────────────────────────────────────────────────────────────── */
 
 .tg-label {
   font-size: 11px;
-  color: #999;
+  color: var(--text-hint);
 }
 
 .tg-token-input-row {
@@ -274,10 +274,10 @@
 
 .tg-input {
   flex: 1;
-  background: #1e1e1e;
+  background: var(--bg-secondary);
   border: 1px solid #3a3a3a;
   border-radius: 6px;
-  color: #e0e0e0;
+  color: var(--text-primary);
   font-family: monospace;
   font-size: 12px;
   padding: 7px 10px;
@@ -286,11 +286,11 @@
   width: 100%;
   box-sizing: border-box;
 }
-.tg-input:focus { border-color: #29b6f6; }
-.tg-input::placeholder { color: #444; }
+.tg-input:focus { border-color: var(--accent-cyan); }
+.tg-input::placeholder { color: var(--border-primary); }
 
 .tg-error {
-  color: #ff5f57;
+  color: var(--accent-red);
   font-size: 11px;
   margin: 0;
 }
@@ -317,11 +317,11 @@
 
 .tg-btn-sm { padding: 4px 9px; font-size: 11px; }
 
-.tg-btn-primary { background: #29b6f6; color: #000; flex: 1; }
+.tg-btn-primary { background: var(--accent-cyan); color: #000; flex: 1; }
 .tg-btn-primary:hover:not(:disabled) { background: #4fc3f7; }
 
 .tg-btn-ghost { background: #2a2a2a; color: #bbb; border: 1px solid #3a3a3a; }
-.tg-btn-ghost:hover:not(:disabled) { background: #333; color: #e0e0e0; }
+.tg-btn-ghost:hover:not(:disabled) { background: var(--border-secondary); color: var(--text-primary); }
 
 .tg-btn-start { background: #28c84022; color: #28c840; border: 1px solid #28c84044; }
 .tg-btn-start:hover:not(:disabled) { background: #28c84033; }
@@ -337,7 +337,7 @@
 
 .tg-btn-add {
   background: #252525;
-  color: #aaa;
+  color: var(--text-muted);
   border: 1px dashed #3a3a3a;
   width: 100%;
   text-align: center;
@@ -357,7 +357,7 @@
   flex-shrink: 0;
 }
 .tg-status-dot.active { background: #28c840; box-shadow: 0 0 5px #28c840aa; }
-.tg-status-dot.inactive { background: #444; }
+.tg-status-dot.inactive { background: var(--border-primary); }
 
 /* ─── Icon button ─────────────────────────────────────────────────────────── */
 
@@ -379,7 +379,7 @@
   background: #2a2a2a;
   border: 1px solid #3a3a3a;
   border-radius: 6px;
-  color: #aaa;
+  color: var(--text-muted);
   font-size: 11px;
   padding: 2px 6px;
   cursor: pointer;
@@ -388,8 +388,8 @@
   max-width: 110px;
 }
 
-.tg-agent-select:focus { border-color: #667eea; color: #e0e0e0; }
-.tg-agent-select option { background: #1a1a1a; }
+.tg-agent-select:focus { border-color: #667eea; color: var(--text-primary); }
+.tg-agent-select option { background: var(--bg-primary); }
 
 /* ─── Agent chip ──────────────────────────────────────────────────────────── */
 
@@ -397,7 +397,7 @@
   background: #2a2a2a;
   border: 1px solid #3a3a3a;
   border-radius: 10px;
-  color: #aaa;
+  color: var(--text-muted);
   font-size: 10px;
   font-weight: 600;
   padding: 1px 7px;
@@ -406,10 +406,10 @@
   transition: background 0.15s, color 0.15s, border-color 0.15s;
   white-space: nowrap;
 }
-.tg-agent-chip:hover { background: #333; color: #bbb; border-color: #555; }
+.tg-agent-chip:hover { background: var(--border-secondary); color: #bbb; border-color: #555; }
 .tg-agent-chip.cc {
   background: #29b6f622;
-  color: #29b6f6;
+  color: var(--accent-cyan);
   border-color: #29b6f644;
 }
 .tg-agent-chip.cc:hover { background: #29b6f633; }
@@ -420,15 +420,15 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
-  background: #1a1a1a;
-  border: 1px solid #333;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-secondary);
   border-radius: 5px;
   padding: 5px;
 }
 
 .tg-session-empty {
   font-size: 11px;
-  color: #999;
+  color: var(--text-hint);
   padding: 3px 4px;
 }
 
@@ -437,18 +437,18 @@
   align-items: center;
   justify-content: space-between;
   background: #252525;
-  border: 1px solid #2e2e2e;
+  border: 1px solid var(--bg-hover);
   border-radius: 4px;
   padding: 5px 8px;
   cursor: pointer;
   transition: background 0.1s, border-color 0.1s;
   gap: 8px;
 }
-.tg-session-option:hover { background: #2d2d2d; border-color: #29b6f655; }
+.tg-session-option:hover { background: var(--bg-header); border-color: #29b6f655; }
 
 .tg-session-title {
   font-size: 11px;
-  color: #ccc;
+  color: var(--text-secondary);
   flex: 1;
   white-space: nowrap;
   overflow: hidden;
@@ -457,8 +457,8 @@
 
 .tg-session-id {
   font-size: 10px;
-  color: #999;
-  background: #1e1e1e;
+  color: var(--text-hint);
+  background: var(--bg-secondary);
   border-radius: 3px;
   padding: 1px 4px;
   flex-shrink: 0;
@@ -468,7 +468,7 @@
 
 .tg-btn-link-active {
   background: #29b6f622;
-  color: #29b6f6;
+  color: var(--accent-cyan);
   border: 1px solid #29b6f644;
 }
 .tg-btn-link-active:hover:not(:disabled) { background: #29b6f633; }
@@ -476,7 +476,7 @@
 /* ─── Access config ───────────────────────────────────────────────────────── */
 
 .access-config {
-  border-top: 1px solid #333;
+  border-top: 1px solid var(--border-secondary);
   margin-top: 12px;
   padding-top: 12px;
 }
@@ -484,26 +484,26 @@
 .access-config h4 {
   margin: 0 0 10px;
   font-size: 0.85rem;
-  color: #aaa;
+  color: var(--text-muted);
 }
 
 .access-config label {
   display: block;
   font-size: 0.75rem;
-  color: #aaa;
+  color: var(--text-muted);
   margin-bottom: 4px;
 }
 
 .access-config label span {
-  color: #999;
+  color: var(--text-hint);
   font-size: 0.7rem;
 }
 
 .access-config input {
   width: 100%;
   box-sizing: border-box;
-  background: #1a1a1a;
-  border: 1px solid #333;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-secondary);
   border-radius: 4px;
   color: #eee;
   padding: 6px 8px;
