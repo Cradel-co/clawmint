@@ -16,11 +16,12 @@ describe('getToolDefs()', () => {
     expect(defs.length).toBeGreaterThan(0);
   });
 
-  test('cada tool tiene name, description y params', () => {
+  test('cada tool tiene name, description y params o inputSchema', () => {
     for (const t of getToolDefs()) {
       expect(typeof t.name).toBe('string');
       expect(typeof t.description).toBe('string');
-      expect(typeof t.params).toBe('object');
+      const hasParams = typeof t.params === 'object' || typeof t.inputSchema === 'object';
+      expect(hasParams).toBe(true);
     }
   });
 });
