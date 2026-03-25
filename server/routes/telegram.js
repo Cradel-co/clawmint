@@ -4,6 +4,14 @@ const express = require('express');
 module.exports = function createTelegramRouter({ telegram, sessionManager }) {
   const router = express.Router();
 
+  // GET /telegram/mode — modo actual (polling|webhook) y URL de webhook
+  router.get('/mode', (_req, res) => {
+    res.json({
+      mode:       telegram._telegramMode || 'polling',
+      webhookUrl: telegram._webhookBaseUrl || '',
+    });
+  });
+
   // GET /telegram/bots — lista todos los bots con su estado
   router.get('/bots', (_req, res) => {
     res.json(telegram.listBots());

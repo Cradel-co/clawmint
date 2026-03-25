@@ -49,6 +49,7 @@ class TelegramBot {
     this.key   = key;
     this.token = token;
     this.running = false;
+    this._webhookMode = false;
     this.offset  = initialOffset;
     this._onOffsetSave = onOffsetSave || (() => {});
 
@@ -176,7 +177,7 @@ class TelegramBot {
 
   // Métodos que no necesitan throttle (inbound/admin)
   static _UNTHROTTLED = new Set([
-    'getUpdates', 'getMe', 'deleteWebhook', 'setMyCommands',
+    'getUpdates', 'getMe', 'deleteWebhook', 'setWebhook', 'setMyCommands',
     'getFile', 'answerCallbackQuery',
   ]);
 
@@ -250,6 +251,33 @@ class TelegramBot {
     try { await this._apiCall('deleteWebhook', { drop_pending_updates: false }); }
     catch (e) { console.error(`[Telegram] deleteWebhook falló: ${e.message}`); }
 
+    const me = await this._initBot();
+    this._poll();
+
+    console.log(`[Telegram] Bot "${this.key}" iniciado: @${me.username}`);
+    this._sendGreeting();
+    return { username: me.username };
+  }
+
+  async startWebhook(webhookBaseUrl) {
+    if (this.running) return { username: this.botInfo?.username };
+    this.running = true;
+    this._webhookMode = true;
+
+    await this._apiCall('setWebhook', {
+      url: `${webhookBaseUrl}/webhook/${this.key}`,
+      allowed_updates: ['message', 'callback_query'],
+    });
+
+    const me = await this._initBot();
+
+    console.log(`[Telegram] Bot "${this.key}" iniciado (webhook): @${me.username}`);
+    this._sendGreeting();
+    return { username: me.username };
+  }
+
+  /** Shared init: getMe, setMyCommands, event listeners */
+  async _initBot() {
     const me = await this._apiCall('getMe');
     this.botInfo = { id: me.id, username: me.username, firstName: me.first_name };
 
@@ -274,8 +302,6 @@ class TelegramBot {
       });
     } catch (e) { console.error(`[Telegram] setMyCommands falló: ${e.message}`); }
 
-    this._poll();
-
     if (this._events) {
       this._events.on('memory:topic-suggestion', ({ agentKey, chatId, topicName }) => {
         if (!chatId) return;
@@ -294,8 +320,10 @@ class TelegramBot {
       });
     }
 
-    console.log(`[Telegram] Bot "${this.key}" iniciado: @${me.username}`);
+    return me;
+  }
 
+  _sendGreeting() {
     const GREETING_COOLDOWN = 5 * 60 * 1000;
     if (this.startGreeting && this.whitelist.length > 0 &&
         Date.now() - this.lastGreetingAt > GREETING_COOLDOWN) {
@@ -312,12 +340,22 @@ class TelegramBot {
         this.sendText(chatId, msg).catch(() => {});
       }
     }
+  }
 
-    return { username: me.username };
+  async handleWebhookUpdate(update) {
+    try {
+      await this._handleUpdate(update);
+    } catch (err) {
+      console.error(`[Telegram:${this.key}] Error en webhook update:`, err.message);
+    }
   }
 
   async stop() {
     this.running = false;
+    if (this._webhookMode) {
+      this._webhookMode = false;
+      try { await this._apiCall('deleteWebhook', {}); } catch {}
+    }
     console.log(`[Telegram] Bot "${this.key}" detenido`);
   }
 
@@ -799,6 +837,9 @@ class TelegramChannel extends BaseChannel {
     this._ttsConfig       = ttsConfig;
     this._logger          = logger;
 
+    this._telegramMode    = process.env.TELEGRAM_MODE         || 'polling';
+    this._webhookBaseUrl  = process.env.TELEGRAM_WEBHOOK_URL   || '';
+
     /** @type {Map<string, TelegramBot>} */
     this.bots = new Map();
   }
@@ -925,8 +966,15 @@ class TelegramChannel extends BaseChannel {
       if (lastGreetingAt)  bot.lastGreetingAt = lastGreetingAt;
 
       this.bots.set(key, bot);
-      try { await bot.start(); }
-      catch (err) { console.error(`[Telegram] No se pudo iniciar bot "${key}":`, err.message); }
+      try {
+        if (this._telegramMode === 'webhook') {
+          console.log(`[Telegram] Iniciando bot "${key}" en modo webhook`);
+          await bot.startWebhook(this._webhookBaseUrl);
+        } else {
+          console.log(`[Telegram] Iniciando bot "${key}" en modo polling`);
+          await bot.start();
+        }
+      } catch (err) { console.error(`[Telegram] No se pudo iniciar bot "${key}":`, err.message); }
     }
 
     this._reminderInterval = setInterval(() => this._checkReminders(), 30_000);
@@ -953,7 +1001,9 @@ class TelegramChannel extends BaseChannel {
   async addBot(key, token) {
     if (this.bots.has(key)) await this.bots.get(key).stop();
     const bot  = this._buildBot(key, token);
-    const info = await bot.start();
+    const info = this._telegramMode === 'webhook'
+      ? await bot.startWebhook(this._webhookBaseUrl)
+      : await bot.start();
     this.bots.set(key, bot);
     this._saveFile();
     return info;
@@ -971,7 +1021,9 @@ class TelegramChannel extends BaseChannel {
   async startBot(key) {
     const bot = this.bots.get(key);
     if (!bot) throw new Error(`Bot "${key}" no encontrado`);
-    return bot.start();
+    return this._telegramMode === 'webhook'
+      ? bot.startWebhook(this._webhookBaseUrl)
+      : bot.start();
   }
 
   async stopBot(key) {
@@ -1007,6 +1059,22 @@ class TelegramChannel extends BaseChannel {
   }
 
   saveBots() { this._saveFile(); }
+
+  // ── Webhook router ────────────────────────────────────────────────────────
+
+  webhookRouter() {
+    const router = require('express').Router();
+    router.post('/:botKey', (req, res) => {
+      const bot = this.bots.get(req.params.botKey);
+      if (!bot || !bot.running) return res.sendStatus(404);
+      // Process async, respond 200 immediately (Telegram requires fast response)
+      bot.handleWebhookUpdate(req.body).catch(err => {
+        console.error(`[Telegram:${req.params.botKey}] Webhook error:`, err.message);
+      });
+      res.sendStatus(200);
+    });
+    return router;
+  }
 
   // ── Persistencia ─────────────────────────────────────────────────────────
 
