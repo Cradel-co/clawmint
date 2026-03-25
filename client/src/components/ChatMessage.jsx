@@ -4,8 +4,7 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { Highlight, themes } from 'prism-react-renderer';
 import AudioPlayer from './AudioPlayer.jsx';
 
 /** Schema de sanitización: permite HTML visual pero bloquea scripts/iframes */
@@ -168,15 +167,19 @@ function CodeBlock({ node, inline, className, children, ...props }) {
           {copied ? <Check size={12} /> : <><Copy size={12} /> Copiar</>}
         </button>
       </div>
-      <SyntaxHighlighter
-        style={oneDark}
-        language={lang || 'text'}
-        PreTag="div"
-        customStyle={{ margin: 0, borderRadius: '0 0 6px 6px', fontSize: '13px' }}
-        {...props}
-      >
-        {code}
-      </SyntaxHighlighter>
+      <Highlight theme={themes.oneDark} code={code} language={lang || 'text'}>
+        {({ style, tokens, getLineProps, getTokenProps }) => (
+          <pre style={{ ...style, margin: 0, borderRadius: '0 0 6px 6px', fontSize: '13px', padding: '12px', overflow: 'auto' }}>
+            {tokens.map((line, i) => (
+              <div key={i} {...getLineProps({ line })}>
+                {line.map((token, key) => (
+                  <span key={key} {...getTokenProps({ token })} />
+                ))}
+              </div>
+            ))}
+          </pre>
+        )}
+      </Highlight>
     </div>
   );
 }
