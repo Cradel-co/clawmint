@@ -105,6 +105,10 @@ export default function App() {
   const closeSession = useCallback((id) => {
     setSessions((prev) => {
       const next = prev.filter((s) => s.id !== id);
+      // Limpiar httpIdToTabId para la sesión cerrada (evitar memory leak)
+      for (const [httpId, tabId] of httpIdToTabId.current) {
+        if (tabId === id) { httpIdToTabId.current.delete(httpId); break; }
+      }
       if (next.length === 0) {
         const s = createSession();
         setActiveId(s.id);

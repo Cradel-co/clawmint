@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { Lock, CheckCircle, Sparkles, Square, Play, X, ChevronUp, ChevronDown, Eye, EyeOff, Check, Plus, Bot } from 'lucide-react';
 import { API_BASE } from '../config.js';
 import './TelegramPanel.css';
@@ -13,7 +13,7 @@ function timeAgo(ts) {
   return `${Math.floor(mins / 60)}h`;
 }
 
-function ChatRow({ botKey, chat, onOpenSession, onRefresh }) {
+const ChatRow = memo(function ChatRow({ botKey, chat, onOpenSession, onRefresh }) {
   const [linking, setLinking] = useState(false);
   const [sessions, setSessions] = useState([]);
 
@@ -103,7 +103,7 @@ function ChatRow({ botKey, chat, onOpenSession, onRefresh }) {
       </div>
     </div>
   );
-}
+});
 
 function AccessConfig({ bot, onRefresh }) {
   const [ids, setIds] = useState((bot.whitelist || []).join(', '));
@@ -163,17 +163,9 @@ function AccessConfig({ bot, onRefresh }) {
   );
 }
 
-function BotCard({ bot, onOpenSession, onRefresh }) {
+const BotCard = memo(function BotCard({ bot, allAgents, onOpenSession, onRefresh }) {
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [allAgents, setAllAgents] = useState([]);
-
-  useEffect(() => {
-    fetch(`${API_BASE}/api/agents`)
-      .then(r => r.json())
-      .then(data => setAllAgents(Array.isArray(data) ? data : []))
-      .catch(() => {});
-  }, []);
 
   const handleStart = async () => {
     setLoading(true);
@@ -274,9 +266,9 @@ function BotCard({ bot, onOpenSession, onRefresh }) {
       )}
     </div>
   );
-}
+});
 
-function AddBotForm({ onAdd, onCancel }) {
+const AddBotForm = memo(function AddBotForm({ onAdd, onCancel }) {
   const [key, setKey] = useState('');
   const [token, setToken] = useState('');
   const [showToken, setShowToken] = useState(false);
@@ -347,10 +339,11 @@ function AddBotForm({ onAdd, onCancel }) {
       </div>
     </div>
   );
-}
+});
 
 export default function TelegramPanel({ onClose, onOpenSession }) {
   const [bots, setBots] = useState([]);
+  const [allAgents, setAllAgents] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
   const intervalRef = useRef(null);
 
@@ -367,6 +360,14 @@ export default function TelegramPanel({ onClose, onOpenSession }) {
     intervalRef.current = setInterval(fetchBots, 3000);
     return () => clearInterval(intervalRef.current);
   }, [fetchBots]);
+
+  // Cargar agentes una sola vez (en vez de por cada BotCard)
+  useEffect(() => {
+    fetch(`${API_BASE}/api/agents`)
+      .then(r => r.json())
+      .then(data => setAllAgents(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
 
   const handleAdd = () => {
     setShowAdd(false);
@@ -409,6 +410,7 @@ export default function TelegramPanel({ onClose, onOpenSession }) {
           <BotCard
             key={bot.key}
             bot={bot}
+            allAgents={allAgents}
             onOpenSession={(sessionId) => { onOpenSession(sessionId); onClose(); }}
             onRefresh={fetchBots}
           />

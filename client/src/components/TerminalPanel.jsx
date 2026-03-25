@@ -138,8 +138,8 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
   // Cuando este panel se vuelve activo, re-ajustar el tamaño
   useEffect(() => {
     if (active && fitAddonRef.current && xtermRef.current) {
-      // Pequeño delay para que el DOM se actualice antes de medir
-      const t = setTimeout(() => {
+      // Esperar al siguiente frame para que el DOM se actualice antes de medir
+      const rafId = requestAnimationFrame(() => {
         fitAddonRef.current.fit();
         const ws = wsRef.current;
         if (ws && ws.readyState === WebSocket.OPEN) {
@@ -149,8 +149,8 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
             rows: xtermRef.current.rows,
           }));
         }
-      }, 50);
-      return () => clearTimeout(t);
+      });
+      return () => cancelAnimationFrame(rafId);
     }
   }, [active]);
 
