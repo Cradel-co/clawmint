@@ -20,10 +20,10 @@ async function collect(gen) {
 describe('providers/index.js', () => {
   const providers = require('../providers');
 
-  test('list() retorna un array de 4 providers', () => {
+  test('list() retorna un array de 6 providers', () => {
     const list = providers.list();
     expect(Array.isArray(list)).toBe(true);
-    expect(list).toHaveLength(4);
+    expect(list).toHaveLength(6);
   });
 
   test('list() — cada provider tiene name, label, models', () => {
@@ -34,12 +34,14 @@ describe('providers/index.js', () => {
     }
   });
 
-  test('list() incluye claude-code, anthropic, gemini, openai', () => {
+  test('list() incluye claude-code, anthropic, gemini, openai, grok, ollama', () => {
     const names = providers.list().map(p => p.name);
     expect(names).toContain('claude-code');
     expect(names).toContain('anthropic');
     expect(names).toContain('gemini');
     expect(names).toContain('openai');
+    expect(names).toContain('grok');
+    expect(names).toContain('ollama');
   });
 
   test('get("gemini") retorna el provider de Gemini', () => {
@@ -226,7 +228,7 @@ describe('providers/gemini.js', () => {
     expect(doneEvent.fullText).toBe('Hola! Soy Gemini.');
   });
 
-  test('respuesta sin partes de texto → solo yields done', async () => {
+  test('respuesta sin partes de texto → yields usage + done', async () => {
     const mockAI = makeAI([{
       content: { parts: [] },
     }]);
@@ -237,7 +239,9 @@ describe('providers/gemini.js', () => {
       apiKey: 'test-key',
     }));
 
-    expect(events.every(e => e.type === 'done')).toBe(true);
+    const types = events.map(e => e.type);
+    expect(types).toContain('done');
+    expect(types.every(t => t === 'done' || t === 'usage')).toBe(true);
   });
 
   test('function call → yields tool_call + tool_result + done', async () => {
