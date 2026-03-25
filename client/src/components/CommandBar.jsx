@@ -89,9 +89,10 @@ export default function CommandBar({ onCommand, onClaude, onAI }) {
   };
 
   return (
-    <form className="command-bar" onSubmit={handleSubmit}>
-      <span className="command-prefix">/</span>
+    <form className="command-bar" onSubmit={handleSubmit} role="search" aria-label="Barra de comandos">
+      <label htmlFor="command-input" className="command-prefix" aria-hidden="true">/</label>
       <input
+        id="command-input"
         ref={inputRef}
         className="command-input"
         value={value.startsWith('/') ? value.slice(1) : value}
@@ -99,9 +100,11 @@ export default function CommandBar({ onCommand, onClaude, onAI }) {
         placeholder="new  |  cmd npm start  |  ai  |  gemini  |  openai  |  grok  |  ollama  |  cc"
         spellCheck={false}
         autoComplete="off"
+        aria-label="Comando"
+        aria-describedby={error ? 'command-error' : undefined}
       />
       <button type="submit" className="command-submit">Abrir</button>
-      {error && <span className="command-error">{error}</span>}
+      {error && <span id="command-error" className="command-error" role="alert">{error}</span>}
     </form>
   );
 }
