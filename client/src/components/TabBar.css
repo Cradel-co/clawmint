@@ -32,6 +32,11 @@
   color: #ccc;
 }
 
+.tab:focus-visible {
+  outline: 2px solid #28c840;
+  outline-offset: -2px;
+}
+
 .tab.active {
   background: #1a1a1a;
   color: #f0f0f0;
@@ -60,6 +65,11 @@
   background: #3a3a3a;
 }
 
+.tab-close:focus-visible {
+  outline: 2px solid #ff5f57;
+  outline-offset: 1px;
+}
+
 .tab-new {
   background: none;
   border: none;
@@ -73,4 +83,9 @@
 
 .tab-new:hover {
   color: #28c840;
+}
+
+.tab-new:focus-visible {
+  outline: 2px solid #28c840;
+  outline-offset: 1px;
 }

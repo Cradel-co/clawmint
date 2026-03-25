@@ -199,6 +199,7 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
             }
           }}
           placeholder="Escribí un comando y presioná Enter..."
+          aria-label="Entrada de comando de terminal"
           autoComplete="off"
           spellCheck={false}
           style={{

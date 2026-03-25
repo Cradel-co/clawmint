@@ -138,52 +138,58 @@ export default function App() {
 
   return (
     <div className="app">
+      <a href="#terminal-main" className="skip-link">Ir al contenido principal</a>
       <header className="app-header">
-        <span className="dot red" />
-        <span className="dot yellow" />
-        <span className="dot green" />
-        <span className="title">Terminal Live</span>
+        <span className="dot red" aria-hidden="true" />
+        <span className="dot yellow" aria-hidden="true" />
+        <span className="dot green" aria-hidden="true" />
+        <h1 className="title">Terminal Live</h1>
 
-        <div className="header-right">
+        <nav className="header-right" aria-label="Paneles">
           <button
             className={`telegram-btn ${chatOpen ? 'active' : ''}`}
             onClick={() => { setChatOpen(v => !v); setProvidersOpen(false); setMcpsOpen(false); setAgentsOpen(false); setTelegramOpen(false); }}
-            title="Chat con IA"
+            aria-label="Chat con IA"
+            aria-pressed={chatOpen}
           >
-            <MessageCircle size={16} />
+            <MessageCircle size={16} aria-hidden="true" />
           </button>
           <button
             className={`telegram-btn ${providersOpen ? 'active' : ''}`}
             onClick={() => { setProvidersOpen(v => !v); setMcpsOpen(false); setAgentsOpen(false); setTelegramOpen(false); setChatOpen(false); }}
-            title="Providers de IA"
+            aria-label="Providers de IA"
+            aria-pressed={providersOpen}
           >
-            <Settings size={16} />
+            <Settings size={16} aria-hidden="true" />
           </button>
           <button
             className={`telegram-btn ${mcpsOpen ? 'active' : ''}`}
             onClick={() => { setMcpsOpen(v => !v); setProvidersOpen(false); setAgentsOpen(false); setTelegramOpen(false); setChatOpen(false); }}
-            title="MCPs"
+            aria-label="MCPs"
+            aria-pressed={mcpsOpen}
           >
-            <Plug size={16} />
+            <Plug size={16} aria-hidden="true" />
           </button>
           <button
             className={`telegram-btn ${agentsOpen ? 'active' : ''}`}
             onClick={() => { setAgentsOpen(v => !v); setMcpsOpen(false); setTelegramOpen(false); setProvidersOpen(false); setChatOpen(false); }}
-            title="Agentes personalizados"
+            aria-label="Agentes personalizados"
+            aria-pressed={agentsOpen}
           >
-            <Users size={16} />
+            <Users size={16} aria-hidden="true" />
           </button>
           <button
             className={`telegram-btn ${telegramOpen ? 'active' : ''}`}
             onClick={() => { setTelegramOpen(v => !v); setMcpsOpen(false); setAgentsOpen(false); setProvidersOpen(false); setChatOpen(false); }}
-            title="Panel de Telegram"
+            aria-label="Panel de Telegram"
+            aria-pressed={telegramOpen}
           >
-            <Bot size={16} />
+            <Bot size={16} aria-hidden="true" />
             {telegramChatsCount > 0 && !telegramOpen && (
               <span className="telegram-badge">{telegramChatsCount}</span>
             )}
           </button>
-        </div>
+        </nav>
       </header>
 
       <TabBar
@@ -201,7 +207,7 @@ export default function App() {
       />
 
       <div className="app-body-wrap">
-        <main className="app-body">
+        <main id="terminal-main" className="app-body">
           {sessions.map((session) => (
             <TerminalPanel
               key={session.id}
