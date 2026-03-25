@@ -1,3 +1,37 @@
+:root {
+  /* Backgrounds */
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #1e1e1e;
+  --bg-header: #2d2d2d;
+  --bg-panel: #222;
+  --bg-input: #111;
+  --bg-hover: #2e2e2e;
+  --bg-active: #3d3d3d;
+
+  /* Borders */
+  --border-primary: #444;
+  --border-secondary: #333;
+  --border-subtle: #2a2a2a;
+
+  /* Text — WCAG AA compliant on dark backgrounds */
+  --text-primary: #f0f0f0;
+  --text-secondary: #ccc;
+  --text-muted: #b0b0b0;  /* was #aaa — bumped for WCAG AA on #2d2d2d (4.5:1) */
+  --text-hint: #b0b0b0;   /* was #999 — bumped for WCAG AA on #1a1a1a (4.66:1) */
+
+  /* Accents */
+  --accent-green: #28c840;
+  --accent-blue: #007aff;
+  --accent-red: #ff5f57;
+  --accent-yellow: #febc2e;
+  --accent-cyan: #29b6f6;
+
+  /* Interactive */
+  --focus-ring: #007aff;
+  --btn-primary-bg: #007aff;
+  --btn-primary-hover: #0062cc;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -5,8 +39,8 @@
 }
 
 body {
-  background: #1a1a1a;
-  color: #f0f0f0;
+  background: var(--bg-primary);
+  color: var(--text-primary);
   font-family: 'Courier New', monospace;
   height: 100vh;
   height: 100dvh;

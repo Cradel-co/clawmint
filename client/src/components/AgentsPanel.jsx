@@ -49,6 +49,7 @@ function AgentForm({ initial, onSave, onCancel }) {
             placeholder="psicologo, chef, abogado..."
             value={key}
             onChange={e => { setKey(e.target.value); setError(''); }}
+            aria-label="Clave del agente"
           />
         </>
       )}
@@ -60,6 +61,7 @@ function AgentForm({ initial, onSave, onCancel }) {
         placeholder="Psicólogo empático y profesional"
         value={description}
         onChange={e => setDescription(e.target.value)}
+        aria-label="Descripción del agente"
       />
 
       <label className="ap-label" style={{ marginTop: 8 }}>Prompt de rol</label>
@@ -100,8 +102,8 @@ function AgentRow({ agent, onEdit, onDelete }) {
           /{agent.key}
         </span>
         <div className="ap-agent-actions">
-          <button className="ap-icon-btn" onClick={() => onEdit(agent)} title="Editar"><Pencil size={13} /></button>
-          <button className="ap-icon-btn ap-icon-btn-danger" onClick={() => onDelete(agent.key)} title="Eliminar"><Trash2 size={13} /></button>
+          <button className="ap-icon-btn" onClick={() => onEdit(agent)} title="Editar" aria-label={`Editar agente ${agent.key}`}><Pencil size={13} /></button>
+          <button className="ap-icon-btn ap-icon-btn-danger" onClick={() => onDelete(agent.key)} title="Eliminar" aria-label={`Eliminar agente ${agent.key}`}><Trash2 size={13} /></button>
         </div>
       </div>
       {agent.description && (
@@ -163,6 +165,7 @@ function SkillsSection() {
           onChange={e => { setSlug(e.target.value); setError(''); }}
           placeholder="slug del skill (ej: bible-study)"
           onKeyDown={e => e.key === 'Enter' && install()}
+          aria-label="Slug del skill a instalar"
         />
         <button className="ap-btn ap-btn-primary" onClick={install} disabled={installing || !slug.trim()}>
           {installing ? '...' : 'Instalar'}
@@ -179,7 +182,7 @@ function SkillsSection() {
             <span className="ap-skill-slug">{s.slug}</span>
             {s.description && <span className="ap-skill-desc">{s.description}</span>}
           </div>
-          <button className="ap-icon-btn ap-icon-btn-danger" onClick={() => uninstall(s.slug)} title="Desinstalar"><X size={13} /></button>
+          <button className="ap-icon-btn ap-icon-btn-danger" onClick={() => uninstall(s.slug)} title="Desinstalar" aria-label={`Desinstalar skill ${s.name || s.slug}`}><X size={13} /></button>
         </div>
       ))}
     </div>
@@ -228,13 +231,13 @@ export default function AgentsPanel({ onClose }) {
   };
 
   return (
-    <div className="ap-panel">
+    <div className="ap-panel" role="region" aria-label="Panel de agentes">
       <div className="ap-header">
         <span className="ap-header-title">
           <span className="ap-icon"><Users size={16} /></span>
           Agentes personalizados
         </span>
-        <button className="ap-close" onClick={onClose} title="Cerrar"><X size={16} /></button>
+        <button className="ap-close" onClick={onClose} aria-label="Cerrar panel de agentes"><X size={16} /></button>
       </div>
 
       {loadError && <div className="ap-error" style={{ padding: '6px 14px' }}>{loadError}</div>}

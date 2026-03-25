@@ -237,7 +237,7 @@ const BotCard = memo(function BotCard({ bot, allAgents, onOpenSession, onRefresh
               <Play size={11} /> Start
             </button>
           )}
-          <button className="tg-btn tg-btn-sm tg-btn-delete" onClick={handleRemove} disabled={loading} title="Eliminar bot">
+          <button className="tg-btn tg-btn-sm tg-btn-delete" onClick={handleRemove} disabled={loading} title="Eliminar bot" aria-label="Eliminar bot">
             <X size={13} />
           </button>
           <span className="tg-bot-expand">{expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</span>
@@ -318,7 +318,7 @@ const AddBotForm = memo(function AddBotForm({ onAdd, onCancel }) {
           onChange={e => { setToken(e.target.value); setError(''); }}
           onKeyDown={e => e.key === 'Enter' && handleSubmit()}
         />
-        <button className="tg-icon-btn" onClick={() => setShowToken(v => !v)}>
+        <button className="tg-icon-btn" onClick={() => setShowToken(v => !v)} aria-label={showToken ? 'Ocultar token' : 'Mostrar token'}>
           {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
         </button>
       </div>
@@ -378,14 +378,14 @@ export default function TelegramPanel({ onClose, onOpenSession }) {
   const activeBots = bots.filter(b => b.running).length;
 
   return (
-    <div className="tg-panel">
+    <div className="tg-panel" role="region" aria-label="Panel de Telegram">
       <div className="tg-header">
         <span className="tg-header-title">
           <span className="tg-icon"><Bot size={16} /></span>
           Bots de Telegram
           {activeBots > 0 && <span className="tg-header-badge">{activeBots} activo{activeBots > 1 ? 's' : ''}</span>}
         </span>
-        <button className="tg-close" onClick={onClose} title="Cerrar"><X size={16} /></button>
+        <button className="tg-close" onClick={onClose} aria-label="Cerrar panel de Telegram"><X size={16} /></button>
       </div>
 
       <div className="tg-body">

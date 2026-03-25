@@ -48,6 +48,15 @@ export default function DirPicker({ value, onChange, onClose }) {
     inputRef.current?.focus();
   }, []);
 
+  // Cerrar con Escape
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   const navigate = (dir) => {
     setCurrentPath(currentPath.replace(/\/$/, '') + '/' + dir);
   };
@@ -63,14 +72,14 @@ export default function DirPicker({ value, onChange, onClose }) {
 
   return (
     <div className="dirpicker-overlay" onClick={onClose}>
-      <div className="dirpicker" onClick={e => e.stopPropagation()}>
+      <div className="dirpicker" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="dirpicker-title">
         <div className="dirpicker-header">
-          <span>Directorio de trabajo</span>
-          <button className="dirpicker-close" onClick={onClose}><X size={14} /></button>
+          <span id="dirpicker-title">Directorio de trabajo</span>
+          <button className="dirpicker-close" onClick={onClose} aria-label="Cerrar"><X size={14} /></button>
         </div>
 
         <div className="dirpicker-path-row">
-          <button className="dirpicker-up" onClick={goUp} disabled={!parentPath || parentPath === currentPath} title="Subir">
+          <button className="dirpicker-up" onClick={goUp} disabled={!parentPath || parentPath === currentPath} aria-label="Subir al directorio padre">
             ..
           </button>
           <input
@@ -80,6 +89,7 @@ export default function DirPicker({ value, onChange, onClose }) {
             onChange={e => setCurrentPath(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') select(); }}
             spellCheck={false}
+            aria-label="Ruta del directorio"
           />
         </div>
 
@@ -100,15 +110,15 @@ export default function DirPicker({ value, onChange, onClose }) {
             <div className="dirpicker-empty">Sin subdirectorios</div>
           )}
           {dirs.map(d => (
-            <div key={d} className="dirpicker-item" onClick={() => navigate(d)}>
+            <button key={d} className="dirpicker-item" onClick={() => navigate(d)}>
               <span className="dirpicker-folder-icon"><Folder size={14} /></span>
               {d}
-            </div>
+            </button>
           ))}
         </div>
 
         <div className="dirpicker-footer">
-          <button className="dirpicker-select" onClick={select}>
+          <button className="dirpicker-select" onClick={select} aria-label="Seleccionar este directorio">
             Abrir aqui
           </button>
         </div>
