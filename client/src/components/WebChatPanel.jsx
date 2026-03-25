@@ -234,7 +234,7 @@ export default function WebChatPanel({ onClose }) {
             break;
         }
       } catch (err) {
-        console.warn('[WebChat] Error procesando mensaje WS:', err.message);
+        /* silenciar — no contaminar consola */
       }
     };
 
