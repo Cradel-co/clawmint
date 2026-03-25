@@ -2,7 +2,6 @@
 
 const fs   = require('fs');
 const path = require('path');
-const https = require('https');
 const os   = require('os');
 
 const BaseChannel          = require('../BaseChannel');
@@ -11,139 +10,15 @@ const ConsoleSession       = require('../../core/ConsoleSession');
 const CommandHandler       = require('./CommandHandler');
 const CallbackHandler      = require('./CallbackHandler');
 const PendingActionHandler = require('./PendingActionHandler');
-const dynamicRegistry      = require('./DynamicCallbackRegistry');
+const MediaHandler         = require('./MediaHandler');
+const ResponseRenderer     = require('./ResponseRenderer');
+const MessageProcessor     = require('./MessageProcessor');
 const parseButtons         = require('../parseButtons');
 
-const TELEGRAM_HOST = 'api.telegram.org';
+const { httpsPost, httpsPostMultipart, cleanPtyOutput, stripAnsi, chunkText, tdbg } = require('./utils');
+
 const POLL_TIMEOUT  = 25;
 const RATE_WINDOW_MS = 60 * 60 * 1000;
-
-// ── Debug condicional (activar con DEBUG_TELEGRAM=1) ─────────────────────────
-function _tgDebug() { return process.env.DEBUG_TELEGRAM === '1'; }
-function tdbg(scope, ...args) {
-  if (!_tgDebug()) return;
-  console.log(`[TG:DBG:${scope}]`, ...args);
-}
-
-// ── Utilidades HTTP ──────────────────────────────────────────────────────────
-
-function httpsPost(urlPath, body, timeoutMs = 35000) {
-  return new Promise((resolve, reject) => {
-    const data = JSON.stringify(body);
-    const options = {
-      hostname: TELEGRAM_HOST,
-      path: urlPath,
-      method: 'POST',
-      family: 4,
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(data),
-      },
-    };
-    const req = https.request(options, (res) => {
-      let raw = '';
-      res.on('data', chunk => { raw += chunk; });
-      res.on('end', () => {
-        try { resolve(JSON.parse(raw)); }
-        catch (e) { reject(new Error('Respuesta no es JSON: ' + raw.slice(0, 200))); }
-      });
-    });
-    req.setTimeout(timeoutMs, () => { req.destroy(new Error('Timeout')); });
-    req.on('error', reject);
-    req.write(data);
-    req.end();
-  });
-}
-
-function httpsPostMultipart(urlPath, fields, file, timeoutMs = 35000) {
-  return new Promise((resolve, reject) => {
-    const boundary = '----FormBoundary' + Date.now().toString(36) + Math.random().toString(36).slice(2);
-    const parts = [];
-
-    // Campos de texto
-    for (const [key, value] of Object.entries(fields)) {
-      parts.push(
-        Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${value}\r\n`)
-      );
-    }
-
-    // Archivo binario
-    if (file) {
-      parts.push(
-        Buffer.from(
-          `--${boundary}\r\nContent-Disposition: form-data; name="${file.fieldName}"; filename="${file.filename}"\r\n` +
-          `Content-Type: ${file.contentType}\r\n\r\n`
-        )
-      );
-      parts.push(file.buffer);
-      parts.push(Buffer.from('\r\n'));
-    }
-
-    parts.push(Buffer.from(`--${boundary}--\r\n`));
-    const body = Buffer.concat(parts);
-
-    const options = {
-      hostname: TELEGRAM_HOST,
-      path: urlPath,
-      method: 'POST',
-      family: 4,
-      headers: {
-        'Content-Type': `multipart/form-data; boundary=${boundary}`,
-        'Content-Length': body.length,
-      },
-    };
-    const req = https.request(options, (res) => {
-      let raw = '';
-      res.on('data', chunk => { raw += chunk; });
-      res.on('end', () => {
-        try { resolve(JSON.parse(raw)); }
-        catch (e) { reject(new Error('Respuesta no es JSON: ' + raw.slice(0, 200))); }
-      });
-    });
-    req.setTimeout(timeoutMs, () => { req.destroy(new Error('Timeout')); });
-    req.on('error', reject);
-    req.write(body);
-    req.end();
-  });
-}
-
-function cleanPtyOutput(raw) {
-  let s = raw.replace(/\x1B\[(\d*)C/g, (_, n) => ' '.repeat(Number(n) || 1));
-  s = s
-    .replace(/\x1B\[[0-9;?]*[A-Za-z@]/g, '')
-    .replace(/\x1B\][^\x07\x1B]*(?:\x07|\x1B\\)/g, '')
-    .replace(/\x1B[A-Z\\]/g, '')
-    .replace(/[\x00-\x08\x0E-\x1F\x7F]/g, '');
-  const lines = s.split('\n').map(line => {
-    const segs = line.split('\r');
-    let rendered = segs[0] || '';
-    for (let i = 1; i < segs.length; i++) {
-      const seg = segs[i];
-      if (seg.length >= rendered.length) rendered = seg;
-      else if (seg.length > 0) rendered = seg + rendered.slice(seg.length);
-    }
-    return rendered.trimEnd();
-  });
-  const filtered = lines.filter(line => {
-    const t = line.trim();
-    if (!t) return false;
-    if (/^[─━═\-─]{4,}$/.test(t)) return false;
-    if (/^[▐▛▜▌▝▘█▙▟▄▀■]+/.test(t)) return false;
-    if (/^\?.*shortcuts/.test(t)) return false;
-    if (/^ctrl\+/.test(t)) return false;
-    if (/^❯\s*$/.test(t)) return false;
-    return true;
-  });
-  return filtered.join('\n').replace(/\n{3,}/g, '\n\n').trim();
-}
-
-function stripAnsi(str) { return cleanPtyOutput(str); }
-
-function chunkText(text, size = 4096) {
-  const chunks = [];
-  for (let i = 0; i < text.length; i += size) chunks.push(text.slice(i, i + size));
-  return chunks.length > 0 ? chunks : [''];
-}
 
 // ── TelegramBot (instancia por bot) ──────────────────────────────────────────
 
@@ -151,13 +26,13 @@ class TelegramBot {
   constructor(key, token, {
     initialOffset = 0,
     onOffsetSave  = null,
-    // Deps inyectadas (Fase 1 — opcionales con fallback a módulos legacy)
     commandHandler      = null,
     callbackHandler     = null,
     pendingHandler      = null,
-    // ConversationService (Fase 5)
+    mediaHandler        = null,
+    responseRenderer    = null,
+    messageProcessor    = null,
     convSvc             = null,
-    // Otros deps para fallback PTY y _sendToApiProvider legacy
     sessionManager      = null,
     agents              = null,
     memory              = null,
@@ -188,10 +63,15 @@ class TelegramBot {
     /** @type {Map<number, object>} */
     this.chats            = new Map();
 
-    // Deps
-    this._commandHandler  = commandHandler;
-    this._callbackHandler = callbackHandler;
-    this._pendingHandler  = pendingHandler;
+    // Handlers extraídos
+    this._commandHandler    = commandHandler;
+    this._callbackHandler   = callbackHandler;
+    this._pendingHandler    = pendingHandler;
+    this._mediaHandler      = mediaHandler;
+    this._responseRenderer  = responseRenderer || new ResponseRenderer();
+    this._messageProcessor  = messageProcessor;
+
+    // Deps directas (usadas por métodos que quedan en TelegramBot)
     this._convSvc         = convSvc;
     this._sessionManager  = sessionManager;
     this._agents          = agents;
@@ -310,16 +190,6 @@ class TelegramBot {
     try { await this._apiCall('answerCallbackQuery', { callback_query_id: id, text }); } catch {}
   }
 
-  /**
-   * Enviar una imagen a un chat.
-   * @param {number|string} chatId
-   * @param {Buffer} photoBuffer - imagen como Buffer
-   * @param {object} [opts]
-   * @param {string} [opts.caption] - texto debajo de la imagen
-   * @param {string} [opts.filename] - nombre del archivo (default: photo.png)
-   * @param {string} [opts.contentType] - MIME type (default: image/png)
-   * @param {string} [opts.parse_mode] - 'HTML' | 'Markdown' | 'MarkdownV2'
-   */
   async sendPhoto(chatId, photoBuffer, opts = {}) {
     const urlPath = `/bot${this.token}/sendPhoto`;
     const fields = { chat_id: String(chatId) };
@@ -336,15 +206,6 @@ class TelegramBot {
     return data.result;
   }
 
-  /**
-   * Enviar un documento/archivo a un chat.
-   * @param {number|string} chatId
-   * @param {Buffer} docBuffer
-   * @param {object} [opts]
-   * @param {string} [opts.caption]
-   * @param {string} [opts.filename]
-   * @param {string} [opts.contentType]
-   */
   async sendDocument(chatId, docBuffer, opts = {}) {
     const urlPath = `/bot${this.token}/sendDocument`;
     const fields = { chat_id: String(chatId) };
@@ -367,7 +228,6 @@ class TelegramBot {
     if (this.running) return { username: this.botInfo?.username };
     this.running = true;
 
-    // Limpiar webhook residual para evitar updates duplicados
     try { await this._apiCall('deleteWebhook', { drop_pending_updates: false }); }
     catch (e) { console.error(`[Telegram] deleteWebhook falló: ${e.message}`); }
 
@@ -397,7 +257,6 @@ class TelegramBot {
 
     this._poll();
 
-    // Suscribir a sugerencias de tópicos del consolidador
     if (this._events) {
       this._events.on('memory:topic-suggestion', ({ agentKey, chatId, topicName }) => {
         if (!chatId) return;
@@ -447,13 +306,37 @@ class TelegramBot {
     while (this.running) {
       try {
         const updates = await this._getUpdates();
-        for (const update of updates) {
-          this.offset = update.update_id + 1;
-          try { await this._handleUpdate(update); } catch (err) {
-            console.error(`[Telegram:${this.key}] Error en update:`, err.message);
+
+        if (updates.length > 0) {
+          // Actualizar offset al último update recibido
+          this.offset = updates[updates.length - 1].update_id + 1;
+
+          // Agrupar updates por chatId: paralelo entre chats, serial dentro del mismo chat
+          const byChat = new Map();
+          for (const u of updates) {
+            const chatId = u.message?.chat?.id || u.callback_query?.message?.chat?.id || 'unknown';
+            if (!byChat.has(chatId)) byChat.set(chatId, []);
+            byChat.get(chatId).push(u);
           }
+
+          const results = await Promise.allSettled(
+            [...byChat.values()].map(async (chatUpdates) => {
+              for (const u of chatUpdates) {
+                try { await this._handleUpdate(u); } catch (err) {
+                  console.error(`[Telegram:${this.key}] Error en update:`, err.message);
+                }
+              }
+            })
+          );
+
+          for (const r of results) {
+            if (r.status === 'rejected') {
+              console.error(`[Telegram:${this.key}] Error en batch de chat:`, r.reason?.message);
+            }
+          }
+
+          if (this._onOffsetSave) this._onOffsetSave();
         }
-        if (updates.length > 0 && this._onOffsetSave) this._onOffsetSave();
       } catch (err) {
         if (!this.running) break;
         console.error(`[Telegram:${this.key}] Error en polling:`, err.message);
@@ -474,111 +357,23 @@ class TelegramBot {
     const isGroup = this._isGroup(msg.chat.type);
     if (isGroup && !this._isMentionedOrReply(msg)) return;
     if (msg.voice || msg.audio) {
-      await this._handleVoiceMessage(msg);
+      if (this._mediaHandler) {
+        await this._mediaHandler.handleVoice(this, msg);
+      }
       return;
     }
     if (msg.photo) {
-      await this._handlePhotoMessage(msg);
+      if (this._mediaHandler) {
+        await this._mediaHandler.handlePhoto(this, msg);
+      }
       return;
     }
     if (!msg.text) return;
     await this._handleMessage(msg);
   }
 
-  async _handleVoiceMessage(msg) {
-    const chatId = msg.chat.id;
-    if (!this._isAllowed(chatId, msg.chat.type)) {
-      await this.sendText(chatId, '⛔ No tenés acceso a este bot.', msg.message_id);
-      return;
-    }
-    const fileId   = msg.voice?.file_id || msg.audio?.file_id;
-    const duration = msg.voice?.duration || msg.audio?.duration || 0;
-    if (duration > 300) {
-      await this.sendText(chatId, '⚠️ El audio es muy largo (máx 5 min).');
-      return;
-    }
-    if (!this._transcriber) {
-      await this.sendText(chatId, '❌ Módulo de transcripción no disponible.');
-      return;
-    }
-    try {
-      const fileInfo = await this._apiCall('getFile', { file_id: fileId });
-      const fileUrl  = `https://api.telegram.org/file/bot${this.token}/${fileInfo.file_path}`;
-      const tmpFile  = path.join(os.tmpdir(), `clawmint_voice_${Date.now()}.ogg`);
-      await this._transcriber.httpsDownload(fileUrl, tmpFile);
-      // Enviar status de transcripción — se reutiliza como sentMsg para los status posteriores
-      let statusMsg = null;
-      try { statusMsg = await this._apiCall('sendMessage', { chat_id: chatId, text: '🎙️ Transcribiendo audio...' }); } catch {}
-      const text = await this._transcriber.transcribe(tmpFile);
-      try { fs.unlinkSync(tmpFile); } catch {}
-      if (!text || !text.trim()) {
-        if (statusMsg) {
-          try { await this._apiCall('editMessageText', { chat_id: chatId, message_id: statusMsg.message_id, text: '⚠️ No se pudo extraer texto del audio.' }); } catch {}
-        } else {
-          await this.sendText(chatId, '⚠️ No se pudo extraer texto del audio.');
-        }
-        return;
-      }
-      console.log(`[Telegram:${this.key}] Audio transcrito de ${chatId}: ${text.slice(0, 60)}`);
-      // Actualizar el mensaje de transcripción con el texto reconocido (ya no se reutiliza para status posteriores)
-      if (statusMsg) {
-        const preview = text.length > 200 ? text.slice(0, 200) + '…' : text;
-        try { await this._apiCall('editMessageText', { chat_id: chatId, message_id: statusMsg.message_id, text: `🎙️ ${preview}` }); } catch {}
-      }
-      msg.text = text;
-      // No pasar _statusMsg — _sendToSession creará su propio mensaje de status
-      await this._handleMessage(msg);
-    } catch (err) {
-      console.error(`[Telegram:${this.key}] Error procesando audio:`, err.message);
-      await this.sendText(chatId, `❌ Error al procesar audio: ${err.message}`);
-    }
-  }
-
-  async _handlePhotoMessage(msg) {
-    const chatId = msg.chat.id;
-    if (!this._isAllowed(chatId, msg.chat.type)) {
-      await this.sendText(chatId, '⛔ No tenés acceso a este bot.', msg.message_id);
-      return;
-    }
-    try {
-      // Telegram envía array de resoluciones, tomar la más grande
-      const photo  = msg.photo[msg.photo.length - 1];
-      const fileInfo = await this._apiCall('getFile', { file_id: photo.file_id });
-      const fileUrl  = `https://api.telegram.org/file/bot${this.token}/${fileInfo.file_path}`;
-
-      // Descargar foto a buffer
-      const buffer = await new Promise((resolve, reject) => {
-        https.get(fileUrl, (res) => {
-          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-            https.get(res.headers.location, (r2) => {
-              const chunks = []; r2.on('data', c => chunks.push(c)); r2.on('end', () => resolve(Buffer.concat(chunks))); r2.on('error', reject);
-            }).on('error', reject);
-            return;
-          }
-          const chunks = []; res.on('data', c => chunks.push(c)); res.on('end', () => resolve(Buffer.concat(chunks))); res.on('error', reject);
-        }).on('error', reject);
-      });
-
-      const ext = path.extname(fileInfo.file_path || '').replace('.', '') || 'jpg';
-      const mediaType = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-      const base64 = buffer.toString('base64');
-
-      console.log(`[Telegram:${this.key}] Foto recibida de ${chatId}: ${photo.width}x${photo.height}, ${Math.round(buffer.length / 1024)}KB`);
-
-      // Pasar al handler con la imagen adjunta
-      msg.text = msg.caption || 'Describe esta imagen';
-      msg._images = [{ base64, mediaType }];
-      await this._handleMessage(msg);
-    } catch (err) {
-      const errDetail = err?.message || err?.stack || (err ? JSON.stringify(err) : 'error desconocido');
-      console.error(`[Telegram:${this.key}] Error procesando foto:`, errDetail);
-      if (err?.stack) console.error(`[Telegram:${this.key}] Stack:`, err.stack);
-      await this.sendText(chatId, `❌ Error al procesar la foto: ${errDetail.slice(0, 200)}`);
-    }
-  }
-
   async _handleMessage(msg) {
-    // Deduplicar por message_id (re-entrega de updates)
+    // Deduplicar por message_id
     if (!this._seenMsgIds) this._seenMsgIds = new Set();
     if (this._seenMsgIds.has(msg.message_id)) {
       tdbg('dedup', `SKIP msg_id=${msg.message_id} (duplicado por id)`);
@@ -590,7 +385,7 @@ class TelegramBot {
       this._seenMsgIds = new Set(arr.slice(-100));
     }
 
-    // Deduplicar por contenido+chat (mismo texto en <2s = tap doble o retry)
+    // Deduplicar por contenido+chat
     if (!this._lastMsgByChat) this._lastMsgByChat = new Map();
     const dedupKey = `${msg.chat.id}:${(msg.text || '').trim()}`;
     const lastTs   = this._lastMsgByChat.get(dedupKey) || 0;
@@ -600,7 +395,6 @@ class TelegramBot {
       return;
     }
     this._lastMsgByChat.set(dedupKey, now);
-    // Limpiar entries viejas
     if (this._lastMsgByChat.size > 500) {
       for (const [k, v] of this._lastMsgByChat) {
         if (now - v > 10000) this._lastMsgByChat.delete(k);
@@ -633,7 +427,6 @@ class TelegramBot {
     if (!chat) {
       const saved = this._chatSettings ? this._chatSettings.load(this.key, chatId) : null;
 
-      // Restaurar sesión de Claude desde SQLite si hay una guardada
       let restoredSession = null;
       if (saved?.claude_session_id && saved.message_count > 0) {
         restoredSession = new ClaudePrintSession({
@@ -726,7 +519,6 @@ class TelegramBot {
     if (this._commandHandler) {
       return await this._commandHandler.handle(this, msg, cmd, args, chat);
     }
-    // Fallback mínimo
     await this.sendText(msg.chat.id, `❓ Comando desconocido: /${cmd}`);
   }
 
@@ -736,325 +528,13 @@ class TelegramBot {
     }
   }
 
-  // ── Helpers de animación y envío ─────────────────────────────────────────
+  // ── Delegación a módulos extraídos ──────────────────────────────────────
 
-  async _startDotAnimation(chatId, mode = 'ask') {
-    const modeLabels = { ask: 'ask', plan: 'plan-mode', auto: 'auto-accept' };
-    const label = modeLabels[mode] || mode;
-    let sentMsg = null;
-    try { sentMsg = await this._apiCall('sendMessage', { chat_id: chatId, text: label + '.' }); } catch {}
-    if (!sentMsg) return { sentMsg: null, stop: () => {} };
-
-    let dotCount = 1, dotDir = 1, stopped = false;
-    const interval = setInterval(async () => {
-      if (stopped) return;
-      dotCount += dotDir;
-      if (dotCount >= 3) { dotCount = 3; dotDir = -1; }
-      else if (dotCount <= 1) { dotCount = 1; dotDir = 1; }
-      try {
-        await this._apiCall('editMessageText', {
-          chat_id: chatId, message_id: sentMsg.message_id,
-          text: label + '.'.repeat(dotCount),
-        });
-      } catch {}
-    }, 1000);
-
-    const stop = () => { stopped = true; clearInterval(interval); };
-    return { sentMsg, stop };
-  }
-
-  async _sendResult(chatId, text, sentMsg) {
-    // Parsear botones inline del AI response
-    const { text: parsedText, buttons } = parseButtons(text || '');
-
-    const finalText = cleanPtyOutput(parsedText).trim();
-    tdbg('result', `chatId=${chatId} rawLen=${(text||'').length} cleanLen=${finalText.length} hasSentMsg=${!!sentMsg} hasButtons=${!!buttons}`);
-    if (!finalText && !buttons) { tdbg('result', `SKIP — finalText vacío`); return; }
-
-    const chunks = chunkText(finalText, 4096);
-    const lastIdx = chunks.length - 1;
-    tdbg('result', `${chunks.length} chunk(s), first=${chunks[0]?.slice(0, 80)}`);
-
-    if (sentMsg) {
-      if (chunks.length === 1) {
-        tdbg('result', `editando msg ${sentMsg.message_id}`);
-        try {
-          if (buttons) {
-            await this.sendWithButtons(chatId, chunks[0], buttons, sentMsg.message_id);
-          } else {
-            await this._apiCall('editMessageText', { chat_id: chatId, message_id: sentMsg.message_id, text: chunks[0] });
-          }
-        } catch (e) {
-          tdbg('result', `editMsg FAIL: ${e.message}`);
-          if (!e.message?.includes('message is not modified')) await this.sendText(chatId, chunks[0]);
-        }
-      } else {
-        try {
-          await this._apiCall('editMessageText', { chat_id: chatId, message_id: sentMsg.message_id, text: chunks[0] });
-        } catch (e) {
-          tdbg('result', `editMsg FAIL: ${e.message}`);
-          if (!e.message?.includes('message is not modified')) await this.sendText(chatId, chunks[0]);
-        }
-        for (let i = 1; i < lastIdx; i++) await this.sendText(chatId, chunks[i]);
-        // Último chunk: con botones si hay
-        if (buttons) {
-          await this.sendWithButtons(chatId, chunks[lastIdx], buttons);
-        } else {
-          await this.sendText(chatId, chunks[lastIdx]);
-        }
-      }
-    } else {
-      tdbg('result', `enviando ${chunks.length} chunk(s) como mensajes nuevos`);
-      if (buttons && chunks.length === 1) {
-        await this.sendWithButtons(chatId, chunks[0], buttons);
-      } else {
-        for (let i = 0; i < lastIdx; i++) await this.sendText(chatId, chunks[i]);
-        // Último chunk: con botones si hay
-        if (buttons) {
-          await this.sendWithButtons(chatId, chunks[lastIdx], buttons);
-        } else {
-          await this.sendText(chatId, chunks[lastIdx]);
-        }
-      }
+  async _sendToSession(chatId, text, chat, images, existingStatusMsg) {
+    if (this._messageProcessor) {
+      return await this._messageProcessor.process(this, chatId, text, chat, images, existingStatusMsg);
     }
-    tdbg('result', `OK`);
-  }
-
-  // ── Envío a sesión / provider ─────────────────────────────────────────────
-
-  async _sendToSession(chatId, text, chat, images = null, existingStatusMsg = null) {
-    tdbg('send', `chatId=${chatId} text="${text.slice(0, 80)}" busy=${chat.busy}`);
-    if (chat.busy) {
-      tdbg('send', `SKIP — chat busy`);
-      try { await this._apiCall('sendMessage', { chat_id: chatId, text: '⏳ Procesando tu mensaje anterior, aguardá un momento...' }); } catch {}
-      return;
-    }
-    chat.busy = true;
-
-    // ── Ruta PTY: agentes no-claude sin provider API ─────────────────────────
-    const chatProvider = chat.provider || 'claude-code';
-    const agentKey     = chat.activeAgent?.key || chat.activeAgent || this.defaultAgent;
-    const useConvSvc   = this._convSvc && (chatProvider !== 'claude-code' || this._isClaudeBased(agentKey));
-    tdbg('send', `provider=${chatProvider} agent=${agentKey} useConvSvc=${useConvSvc} hasConvSvc=${!!this._convSvc}`);
-
-    if (!useConvSvc) {
-      // Agentes PTY (bash, custom commands, etc.)
-      tdbg('send', `→ ruta PTY`);
-      try {
-        const session  = await this.getOrCreateSession(chatId, chat);
-        tdbg('send', `PTY session=${session?.id} active=${session?.active}`);
-        const fromName = chat.firstName || chat.username || `chat${chatId}`;
-        if (this._events) this._events.emit('telegram:session', { sessionId: session.id, from: fromName, text });
-        session.injectOutput(`\r\n\x1b[34m┌─ 📨 Telegram: ${fromName}\x1b[0m\r\n`);
-        try { await this._apiCall('sendChatAction', { chat_id: chatId, action: 'typing' }); } catch {}
-        const result   = await session.sendMessage(text, { timeout: 1080000, stableMs: 3000 });
-        const response = cleanPtyOutput(result.raw || '');
-        tdbg('send', `PTY response=${response?.length || 0} chars`);
-        if (response) await this.sendText(chatId, response);
-      } catch (err) {
-        console.error(`[Telegram:${this.key}] Error PTY chat ${chatId}:`, err.message);
-        tdbg('send', `PTY ERROR: ${err.stack || err.message}`);
-        try { await this.sendText(chatId, `⚠️ Error: ${err.message}`); } catch {}
-      } finally {
-        chat.busy = false;
-      }
-      return;
-    }
-
-    // ── Ruta ConversationService: claude-code y providers API ────────────────
-    tdbg('send', `→ ruta ConvSvc`);
-    const mode = chat.claudeMode || 'auto';
-    tdbg('send', `mode=${mode} model=${chat.model} hasClaudeSession=${!!chat.claudeSession} msgCount=${chat.claudeSession?.messageCount || 0}`);
-    // Reutilizar mensaje de status existente (ej: transcripción de audio) o crear animación nueva
-    let sentMsg, stopAnim;
-    if (existingStatusMsg) {
-      sentMsg = existingStatusMsg;
-      stopAnim = () => {};
-      tdbg('send', `reusing statusMsg=${sentMsg.message_id}`);
-    } else {
-      ({ sentMsg, stop: stopAnim } = await this._startDotAnimation(chatId, mode));
-      tdbg('send', `dotAnim sentMsg=${sentMsg?.message_id || 'null'}`);
-    }
-
-    let lastEditAt  = 0;
-    const THROTTLE  = 1500;
-    let animStopped = false;
-
-    // Status icons para modo MCP
-    const STATUS_MAP = {
-      transcribing: '🎙️ Transcribiendo audio...',
-      thinking:     '🧠 Pensando...',
-      tool_use:     '⚡ Ejecutando',
-      done:         '✅ Listo',
-    };
-
-    let lastStatus = null;
-
-    // Mostrar status en vez de texto (siempre, texto plano se suprime)
-    const onStatus = async (status, detail) => {
-      if (!sentMsg) return;
-      if (!animStopped) { animStopped = true; stopAnim(); }
-      const now = Date.now();
-      if (now - lastEditAt < THROTTLE && status === lastStatus) return;
-      lastEditAt = now;
-      lastStatus = status;
-      let statusText = STATUS_MAP[status] || `⏳ ${status}`;
-      if (status === 'tool_use' && detail) statusText = `⚡ ${detail}...`;
-      try {
-        await this._apiCall('editMessageText', { chat_id: chatId, message_id: sentMsg.message_id, text: statusText });
-        tdbg('status', `${status} ${detail || ''}`);
-      } catch (e) { tdbg('status', `editMsg FAIL: ${e.message}`); }
-    };
-
-    // Streaming desactivado: texto plano siempre se suprime y se guarda en memoria
-    const onChunk = null;
-
-    try {
-      // Inyectar reminder de notas guardadas en sesión en curso
-      let messageText = text;
-      if (chatProvider === 'claude-code' && chat._savedInSession?.length > 0 && chat.claudeSession?.messageCount > 0) {
-        messageText = `[Notas guardadas en esta conversación: ${chat._savedInSession.join(', ')}]\n\n${text}`;
-        tdbg('send', `injected saved notes: ${chat._savedInSession.join(', ')}`);
-      }
-
-      // Callback de aprobación para modo ask (providers API)
-      const onAskPermission = mode === 'ask' && chatProvider !== 'claude-code'
-        ? async (toolName, toolArgs) => {
-            return new Promise((resolve) => {
-              const ts = Date.now();
-              const approveId = `ask:${ts}:y`;
-              const rejectId  = `ask:${ts}:n`;
-              const timeout = setTimeout(() => {
-                dynamicRegistry.remove(approveId);
-                dynamicRegistry.remove(rejectId);
-                resolve(false);
-              }, 60000);
-              dynamicRegistry.register(approveId, {
-                type: 'func', fn: () => { clearTimeout(timeout); resolve(true); },
-                once: true, ttl: 60000,
-              });
-              dynamicRegistry.register(rejectId, {
-                type: 'func', fn: () => { clearTimeout(timeout); resolve(false); },
-                once: true, ttl: 60000,
-              });
-              const preview = JSON.stringify(toolArgs || {}).slice(0, 300);
-              this.sendWithButtons(chatId,
-                `🔧 *${toolName}*\n\`\`\`\n${preview}\n\`\`\`\n¿Permitir?`,
-                [[
-                  { text: '✅ Permitir', callback_data: approveId },
-                  { text: '❌ Rechazar', callback_data: rejectId },
-                ]]
-              ).catch(() => { clearTimeout(timeout); resolve(false); });
-            });
-          }
-        : null;
-
-      tdbg('send', `→ convSvc.processMessage() provider=${chatProvider} agent=${agentKey} textLen=${messageText.length} mode=${mode}`);
-      const t0 = Date.now();
-      const result = await this._convSvc.processMessage({
-        chatId,
-        agentKey,
-        provider:      chatProvider,
-        model:         chat.model,
-        text:          messageText,
-        images:        images || null,
-        history:       chat.aiHistory || [],
-        claudeSession: chat.claudeSession,
-        claudeMode:    mode,
-        onChunk,
-        onStatus,
-        onAskPermission,
-        shellId:       String(chatId),
-        botKey:        this.key,
-        channel:       'telegram',
-      });
-      tdbg('send', `← convSvc.processMessage() ${Date.now() - t0}ms resultText=${(result.text || '').length} chars usedMcpTools=${result.usedMcpTools} newSession=${!!result.newSession} savedFiles=${result.savedMemoryFiles?.length || 0}`);
-
-      // Acumular usage de providers API
-      if (result.usage) {
-        if (!chat.usage) chat.usage = { promptTokens: 0, completionTokens: 0, messageCount: 0 };
-        chat.usage.promptTokens += result.usage.promptTokens || 0;
-        chat.usage.completionTokens += result.usage.completionTokens || 0;
-        chat.usage.messageCount++;
-      }
-
-      stopAnim();
-
-      if (result.newSession)       chat.claudeSession = result.newSession;
-      if (result.history)          chat.aiHistory     = result.history;
-
-      // Persistir sesión de Claude en SQLite para sobrevivir reinicios
-      if (chat.claudeSession?.claudeSessionId && this._chatSettings) {
-        this._chatSettings.saveSession(this.key, chatId, {
-          claudeSessionId: chat.claudeSession.claudeSessionId,
-          messageCount:    chat.claudeSession.messageCount,
-          cwd:             chat.monitorCwd || chat.claudeSession.cwd,
-        });
-      }
-
-      // Persistir historial de providers API para sobrevivir reinicios
-      if (result.history && this._chatSettings && chatProvider !== 'claude-code') {
-        this._chatSettings.saveHistory(this.key, chatId, result.history);
-      }
-
-      if (result.savedMemoryFiles?.length > 0) {
-        if (!chat._savedInSession) chat._savedInSession = [];
-        for (const f of result.savedMemoryFiles) {
-          if (!chat._savedInSession.includes(f)) chat._savedInSession.push(f);
-        }
-      }
-
-      // Borrar status msg — texto plano siempre se suprime
-      if (sentMsg) {
-        try { await this._apiCall('deleteMessage', { chat_id: chatId, message_id: sentMsg.message_id }); } catch (e) { tdbg('send', `deleteStatusMsg FAIL: ${e.message}`); }
-      }
-      // Guardar texto plano en memoria (nunca se envía directo al chat)
-      if (result.text) {
-        const suppressed = result.text.trim();
-        tdbg('send', `texto suprimido (${suppressed.length} chars) — guardando en memoria`);
-        if (suppressed.length > 10 && this._memory && agentKey) {
-          try {
-            const ts = new Date().toISOString().replace(/[:.]/g, '-');
-            const filename = `_leaked-text-${ts}.md`;
-            this._memory.write(agentKey, filename,
-              `---\ntype: leaked-response\nts: ${new Date().toISOString()}\nchatId: ${chatId}\n---\n${suppressed}`
-            );
-            tdbg('send', `texto suprimido guardado en memoria → ${filename}`);
-          } catch (e) {
-            tdbg('send', `error guardando texto suprimido: ${e.message}`);
-          }
-        }
-      }
-
-      // TTS: enviar audio si está habilitado
-      if (this._tts && this._tts.isEnabled() && result.text) {
-        try {
-          const audioBuffer = await this._tts.synthesize(result.text);
-          if (audioBuffer) await this.sendVoice(chatId, audioBuffer);
-        } catch (err) {
-          tdbg('tts', `Error TTS: ${err.message}`);
-        }
-      }
-    } catch (err) {
-      stopAnim();
-      console.error(`[Telegram:${this.key}] Error en chat ${chatId}:`, err.message);
-      tdbg('send', `CATCH ERROR: ${err.stack || err.message}`);
-      if (chat.claudeSession && err.message?.includes('código')) {
-        tdbg('send', `limpiando sesión rota`);
-        chat.claudeSession.claudeSessionId = null;
-        chat.claudeSession.messageCount = 0;
-        if (this._chatSettings) this._chatSettings.clearSession(this.key, chatId);
-      }
-      const errMsg = `⚠️ Error: ${err.message}`;
-      try {
-        if (sentMsg) {
-          await this._apiCall('editMessageText', { chat_id: chatId, message_id: sentMsg.message_id, text: errMsg });
-        } else { await this.sendText(chatId, errMsg); }
-      } catch (e2) { tdbg('send', `error-send FAIL: ${e2.message}`); }
-    } finally {
-      chat.busy = false;
-      tdbg('send', `DONE busy=false`);
-    }
+    console.error(`[Telegram:${this.key}] MessageProcessor no disponible`);
   }
 
   // ── Sesiones PTY ─────────────────────────────────────────────────────────
@@ -1073,7 +553,7 @@ class TelegramBot {
     return session;
   }
 
-  // ── Modo consola (delega a core/ConsoleSession) ─────────────────────────
+  // ── Modo consola ─────────────────────────────────────────────────────────
 
   _getConsoleSession(chat) {
     if (!chat._consoleSession) {
@@ -1087,7 +567,6 @@ class TelegramBot {
     const cwdShort = session.getCwdShort();
     const text     = `${output ? output + '\n\n' : ''}📁 \`${cwdShort}\``;
     const rawBtns  = session.getPromptButtons();
-    // Adaptar formato genérico { text, command } → Telegram { text, callback_data }
     const buttons  = rawBtns.map(row =>
       row.map(b => ({ text: b.text, callback_data: `console:${b.command}` }))
     );
@@ -1206,16 +685,6 @@ class TelegramBot {
     return data.result;
   }
 
-  /**
-   * Enviar un video a un chat.
-   * @param {number|string} chatId
-   * @param {Buffer} videoBuffer
-   * @param {object} [opts]
-   * @param {string} [opts.caption]
-   * @param {string} [opts.filename]
-   * @param {string} [opts.contentType]
-   * @param {string} [opts.parse_mode]
-   */
   async sendVideo(chatId, videoBuffer, opts = {}) {
     const urlPath = `/bot${this.token}/sendVideo`;
     const fields = { chat_id: String(chatId) };
@@ -1269,13 +738,10 @@ class TelegramBot {
 
 class TelegramChannel extends BaseChannel {
   constructor({
-    // storage
     botsFilePath      = null,
-    botsRepo          = null,   // BotsRepository (opcional; si no se da, usa botsFilePath)
-    chatSettingsRepo  = null,   // ChatSettingsRepository (opcional; si no se da, usa chatSettings)
-    // ConversationService (Fase 5)
+    botsRepo          = null,
+    chatSettingsRepo  = null,
     convSvc           = null,
-    // deps de dominio
     sessionManager    = null,
     agents            = null,
     skills            = null,
@@ -1285,7 +751,7 @@ class TelegramChannel extends BaseChannel {
     consolidator      = null,
     providers         = null,
     providerConfig    = null,
-    chatSettings      = null,   // legacy (chat-settings.js) — usado si chatSettingsRepo es null
+    chatSettings      = null,
     eventBus          = null,
     transcriber       = null,
     tts               = null,
@@ -1306,7 +772,7 @@ class TelegramChannel extends BaseChannel {
     this._consolidator    = consolidator;
     this._providers       = providers;
     this._providerConfig  = providerConfig;
-    this._chatSettings    = chatSettingsRepo || chatSettings;   // ChatSettingsRepository tiene la misma interfaz
+    this._chatSettings    = chatSettingsRepo || chatSettings;
     this._eventBus        = eventBus;
     this._transcriber     = transcriber;
     this._tts             = tts;
@@ -1355,13 +821,31 @@ class TelegramChannel extends BaseChannel {
       mcps:   this._mcps,
       logger: this._logger,
     });
+    const mediaHandler = new MediaHandler({
+      transcriber: this._transcriber,
+      logger:      this._logger,
+    });
+    const responseRenderer = new ResponseRenderer();
+    const messageProcessor = new MessageProcessor({
+      convSvc:        this._convSvc,
+      sessionManager: this._sessionManager,
+      agents:         this._agents,
+      memory:         this._memory,
+      chatSettings:   this._chatSettings,
+      tts:            this._tts,
+      events:         this._eventBus,
+      logger:         this._logger,
+    });
 
     return new TelegramBot(key, token, {
       initialOffset,
-      onOffsetSave:   onOffsetSave || (() => this._saveFile()),
+      onOffsetSave:     onOffsetSave || (() => this._saveFile()),
       commandHandler,
       callbackHandler,
       pendingHandler,
+      mediaHandler,
+      responseRenderer,
+      messageProcessor,
       convSvc:        this._convSvc,
       sessionManager: this._sessionManager,
       agents:         this._agents,
@@ -1379,21 +863,14 @@ class TelegramChannel extends BaseChannel {
 
   // ── BaseChannel interface ─────────────────────────────────────────────────
 
-  /** Conectar: carga bots y arranca polling */
   async start()  { return this.loadAndStart(); }
 
-  /** Desconectar: para todos los bots y limpia el intervalo de recordatorios */
   async stop() {
     clearInterval(this._reminderInterval);
     this._reminderInterval = null;
     await Promise.all([...this.bots.values()].map(b => b.stop().catch(() => {})));
   }
 
-  /**
-   * Envía un mensaje de texto a través del primer bot en ejecución.
-   * @param {number|string} destination - chatId
-   * @param {string} text
-   */
   async send(destination, text) {
     for (const bot of this.bots.values()) {
       if (bot.running) {
@@ -1404,7 +881,6 @@ class TelegramChannel extends BaseChannel {
     throw new Error('TelegramChannel: no hay bots en ejecución');
   }
 
-  /** Estado serializable (para la API REST) */
   toJSON() { return { bots: this.listBots() }; }
 
   // ── Ciclo de vida ─────────────────────────────────────────────────────────
@@ -1434,7 +910,6 @@ class TelegramChannel extends BaseChannel {
       catch (err) { console.error(`[Telegram] No se pudo iniciar bot "${key}":`, err.message); }
     }
 
-    // Checker de recordatorios cada 30s
     this._reminderInterval = setInterval(() => this._checkReminders(), 30_000);
     this._reminderInterval.unref();
   }
@@ -1518,7 +993,6 @@ class TelegramChannel extends BaseChannel {
 
   _readFile() {
     if (this._botsRepo) return this._botsRepo.read();
-    // Fallback inline (sin BotsRepository)
     try {
       if (fs.existsSync(this._botsFilePath)) {
         return JSON.parse(fs.readFileSync(this._botsFilePath, 'utf8')) || [];
@@ -1561,7 +1035,6 @@ class TelegramChannel extends BaseChannel {
       offset:           bot.offset,
     }));
     if (this._botsRepo) { this._botsRepo.save(data); return; }
-    // Fallback inline
     try {
       fs.writeFileSync(this._botsFilePath, JSON.stringify(data, null, 2), 'utf8');
     } catch (err) {
