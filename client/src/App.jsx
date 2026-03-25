@@ -1,15 +1,17 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, lazy, Suspense } from 'react';
 import { MessageCircle, Settings, Plug, Users, Bot } from 'lucide-react';
 import TabBar from './components/TabBar.jsx';
 import CommandBar from './components/CommandBar.jsx';
 import TerminalPanel from './components/TerminalPanel.jsx';
-import TelegramPanel from './components/TelegramPanel.jsx';
-import AgentsPanel from './components/AgentsPanel.jsx';
-import ProvidersPanel from './components/ProvidersPanel.jsx';
-import McpsPanel from './components/McpsPanel.jsx';
-import WebChatPanel from './components/WebChatPanel.jsx';
 import { API_BASE, WS_URL } from './config.js';
 import './App.css';
+
+// Lazy-load paneles que se abren bajo demanda
+const TelegramPanel = lazy(() => import('./components/TelegramPanel.jsx'));
+const AgentsPanel = lazy(() => import('./components/AgentsPanel.jsx'));
+const ProvidersPanel = lazy(() => import('./components/ProvidersPanel.jsx'));
+const McpsPanel = lazy(() => import('./components/McpsPanel.jsx'));
+const WebChatPanel = lazy(() => import('./components/WebChatPanel.jsx'));
 let nextId = 0;
 
 function createSession(command = null, type = 'pty', httpSessionId = null, provider = null) {
@@ -56,12 +58,10 @@ export default function App() {
         const msg = JSON.parse(event.data);
         if (msg.type === 'telegram_session') {
           const { sessionId, from } = msg;
-          // Si ya hay una pestaña para esta sesión, solo activarla
           if (httpIdToTabId.current.has(sessionId)) {
             setActiveId(httpIdToTabId.current.get(sessionId));
             return;
           }
-          // Abrir pestaña nueva adjunta a la sesión Telegram
           setSessions((prev) => {
             const s = createSession(null, 'pty', sessionId);
             s.title = `TG: ${from}`;
@@ -69,10 +69,9 @@ export default function App() {
             return [...prev, s];
           });
         }
-      } catch (err) {
-        console.warn('[App] Error procesando mensaje WS:', err.message);
-      }
+      } catch { /* silenciar — no contaminar consola */ }
     };
+    ws.onerror = () => {}; // evitar error en consola cuando server no está disponible
     return () => ws.close();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -87,9 +86,7 @@ export default function App() {
             ? bots.reduce((n, b) => n + (b.chats?.length || 0), 0)
             : 0;
           setTelegramChatsCount(chats);
-        } catch (err) {
-          console.warn('[App] Error obteniendo bots de Telegram:', err.message);
-        }
+        } catch { /* silenciar — polling en background */ }
       }, 5000);
       return () => clearInterval(interval);
     }
@@ -217,28 +214,30 @@ export default function App() {
           ))}
         </main>
 
-        {telegramOpen && (
-          <TelegramPanel
-            onClose={() => setTelegramOpen(false)}
-            onOpenSession={handleOpenSession}
-          />
-        )}
+        <Suspense fallback={null}>
+          {telegramOpen && (
+            <TelegramPanel
+              onClose={() => setTelegramOpen(false)}
+              onOpenSession={handleOpenSession}
+            />
+          )}
 
-        {agentsOpen && (
-          <AgentsPanel onClose={() => setAgentsOpen(false)} />
-        )}
+          {agentsOpen && (
+            <AgentsPanel onClose={() => setAgentsOpen(false)} />
+          )}
 
-        {providersOpen && (
-          <ProvidersPanel onClose={() => setProvidersOpen(false)} />
-        )}
+          {providersOpen && (
+            <ProvidersPanel onClose={() => setProvidersOpen(false)} />
+          )}
 
-        {mcpsOpen && (
-          <McpsPanel onClose={() => setMcpsOpen(false)} />
-        )}
+          {mcpsOpen && (
+            <McpsPanel onClose={() => setMcpsOpen(false)} />
+          )}
 
-        {chatOpen && (
-          <WebChatPanel onClose={() => setChatOpen(false)} />
-        )}
+          {chatOpen && (
+            <WebChatPanel onClose={() => setChatOpen(false)} />
+          )}
+        </Suspense>
       </div>
     </div>
   );
