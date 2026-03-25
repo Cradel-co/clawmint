@@ -13,6 +13,7 @@ const PendingActionHandler = require('./PendingActionHandler');
 const MediaHandler         = require('./MediaHandler');
 const ResponseRenderer     = require('./ResponseRenderer');
 const MessageProcessor     = require('./MessageProcessor');
+const OutboundQueue        = require('./OutboundQueue');
 const parseButtons         = require('../parseButtons');
 
 const { httpsPost, httpsPostMultipart, cleanPtyOutput, stripAnsi, chunkText, tdbg } = require('./utils');
@@ -84,6 +85,9 @@ class TelegramBot {
     this._transcriber     = transcriber;
     this._tts             = tts;
     this._logger          = logger;
+
+    // Throttle inteligente: rate limit outbound + retry en 429
+    this._outboundQueue   = new OutboundQueue({ logger });
   }
 
   // ── Configuración ────────────────────────────────────────────────────────
@@ -170,11 +174,26 @@ class TelegramBot {
 
   // ── Telegram API ─────────────────────────────────────────────────────────
 
+  // Métodos que no necesitan throttle (inbound/admin)
+  static _UNTHROTTLED = new Set([
+    'getUpdates', 'getMe', 'deleteWebhook', 'setMyCommands',
+    'getFile', 'answerCallbackQuery',
+  ]);
+
   async _apiCall(method, body = {}) {
     const urlPath = `/bot${this.token}/${method}`;
-    const data = await httpsPost(urlPath, body);
-    if (!data.ok) throw new Error(data.description || `Telegram error: ${method}`);
-    return data.result;
+    const exec = async () => {
+      const data = await httpsPost(urlPath, body);
+      if (!data.ok) throw new Error(data.description || `Telegram error: ${method}`);
+      return data.result;
+    };
+
+    // Métodos admin/inbound van directo sin cola
+    if (TelegramBot._UNTHROTTLED.has(method)) return exec();
+
+    // Outbound: pasar por la cola con rate limit
+    const chatId = body.chat_id || null;
+    return this._outboundQueue.enqueue(exec, chatId);
   }
   async _getUpdates() {
     const urlPath = `/bot${this.token}/getUpdates`;
