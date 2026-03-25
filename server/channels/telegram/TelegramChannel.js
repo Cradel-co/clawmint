@@ -864,8 +864,7 @@ class TelegramBot {
     // ── Ruta ConversationService: claude-code y providers API ────────────────
     tdbg('send', `→ ruta ConvSvc`);
     const mode = chat.claudeMode || 'auto';
-    const isMcpMode = mode === 'auto';
-    tdbg('send', `mode=${mode} model=${chat.model} isMcpMode=${isMcpMode} hasClaudeSession=${!!chat.claudeSession} msgCount=${chat.claudeSession?.messageCount || 0}`);
+    tdbg('send', `mode=${mode} model=${chat.model} hasClaudeSession=${!!chat.claudeSession} msgCount=${chat.claudeSession?.messageCount || 0}`);
     // Reutilizar mensaje de status existente (ej: transcripción de audio) o crear animación nueva
     let sentMsg, stopAnim;
     if (existingStatusMsg) {
@@ -880,7 +879,6 @@ class TelegramBot {
     let lastEditAt  = 0;
     const THROTTLE  = 1500;
     let animStopped = false;
-    let chunkCount  = 0;
 
     // Status icons para modo MCP
     const STATUS_MAP = {
@@ -892,8 +890,8 @@ class TelegramBot {
 
     let lastStatus = null;
 
-    // En modo MCP: mostrar status en vez de texto
-    const onStatus = isMcpMode ? async (status, detail) => {
+    // Mostrar status en vez de texto (siempre, texto plano se suprime)
+    const onStatus = async (status, detail) => {
       if (!sentMsg) return;
       if (!animStopped) { animStopped = true; stopAnim(); }
       const now = Date.now();
@@ -906,23 +904,10 @@ class TelegramBot {
         await this._apiCall('editMessageText', { chat_id: chatId, message_id: sentMsg.message_id, text: statusText });
         tdbg('status', `${status} ${detail || ''}`);
       } catch (e) { tdbg('status', `editMsg FAIL: ${e.message}`); }
-    } : null;
-
-    // En modo normal: streaming de texto (comportamiento original)
-    const onChunk = isMcpMode ? null : async (partial) => {
-      chunkCount++;
-      if (!partial.trim() || !sentMsg) { tdbg('chunk', `#${chunkCount} SKIP empty=${!partial.trim()} noMsg=${!sentMsg}`); return; }
-      if (!animStopped) { animStopped = true; stopAnim(); tdbg('chunk', `#${chunkCount} anim stopped`); }
-      const now = Date.now();
-      if (now - lastEditAt < THROTTLE) { tdbg('chunk', `#${chunkCount} throttled (${now - lastEditAt}ms)`); return; }
-      lastEditAt = now;
-      try {
-        const preview = cleanPtyOutput(partial).slice(0, 4000) || partial.slice(0, 4000);
-        tdbg('chunk', `#${chunkCount} editMsg len=${preview.length}`);
-        await this._apiCall('editMessageText', { chat_id: chatId, message_id: sentMsg.message_id, text: preview });
-        tdbg('chunk', `#${chunkCount} editMsg OK`);
-      } catch (e) { tdbg('chunk', `#${chunkCount} editMsg FAIL: ${e.message}`); }
     };
+
+    // Streaming desactivado: texto plano siempre se suprime y se guarda en memoria
+    const onChunk = null;
 
     try {
       // Inyectar reminder de notas guardadas en sesión en curso
@@ -983,7 +968,7 @@ class TelegramBot {
         botKey:        this.key,
         channel:       'telegram',
       });
-      tdbg('send', `← convSvc.processMessage() ${Date.now() - t0}ms chunks=${chunkCount} resultText=${(result.text || '').length} chars usedMcpTools=${result.usedMcpTools} newSession=${!!result.newSession} savedFiles=${result.savedMemoryFiles?.length || 0}`);
+      tdbg('send', `← convSvc.processMessage() ${Date.now() - t0}ms resultText=${(result.text || '').length} chars usedMcpTools=${result.usedMcpTools} newSession=${!!result.newSession} savedFiles=${result.savedMemoryFiles?.length || 0}`);
 
       // Acumular usage de providers API
       if (result.usage) {
@@ -1019,27 +1004,26 @@ class TelegramBot {
         }
       }
 
-      // En modo MCP: borrar status msg y enviar respuesta como mensaje nuevo
-      // Claude puede haber enviado fotos/archivos via MCP, pero el texto lo envía el servidor
-      if (isMcpMode) {
-        if (sentMsg) {
-          try { await this._apiCall('deleteMessage', { chat_id: chatId, message_id: sentMsg.message_id }); } catch (e) { tdbg('send', `deleteStatusMsg FAIL: ${e.message}`); }
+      // Borrar status msg — texto plano siempre se suprime
+      if (sentMsg) {
+        try { await this._apiCall('deleteMessage', { chat_id: chatId, message_id: sentMsg.message_id }); } catch (e) { tdbg('send', `deleteStatusMsg FAIL: ${e.message}`); }
+      }
+      // Guardar texto plano en memoria (nunca se envía directo al chat)
+      if (result.text) {
+        const suppressed = result.text.trim();
+        tdbg('send', `texto suprimido (${suppressed.length} chars) — guardando en memoria`);
+        if (suppressed.length > 10 && this._memory && agentKey) {
+          try {
+            const ts = new Date().toISOString().replace(/[:.]/g, '-');
+            const filename = `_leaked-text-${ts}.md`;
+            this._memory.write(agentKey, filename,
+              `---\ntype: leaked-response\nts: ${new Date().toISOString()}\nchatId: ${chatId}\n---\n${suppressed}`
+            );
+            tdbg('send', `texto suprimido guardado en memoria → ${filename}`);
+          } catch (e) {
+            tdbg('send', `error guardando texto suprimido: ${e.message}`);
+          }
         }
-        if (result.text && !result.usedMcpTools) {
-          tdbg('send', `MCP mode: enviando texto (${result.text.length} chars)`);
-          await this._sendResult(chatId, result.text, null);
-        } else if (result.text && result.usedMcpTools) {
-          tdbg('send', `MCP mode: texto suprimido (${result.text.length} chars) — ya enviado via MCP tools`);
-        }
-      } else {
-        // Modo normal: streaming de texto
-        if (!animStopped && sentMsg) {
-          tdbg('send', `deleting dot msg (no chunks received)`);
-          try { await this._apiCall('deleteMessage', { chat_id: chatId, message_id: sentMsg.message_id }); } catch (e) { tdbg('send', `deleteMsg FAIL: ${e.message}`); }
-        }
-        tdbg('send', `→ _sendResult() textLen=${(result.text || '').length} hasSentMsg=${!!(animStopped ? sentMsg : null)}`);
-        await this._sendResult(chatId, result.text || '', animStopped ? sentMsg : null);
-        tdbg('send', `← _sendResult() OK`);
       }
 
       // TTS: enviar audio si está habilitado
