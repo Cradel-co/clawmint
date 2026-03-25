@@ -49,11 +49,16 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.loadAddon(new WebLinksAddon());
-    term.open(containerRef.current);
-    fitAddon.fit();
-
     xtermRef.current = term;
     fitAddonRef.current = fitAddon;
+
+    // Diferir open() al siguiente frame para que el renderer se inicialice correctamente
+    requestAnimationFrame(() => {
+      if (containerRef.current && containerRef.current.offsetWidth > 0) {
+        term.open(containerRef.current);
+        fitAddon.fit();
+      }
+    });
 
     function connect() {
       const ws = new WebSocket(wsUrl);
@@ -115,7 +120,7 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
     });
 
     const handleResize = () => {
-      if (!active) return;
+      if (!active || !containerRef.current?.offsetWidth) return;
       fitAddon.fit();
       const ws = wsRef.current;
       if (ws && ws.readyState === WebSocket.OPEN) {
@@ -135,11 +140,16 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Cuando este panel se vuelve activo, re-ajustar el tamaño
+  // Cuando este panel se vuelve activo, abrir terminal si es necesario y re-ajustar el tamaño
   useEffect(() => {
     if (active && fitAddonRef.current && xtermRef.current) {
       // Esperar al siguiente frame para que el DOM se actualice antes de medir
       const rafId = requestAnimationFrame(() => {
+        if (!containerRef.current?.offsetWidth) return;
+        // Si el terminal no fue abierto aún (contenedor tenía display:none al montar), abrirlo ahora
+        if (!xtermRef.current.element) {
+          xtermRef.current.open(containerRef.current);
+        }
         fitAddonRef.current.fit();
         const ws = wsRef.current;
         if (ws && ws.readyState === WebSocket.OPEN) {
