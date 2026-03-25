@@ -149,6 +149,24 @@ export default function WebChatPanel({ onClose }) {
             });
             break;
 
+          case 'chat_status':
+            if (msg.status === 'thinking') setStatusText(msg.detail ? `🤔 ${msg.detail}...` : '🤔 Pensando...');
+            else if (msg.status === 'tool_use') setStatusText(`⚡ ${msg.detail || 'Ejecutando tool'}...`);
+            else setStatusText(null);
+            break;
+
+          case 'chat_ask_permission':
+            setMessages(prev => [...prev, {
+              role: 'system',
+              content: `🔐 Permiso requerido — herramienta: ${msg.tool}\n${msg.args}`,
+              askPermission: true,
+              buttons: [
+                { text: '✅ Aprobar', callback_data: msg.approveId },
+                { text: '❌ Rechazar', callback_data: msg.rejectId },
+              ],
+            }]);
+            break;
+
           case 'chat:status':
             if (msg.status === 'transcribing') setStatusText('Transcribiendo...');
             else if (msg.status === 'synthesizing') setStatusText('Generando audio...');
