@@ -1,6 +1,6 @@
 # Roadmap Clawmint — Implementación por sesiones
 
-## Estado actual (post sesión 4 — 2026-03-25)
+## Estado actual (post sesión 5 — 2026-03-25)
 
 ### Completado
 - [x] MCP tools para todos los providers API (32 tools)
@@ -18,6 +18,7 @@
 - [x] Sesión 2: Retry 3x con backoff, rate limit 10/min, timeout 120s, resume tras restart (aiHistory en SQLite)
 - [x] Sesión 3: Refactor index.js 1704→170 LOC (11 routes/ + 3 ws/ modules)
 - [x] Sesión 4: Refactor TelegramChannel 1580→~400 LOC, webhook mode, outbound throttle (PRs #74, #78, #79, #80, #85)
+- [x] Sesión 5: DirPicker a11y, responsive móvil, color tokens, empty states, WebChat status/ask-permission (PRs #81, #82, #84, #86, #89)
 
 ### Issues cerrados en sesión 4+
 - ~~#45~~ Memory leak: streams audio sin cleanup — ✅ resuelto
@@ -26,15 +27,15 @@
 - ~~#48~~ Timer interval grabación sin cleanup — ✅ resuelto
 - ~~#49~~ Accesibilidad: controles sin aria-label — ✅ resuelto (PR #81)
 - ~~#50~~ Contraste insuficiente en textos secundarios — ✅ resuelto (PR #81)
+- ~~#51~~ DirPicker: semántica de diálogo y cierre con Escape — ✅ resuelto (PR #89)
 - ~~#52~~ Error handling silencioso — ✅ resuelto (PR #66)
 - ~~#53~~ Performance: componentes sin React.memo — ✅ resuelto (PRs #75, #76, #84)
+- ~~#54~~ Responsive: WebChat móvil + paneles colapsables — ✅ resuelto (PRs #82, #89)
+- ~~#55~~ Inconsistencia visual: colores y estilos entre componentes — ✅ resuelto (PR #89)
+- ~~#56~~ UX: empty states sin acciones claras — ✅ resuelto (PR #89)
 
 ### Issues abiertos GitHub
-- #51 DirPicker: falta semántica de diálogo y cierre con Escape
-- #54 Responsive: WebChat inutilizable en móvil y paneles se solapan en <1000px
-- #55 Inconsistencia visual: colores primarios y estilos entre componentes
-- #56 UX: bugs menores y empty states sin acciones claras
-- #57 Lighthouse Performance: score necesita mejora
+- #57 Lighthouse Performance: score 54 → build producción + sourcemaps off
 - #63 feat: Orquestación multi-agente con AgentOrchestrator
 - #64 feat: Live Canvas — workspace visual generado por agentes IA
 
@@ -154,7 +155,7 @@
 
 ---
 
-## Sesión 5 — Frontend (issues #49-57) ⏳ EN PROGRESO
+## ~~Sesión 5 — Frontend (issues #49-57)~~ ✅ COMPLETADA
 **Objetivo**: WebClient usable, accesible, performante.
 
 ### 5.1 Performance (#53, #57) ✅
@@ -162,24 +163,23 @@
 - Code splitting, source maps, favicon — PR #76
 - Lazy loading y syntax highlighting ligero — PR #84
 - ARIA, focus styles, semantic HTML — PR #77
-- Lighthouse mejorado
+- **Prod build + vite preview + sourcemaps off** — PR actual (#57)
 
-### 5.2 Responsive (#54) ⏳ PENDIENTE
-- WebChat usable en móvil (<768px)
-- Paneles colapsables en <1000px
-- Touch-friendly controls
-- Fix parcial: dvh viewport para móvil — PR #82
+### 5.2 Responsive (#54) ✅
+- WebChat usable en móvil (<768px) — PRs #82, #89
+- Paneles colapsables en <1000px — PR #89
+- Touch-friendly controls — PR #89
 
-### 5.3 Accesibilidad (#49, #50, #51) ⏳ PARCIAL
-- ✅ aria-label en todos los controles — PR #81
-- ✅ Contraste WCAG AA en textos secundarios — PR #81
-- ✅ CSS design tokens — PR #81
-- ⬚ #51: DirPicker semántica de diálogo + Escape para cerrar
+### 5.3 Accesibilidad (#49, #50, #51) ✅
+- aria-label en todos los controles — PR #81
+- Contraste WCAG AA en textos secundarios — PR #81
+- CSS design tokens — PR #81
+- DirPicker semántica de diálogo + Escape para cerrar — PR #89
 
-### 5.4 UX (#55, #56) ⏳ PENDIENTE
-- ✅ Error handling visible (#52) — PR #66
-- ⬚ #55: Colores primarios consistentes entre componentes
-- ⬚ #56: Empty states con acciones claras
+### 5.4 UX (#55, #56) ✅
+- Error handling visible (#52) — PR #66
+- Colores primarios consistentes entre componentes — PR #89
+- Empty states con acciones claras — PR #89
 
 ### 5.5 WebChat status display ✅
 - Mostrar `chat_status` events (pensando/tool/listo) en el UI
@@ -289,11 +289,11 @@ Sesión 1 — Estabilidad crítica      ████████████ ✅
 Sesión 2 — Resiliencia providers    ████████████ ✅ COMPLETADA
 Sesión 3 — Refactor index.js        ████████████ ✅ COMPLETADA
 Sesión 4 — Telegram optimización    ████████████ ✅ COMPLETADA
-Sesión 5 — Frontend issues          ████████░░░░ ⏳ EN PROGRESO (~70%)
+Sesión 5 — Frontend issues          ████████████ ✅ COMPLETADA
 Sesión 6 — Búsqueda avanzada        ░░░░░░░░░░░░ SIGUIENTE
 Sesión 7 — Base de datos            ░░░░░░░░░░░░ BAJA (escala)
 Sesión 8 — Seguridad                ░░░░░░░░░░░░ BAJA
 Sesión 9 — Multi-agente             ░░░░░░░░░░░░ FUTURO
 ```
 
-## Progreso: 4/9 sesiones completadas, 1 en progreso (~70%)
+## Progreso: 5/9 sesiones completadas

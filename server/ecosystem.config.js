@@ -27,7 +27,7 @@ module.exports = {
       name: 'clawmint-client',
       script: 'node_modules/vite/bin/vite.js',
       cwd: path.join(__dirname, '..', 'client'),
-      args: '--host 0.0.0.0 --port 5173',
+      args: 'preview --host 0.0.0.0 --port 5173',
     },
   ],
 };
