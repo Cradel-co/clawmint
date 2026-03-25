@@ -93,6 +93,9 @@ async function _loadModel(modelId) {
   _loadingPromise = (async () => {
     try {
       const resolvedModel = _resolveModel(modelId);
+      // Adquirir slot de modelo pesado (descarga embeddings si está cargado)
+      const modelManager = require('./core/ModelResourceManager');
+      await modelManager.acquire('whisper', () => _unloadModel(resolvedModel));
       console.log(`[transcriber] Cargando modelo ${resolvedModel}...`);
       const { pipeline, env } = await import('@huggingface/transformers');
       env.cacheDir = path.join(__dirname, 'models-cache');
@@ -125,6 +128,7 @@ function _unloadModel(modelId) {
   }
   if (_pipeline) {
     _pipeline = null;
+    try { require('./core/ModelResourceManager').release('whisper'); } catch {}
     console.log(`[transcriber] Modelo ${modelId || 'whisper'} descargado por inactividad`);
     if (typeof global.gc === 'function') global.gc();
   }

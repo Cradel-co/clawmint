@@ -1,29 +1,119 @@
 'use strict';
 
+const path = require('path');
+
 /**
  * embeddings.js
  *
  * Soporte de embeddings vectoriales para recuperación semántica.
- * Providers soportados: openai, gemini.
- * Anthropic no tiene API de embeddings → usa spreading activation como fallback.
+ * Providers soportados: local (bge-small), openai, gemini.
+ *
+ * Provider local usa @huggingface/transformers con bge-small-en-v1.5 (384 dims, ~130 MB).
+ * Se carga lazy, auto-descarga después de 5min inactivo.
+ * Usa ModelResourceManager para no coexistir con Whisper en memoria.
  *
  * Los vectores se guardan en SQLite (note_embeddings) como JSON serializado.
- * Se calculan lazy: al recuperar la nota, si no hay vector guardado se computa y cachea.
  */
+
+const modelManager = require('./core/ModelResourceManager');
 
 // ─── Modelos de embeddings por provider ──────────────────────────────────────
 
+const LOCAL_MODEL = 'Xenova/bge-small-en-v1.5'; // 384 dims, ~130 MB
+const LOCAL_MEMORY_REQUIRED = 200 * 1024 * 1024; // 200 MB headroom
+const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
+
 const EMBED_MODELS = {
-  openai:  'text-embedding-3-small',   // 1536 dims
+  local:   LOCAL_MODEL,                 // 384 dims
+  openai:  'text-embedding-3-small',    // 1536 dims
   gemini:  'gemini-embedding-001',      // 3072 dims
 };
 
 // Providers que soportan embeddings
-const SUPPORTED = new Set(['openai', 'gemini']);
+const SUPPORTED = new Set(['local', 'openai', 'gemini']);
 
 /** Retorna true si el provider tiene API de embeddings */
 function supportsEmbeddings(provider) {
   return SUPPORTED.has(provider);
+}
+
+// ─── Modelo local (bge-small) ────────────────────────────────────────────────
+
+let _localPipeline = null;
+let _localLoading = null;
+let _idleTimer = null;
+
+function _resetIdleTimer() {
+  if (_idleTimer) clearTimeout(_idleTimer);
+  _idleTimer = setTimeout(() => _unloadLocal(), IDLE_TIMEOUT_MS);
+}
+
+function _unloadLocal() {
+  if (_idleTimer) { clearTimeout(_idleTimer); _idleTimer = null; }
+  if (_localPipeline) {
+    _localPipeline = null;
+    modelManager.release('embeddings');
+    console.log('[embeddings] Modelo local descargado por inactividad');
+    if (typeof global.gc === 'function') global.gc();
+  }
+}
+
+async function _loadLocal() {
+  if (_localPipeline) { _resetIdleTimer(); return _localPipeline; }
+  if (_localLoading) return _localLoading;
+
+  _localLoading = (async () => {
+    try {
+      // Verificar memoria antes de cargar
+      if (!modelManager.checkMemory(LOCAL_MEMORY_REQUIRED)) {
+        const info = modelManager.memoryInfo();
+        throw new Error(`Memoria insuficiente para embeddings: disponible ${info.heapAvailableMB}MB, necesario ~200MB`);
+      }
+
+      // Adquirir slot (descarga Whisper si está cargado)
+      await modelManager.acquire('embeddings', _unloadLocal);
+
+      console.log(`[embeddings] Cargando modelo local ${LOCAL_MODEL}...`);
+      let pipeline, env;
+      try {
+        ({ pipeline, env } = await import('@huggingface/transformers'));
+      } catch (importErr) {
+        throw new Error(`@huggingface/transformers no instalado: ${importErr.message}`);
+      }
+      env.cacheDir = path.join(__dirname, 'models-cache');
+
+      _localPipeline = await pipeline('feature-extraction', LOCAL_MODEL, {
+        dtype: 'q8',
+        device: 'cpu',
+      });
+
+      console.log(`[embeddings] Modelo local cargado OK`);
+      _resetIdleTimer();
+      return _localPipeline;
+    } catch (err) {
+      _localPipeline = null;
+      modelManager.release('embeddings');
+      throw err;
+    } finally {
+      _localLoading = null;
+    }
+  })();
+  return _localLoading;
+}
+
+/**
+ * Genera embedding local con bge-small.
+ * @param {string} text
+ * @returns {Promise<number[]>} vector de 384 dimensiones
+ */
+async function embedLocal(text) {
+  const pipe = await _loadLocal();
+  const output = await pipe(text, { pooling: 'cls', normalize: true });
+  // Transformers.js puede retornar Tensor con .data (Float32Array) o array directo
+  if (output?.data) return Array.from(output.data);
+  if (output?.tolist) return output.tolist();
+  if (Array.isArray(output)) return output;
+  throw new Error('Formato de embedding local no reconocido');
 }
 
 // ─── API calls de embeddings ──────────────────────────────────────────────────
@@ -37,7 +127,11 @@ function supportsEmbeddings(provider) {
  */
 async function embed(text, provider, apiKey) {
   if (!text || !text.trim()) throw new Error('Texto vacío');
-  const truncated = text.slice(0, 8000); // límite seguro para ambas APIs
+  const truncated = text.slice(0, 8000);
+
+  if (provider === 'local') {
+    return embedLocal(truncated);
+  }
 
   if (provider === 'openai') {
     const OpenAI = require('openai');
@@ -253,10 +347,13 @@ async function searchByEmbedding(db, agentKey, queryText, provider, apiKey, opts
 module.exports = {
   supportsEmbeddings,
   embed,
+  embedLocal,
   cosineSimilarity,
   getVector,
   saveVector,
   invalidateVector,
   searchByEmbedding,
   EMBED_MODELS,
+  LOCAL_MODEL,
+  unloadLocal: _unloadLocal,
 };
