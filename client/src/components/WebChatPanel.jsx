@@ -621,10 +621,17 @@ export default function WebChatPanel({ onClose }) {
       <div className="wc-messages">
         {messages.length === 0 && (
           <div className="wc-empty">
-            <p>Escribí algo para comenzar</p>
-            <p className="wc-hint">
-              Usá / para comandos: /ayuda
-            </p>
+            {connected ? (
+              <>
+                <p>Escribí algo para comenzar</p>
+                <p className="wc-hint">Usá / para comandos: /ayuda</p>
+              </>
+            ) : (
+              <>
+                <p>Sin conexión al servidor</p>
+                <p className="wc-hint">Verificá que el servidor esté corriendo y recargá la página</p>
+              </>
+            )}
           </div>
         )}
         {messages.map((msg, i) => (

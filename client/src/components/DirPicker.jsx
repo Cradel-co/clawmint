@@ -48,10 +48,26 @@ export default function DirPicker({ value, onChange, onClose }) {
     inputRef.current?.focus();
   }, []);
 
-  // Cerrar con Escape
+  // Cerrar con Escape + focus trap
+  const dialogRef = useRef(null);
   useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') { onClose(); return; }
+      if (e.key === 'Tab') {
+        const focusable = dialog.querySelectorAll('button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])');
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
@@ -72,7 +88,7 @@ export default function DirPicker({ value, onChange, onClose }) {
 
   return (
     <div className="dirpicker-overlay" onClick={onClose}>
-      <div className="dirpicker" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="dirpicker-title">
+      <div ref={dialogRef} className="dirpicker" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="dirpicker-title">
         <div className="dirpicker-header">
           <span id="dirpicker-title">Directorio de trabajo</span>
           <button className="dirpicker-close" onClick={onClose} aria-label="Cerrar"><X size={14} /></button>

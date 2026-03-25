@@ -304,6 +304,9 @@ export default function McpsPanel({ onClose }) {
           <div className="ap-empty-state">
             <p>Sin MCPs configurados</p>
             <p className="ap-empty-hint">Agregá un MCP para extender las capacidades de Claude con herramientas externas.</p>
+            <button className="ap-btn ap-btn-primary" style={{ marginTop: 10 }} onClick={() => { setEditMcp(null); setShowForm(true); }}>
+              <Plus size={13} /> Agregar primer MCP
+            </button>
           </div>
         )}
 
