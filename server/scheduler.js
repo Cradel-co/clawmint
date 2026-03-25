@@ -48,7 +48,7 @@ class Scheduler {
     // 2. Primer agente disponible
     if (this._agents) {
       const list = this._agents.list();
-      if (list.length) return list[0].key;
+      if (list.length && list[0].key) return list[0].key;
     }
     // 3. Fallback final
     return 'claude';
@@ -121,6 +121,9 @@ class Scheduler {
   // ── Core loop ─────────────────────────────────────────────────────────────
 
   async _tick() {
+    // Lock para evitar ejecución concurrente si un tick tarda >30s
+    if (this._ticking) return;
+    this._ticking = true;
     try {
       const now = Date.now();
       const triggered = this._actionsRepo.getTriggered(now);
@@ -140,6 +143,8 @@ class Scheduler {
       }
     } catch (err) {
       this._logger.error('[Scheduler] Error en _tick:', err.message);
+    } finally {
+      this._ticking = false;
     }
   }
 

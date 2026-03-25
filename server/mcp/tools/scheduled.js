@@ -69,7 +69,7 @@ const SCHEDULE_ACTION = {
       } else {
         return 'Error: para trigger_type="once" necesitás trigger_at o delay';
       }
-      if (isNaN(nextRunAt) || nextRunAt <= Date.now()) {
+      if (!nextRunAt || isNaN(nextRunAt) || nextRunAt <= Date.now()) {
         return 'Error: la fecha debe ser en el futuro';
       }
     } else if (triggerType === 'cron') {
