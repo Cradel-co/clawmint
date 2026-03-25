@@ -388,6 +388,8 @@ class TelegramBot {
           { command: 'whisper',      description: 'Ver/cambiar modelo Whisper' },
           { command: 'tts',          description: 'Ver/configurar text-to-speech' },
           { command: 'recordar',     description: 'Crear recordatorio' },
+          { command: 'restart',      description: 'Reiniciar servidor PM2' },
+          { command: 'run',          description: 'Ejecutar comando en terminal' },
           { command: 'ayuda',        description: 'Todos los comandos' },
         ],
       });
