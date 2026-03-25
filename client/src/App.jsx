@@ -2,7 +2,6 @@ import { useState, useCallback, useRef, useEffect, lazy, Suspense } from 'react'
 import { MessageCircle, Settings, Plug, Users, Bot } from 'lucide-react';
 import TabBar from './components/TabBar.jsx';
 import CommandBar from './components/CommandBar.jsx';
-import TerminalPanel from './components/TerminalPanel.jsx';
 import { API_BASE, WS_URL } from './config.js';
 import './App.css';
 import './components/AgentsPanel.css';
@@ -10,6 +9,7 @@ import './components/TelegramPanel.css';
 import './components/WebChatPanel.css';
 
 // Lazy-load paneles que se abren bajo demanda
+const TerminalPanel = lazy(() => import('./components/TerminalPanel.jsx'));
 const TelegramPanel = lazy(() => import('./components/TelegramPanel.jsx'));
 const AgentsPanel = lazy(() => import('./components/AgentsPanel.jsx'));
 const ProvidersPanel = lazy(() => import('./components/ProvidersPanel.jsx'));

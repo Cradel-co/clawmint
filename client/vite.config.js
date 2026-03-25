@@ -15,7 +15,7 @@ export default defineConfig(({ mode }) => {
         output: {
           manualChunks: {
             'xterm': ['@xterm/xterm', '@xterm/addon-fit', '@xterm/addon-web-links'],
-            'syntax-highlight': ['react-syntax-highlighter'],
+            'markdown': ['react-markdown', 'remark-gfm', 'rehype-raw', 'rehype-sanitize'],
           },
         },
       },
