@@ -388,7 +388,7 @@
   max-width: 110px;
 }
 
-.tg-agent-select:focus { border-color: #667eea; color: var(--text-primary); }
+.tg-agent-select:focus { border-color: var(--focus-ring); color: var(--text-primary); }
 .tg-agent-select option { background: var(--bg-primary); }
 
 /* ─── Agent chip ──────────────────────────────────────────────────────────── */

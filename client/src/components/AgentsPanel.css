@@ -165,7 +165,7 @@
   font-family: inherit;
 }
 
-.ap-input:focus { border-color: #667eea; }
+.ap-input:focus { border-color: var(--focus-ring); }
 
 .ap-textarea {
   width: 100%;
@@ -182,7 +182,7 @@
   line-height: 1.5;
 }
 
-.ap-textarea:focus { border-color: #667eea; }
+.ap-textarea:focus { border-color: var(--focus-ring); }
 
 .ap-hint {
   font-size: 10px;
@@ -217,10 +217,10 @@
 .ap-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .ap-btn-primary {
-  background: #667eea;
+  background: var(--btn-primary-bg);
   color: #fff;
 }
-.ap-btn-primary:hover:not(:disabled) { background: #7b8ff0; }
+.ap-btn-primary:hover:not(:disabled) { background: var(--btn-primary-hover); }
 
 .ap-btn-ghost {
   background: transparent;
@@ -232,8 +232,8 @@
 .ap-btn-add {
   width: 100%;
   background: transparent;
-  color: #667eea;
-  border: 1px dashed #445;
+  color: var(--accent-blue);
+  border: 1px dashed var(--border-primary);
   font-size: 12px;
   padding: 8px;
   border-radius: 6px;
@@ -241,7 +241,7 @@
   transition: all 0.15s;
   margin-top: 4px;
 }
-.ap-btn-add:hover { background: #1e2235; border-color: #667eea; }
+.ap-btn-add:hover { background: #1a2235; border-color: var(--accent-blue); }
 
 /* ─── Empty state ─── */
 
@@ -330,7 +330,7 @@
 
 .ap-skill-slug {
   font-size: 10px;
-  color: #667eea;
+  color: var(--accent-blue);
   font-family: monospace;
 }
 

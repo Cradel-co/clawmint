@@ -7,6 +7,7 @@ import './App.css';
 import './components/AgentsPanel.css';
 import './components/TelegramPanel.css';
 import './components/WebChatPanel.css';
+import './components/ProvidersPanel.css';
 
 // Lazy-load paneles que se abren bajo demanda
 const TerminalPanel = lazy(() => import('./components/TerminalPanel.jsx'));

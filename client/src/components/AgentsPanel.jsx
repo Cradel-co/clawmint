@@ -173,7 +173,7 @@ function SkillsSection() {
       </div>
       {error && <p className="ap-error">{error}</p>}
       {skillsList.length === 0 && (
-        <p className="ap-skills-empty">Sin skills instalados</p>
+        <p className="ap-skills-empty">Sin skills instalados. Escribí un slug arriba para instalar uno.</p>
       )}
       {skillsList.map(s => (
         <div key={s.slug} className="ap-skill-row">
@@ -246,6 +246,9 @@ export default function AgentsPanel({ onClose }) {
           <div className="ap-empty-state">
             <p>Sin agentes configurados</p>
             <p className="ap-empty-hint">Creá un agente con un prompt de rol para usarlo en Telegram con /{'<key>'}</p>
+            <button className="ap-btn ap-btn-primary" style={{ marginTop: 10 }} onClick={handleNewClick}>
+              <Plus size={13} /> Crear primer agente
+            </button>
           </div>
         )}
 
