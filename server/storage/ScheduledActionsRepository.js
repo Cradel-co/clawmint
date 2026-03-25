@@ -161,11 +161,14 @@ class ScheduledActionsRepository {
   /**
    * Lista todas las acciones activas.
    */
-  listActive() {
+  listActive(limit = 0) {
     if (!this._db) return [];
-    return this._db.prepare(
-      `SELECT * FROM scheduled_actions WHERE status = 'active' ORDER BY next_run_at`
-    ).all();
+    const sql = limit
+      ? `SELECT * FROM scheduled_actions WHERE status = 'active' ORDER BY next_run_at LIMIT ?`
+      : `SELECT * FROM scheduled_actions WHERE status = 'active' ORDER BY next_run_at`;
+    return limit
+      ? this._db.prepare(sql).all(limit)
+      : this._db.prepare(sql).all();
   }
 
   // ── Helpers de estado ─────────────────────────────────────────────────────

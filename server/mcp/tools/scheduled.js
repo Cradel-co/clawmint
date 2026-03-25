@@ -7,7 +7,7 @@
  * Usa ctx.scheduler (server/scheduler.js).
  */
 
-const { parseDuration } = require('../../reminders');
+const { parseDuration } = require('../../utils/duration');
 const cronParser = require('../../utils/cron-parser');
 
 function _requireScheduler(ctx) {
@@ -16,7 +16,6 @@ function _requireScheduler(ctx) {
 
 /**
  * Resuelve el userId del creador desde el contexto.
- * Busca por la identidad del canal actual (chatId/sessionId).
  */
 function _getCreatorId(ctx) {
   if (ctx.userId) return ctx.userId;
@@ -25,6 +24,27 @@ function _getCreatorId(ctx) {
     if (user) return user.id;
   }
   return null;
+}
+
+/**
+ * Obtiene el user completo del creador (para verificar role).
+ */
+function _getCreatorUser(ctx) {
+  const id = _getCreatorId(ctx);
+  if (!id || !ctx.usersRepo) return null;
+  return ctx.usersRepo.getById(id);
+}
+
+/**
+ * Valida que una timezone sea válida.
+ */
+function _isValidTimezone(tz) {
+  try {
+    Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 const SCHEDULE_ACTION = {
@@ -39,7 +59,7 @@ const SCHEDULE_ACTION = {
     delay:           '?string — alternativa a trigger_at: "30m", "2h", "1d" (para once)',
     cron_expr:       '?string — expresión cron de 5 campos: min hora día mes dow (para cron)',
     timezone:        '?string — timezone IANA (default: America/Argentina/Buenos_Aires)',
-    target_type:     '?string — "self" (default), "all", "users", "whitelist", "favorites"',
+    target_type:     '?string — "self" (default), "all" (admin), "users", "whitelist" (admin), "favorites"',
     target_user_ids: '?string — JSON array de IDs de usuario (para target_type="users")',
     max_runs:        '?string — máximo de ejecuciones (null = infinito para cron)',
     agent_key:       '?string — agente a usar para ai_task',
@@ -51,11 +71,23 @@ const SCHEDULE_ACTION = {
     _requireScheduler(ctx);
     if (!args.label) return 'Error: parámetro label requerido';
 
-    const creatorId = _getCreatorId(ctx);
-    if (!creatorId) return 'Error: no se pudo identificar al usuario creador. Asegurate de estar registrado.';
+    const creatorUser = _getCreatorUser(ctx);
+    if (!creatorUser) return 'Error: no se pudo identificar al usuario creador. Asegurate de estar registrado.';
+    const creatorId = creatorUser.id;
+
+    // S3: target_type 'all' y 'whitelist' requieren admin
+    const targetType = args.target_type || 'self';
+    if ((targetType === 'all' || targetType === 'whitelist') && creatorUser.role !== 'admin') {
+      return `Error: target_type "${targetType}" requiere permisos de administrador.`;
+    }
+
+    // S4: Validar timezone
+    const timezone = args.timezone || 'America/Argentina/Buenos_Aires';
+    if (!_isValidTimezone(timezone)) {
+      return `Error: timezone inválida: "${timezone}". Usá formato IANA (ej: "America/Argentina/Buenos_Aires", "UTC").`;
+    }
 
     const triggerType = args.trigger_type || 'once';
-    const timezone = args.timezone || 'America/Argentina/Buenos_Aires';
     let nextRunAt = null;
 
     if (triggerType === 'once') {
@@ -93,7 +125,7 @@ const SCHEDULE_ACTION = {
       trigger_at:      triggerType === 'once' ? nextRunAt : null,
       cron_expr:       args.cron_expr || null,
       timezone,
-      target_type:     args.target_type || 'self',
+      target_type:     targetType,
       target_user_ids: args.target_user_ids || null,
       next_run_at:     nextRunAt,
       max_runs:        args.max_runs ? parseInt(args.max_runs, 10) : undefined,
@@ -120,15 +152,21 @@ const LIST_SCHEDULED = {
   name: 'list_scheduled',
   description: 'Lista las acciones programadas del usuario actual.',
   params: {
-    all: '?string — "true" para ver todas, no solo las del usuario actual',
+    all:   '?string — "true" para ver todas (solo admin)',
+    limit: '?string — máximo de resultados (default 50)',
   },
 
   execute(args = {}, ctx = {}) {
     _requireScheduler(ctx);
 
     let actions;
+    const limit = args.limit ? parseInt(args.limit, 10) : 50;
+
     if (args.all === 'true') {
-      actions = ctx.scheduler.listAll();
+      // S1: solo admin puede ver todas
+      const user = _getCreatorUser(ctx);
+      if (!user || user.role !== 'admin') return 'Error: solo administradores pueden listar todas las acciones.';
+      actions = ctx.scheduler.listAll(limit);
     } else {
       const creatorId = _getCreatorId(ctx);
       if (!creatorId) return 'Error: no se pudo identificar al usuario.';
@@ -163,10 +201,20 @@ const CANCEL_SCHEDULED = {
     _requireScheduler(ctx);
     if (!args.id) return 'Error: parámetro id requerido';
 
+    // S1: Verificar ownership
+    const action = ctx.scheduler.getById(args.id);
+    if (!action) return `Error: acción no encontrada: ${args.id}`;
+
+    const creatorId = _getCreatorId(ctx);
+    const user = creatorId && ctx.usersRepo ? ctx.usersRepo.getById(creatorId) : null;
+    if (action.creator_id !== creatorId && user?.role !== 'admin') {
+      return 'Error: no tenés permisos para cancelar esta acción.';
+    }
+
     const ok = ctx.scheduler.cancel(args.id);
     return ok
       ? `✅ Acción cancelada: ${args.id}`
-      : `Error: acción no encontrada: ${args.id}`;
+      : `Error: no se pudo cancelar: ${args.id}`;
   },
 };
 
@@ -187,6 +235,16 @@ const UPDATE_SCHEDULED = {
   execute(args = {}, ctx = {}) {
     _requireScheduler(ctx);
     if (!args.id) return 'Error: parámetro id requerido';
+
+    // S1: Verificar ownership
+    const action = ctx.scheduler.getById(args.id);
+    if (!action) return `Error: acción no encontrada: ${args.id}`;
+
+    const creatorId = _getCreatorId(ctx);
+    const user = creatorId && ctx.usersRepo ? ctx.usersRepo.getById(creatorId) : null;
+    if (action.creator_id !== creatorId && user?.role !== 'admin') {
+      return 'Error: no tenés permisos para modificar esta acción.';
+    }
 
     const fields = {};
     if (args.label)           fields.label = args.label;
@@ -211,7 +269,7 @@ const UPDATE_SCHEDULED = {
     const ok = ctx.scheduler.update(args.id, fields);
     return ok
       ? `✅ Acción actualizada: ${args.id}`
-      : `Error: acción no encontrada: ${args.id}`;
+      : `Error: no se pudo actualizar: ${args.id}`;
   },
 };
 

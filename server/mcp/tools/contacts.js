@@ -160,6 +160,10 @@ const CONTACT_UPDATE = {
     _requireUsers(ctx);
     if (!args.id) return 'Error: parámetro id requerido';
 
+    const ownerId = _getOwnerId(ctx);
+    const contact = ctx.usersRepo.getContact(args.id);
+    if (!contact || contact.owner_id !== ownerId) return 'Error: contacto no encontrado.';
+
     const fields = {};
     if (args.name)        fields.name = args.name;
     if (args.phone)       fields.phone = args.phone;
@@ -168,7 +172,7 @@ const CONTACT_UPDATE = {
     if (args.is_favorite !== undefined) fields.is_favorite = args.is_favorite === 'true';
 
     const ok = ctx.usersRepo.updateContact(args.id, fields);
-    return ok ? `✅ Contacto actualizado: ${args.id}` : 'Error: contacto no encontrado.';
+    return ok ? `✅ Contacto actualizado: ${args.id}` : 'Error: no se pudo actualizar.';
   },
 };
 
@@ -182,8 +186,13 @@ const CONTACT_DELETE = {
   execute(args = {}, ctx = {}) {
     _requireUsers(ctx);
     if (!args.id) return 'Error: parámetro id requerido';
+
+    const ownerId = _getOwnerId(ctx);
+    const contact = ctx.usersRepo.getContact(args.id);
+    if (!contact || contact.owner_id !== ownerId) return 'Error: contacto no encontrado.';
+
     const ok = ctx.usersRepo.removeContact(args.id);
-    return ok ? `✅ Contacto eliminado: ${args.id}` : 'Error: contacto no encontrado.';
+    return ok ? `✅ Contacto eliminado: ${args.id}` : 'Error: no se pudo eliminar.';
   },
 };
 
@@ -201,8 +210,9 @@ const CONTACT_LINK = {
     _requireUsers(ctx);
     if (!args.id) return 'Error: parámetro id requerido';
 
+    const ownerId = _getOwnerId(ctx);
     const contact = ctx.usersRepo.getContact(args.id);
-    if (!contact) return 'Error: contacto no encontrado.';
+    if (!contact || contact.owner_id !== ownerId) return 'Error: contacto no encontrado.';
 
     let userId = args.user_id || null;
 

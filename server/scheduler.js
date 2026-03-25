@@ -4,8 +4,9 @@ const fs   = require('fs');
 const path = require('path');
 const cronParser = require('./utils/cron-parser');
 
-const TICK_INTERVAL_MS = 30_000; // 30 segundos
-const REMINDERS_FILE   = path.join(__dirname, 'reminders.json');
+const TICK_INTERVAL_MS    = 30_000; // 30 segundos
+const MAX_ACTIONS_PER_TICK = 10;   // límite de acciones por tick para evitar bloqueo
+const REMINDERS_FILE      = path.join(__dirname, 'reminders.json');
 
 /**
  * Scheduler — motor de ejecución de acciones programadas.
@@ -40,10 +41,10 @@ class Scheduler {
    * Fallback: primer agente disponible, o 'claude'.
    */
   getDefaultAgent() {
-    // 1. Desde global_settings en DB
-    if (this._chatSettings) {
+    // 1. Desde global_settings en DB — validar que exista
+    if (this._chatSettings && this._agents) {
       const saved = this._chatSettings.getGlobal('default_agent');
-      if (saved) return saved;
+      if (saved && this._agents.get(saved)) return saved;
     }
     // 2. Primer agente disponible
     if (this._agents) {
@@ -86,8 +87,8 @@ class Scheduler {
     return this._actionsRepo.listByCreator(creatorId);
   }
 
-  listAll() {
-    return this._actionsRepo.listActive();
+  listAll(limit = 0) {
+    return this._actionsRepo.listActive(limit);
   }
 
   cancel(actionId) {
@@ -126,7 +127,7 @@ class Scheduler {
     this._ticking = true;
     try {
       const now = Date.now();
-      const triggered = this._actionsRepo.getTriggered(now);
+      const triggered = this._actionsRepo.getTriggered(now).slice(0, MAX_ACTIONS_PER_TICK);
 
       for (const action of triggered) {
         try {
@@ -329,33 +330,27 @@ class Scheduler {
   async _sendToChannel(channel, identifier, botKey, text) {
     if (channel === 'telegram') {
       if (!this._telegramChannel) return false;
-      const bot = this._telegramChannel.bots.get(botKey);
-      if (!bot || !bot.running) return false;
-      await bot.sendText(identifier, text);
-      return true;
-    }
-
-    if (channel === 'web') {
-      if (!this._webChannel) return false;
-      const session = this._webChannel.sessions.get(identifier);
-      if (!session || !session.ws) return false;
       try {
-        this._webChannel._sendJson(session.ws, { type: 'chat_chunk', text });
-        this._webChannel._sendJson(session.ws, { type: 'chat_done', text });
+        await this._telegramChannel.send(identifier, text);
         return true;
       } catch {
         return false;
       }
     }
 
+    if (channel === 'web') {
+      if (!this._webChannel) return false;
+      try {
+        return this._webChannel.sendToSession(identifier, text);
+      } catch {
+        return false;
+      }
+    }
+
     if (channel === 'p2p') {
-      // P2P delivery via critter registry
       try {
         const registry = require('./mcp/tools/critter-registry');
-        const peer = registry.getPeer(identifier);
-        if (!peer) return false;
-        peer.send(JSON.stringify({ type: 'output', data: text }));
-        return true;
+        return registry.sendToPeer(identifier, { type: 'output', data: text });
       } catch {
         return false;
       }

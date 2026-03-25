@@ -84,8 +84,11 @@ class UsersRepository {
 
   remove(id) {
     if (!this._db) return false;
-    // Eliminar identidades primero (sql.js no soporta FK CASCADE automático)
+    // Eliminar datos relacionados (sql.js no soporta FK CASCADE automático)
     this._db.prepare('DELETE FROM user_identities WHERE user_id = ?').run(id);
+    this._db.prepare('DELETE FROM contacts WHERE owner_id = ?').run(id);
+    try { this._db.prepare('DELETE FROM scheduled_actions WHERE creator_id = ?').run(id); } catch { /* tabla puede no existir */ }
+    try { this._db.prepare('DELETE FROM pending_deliveries WHERE user_id = ?').run(id); } catch { /* tabla puede no existir */ }
     const result = this._db.prepare('DELETE FROM users WHERE id = ?').run(id);
     return result.changes > 0;
   }

@@ -392,6 +392,21 @@ class WebChannel extends BaseChannel {
     this._sendJson(session.ws, { type: 'chat:delete', msgId });
   }
 
+  /**
+   * Envía texto a una sesión web. Retorna true si se envió, false si no disponible.
+   */
+  sendToSession(sessionId, text) {
+    const session = this.sessions.get(sessionId);
+    if (!session || !session.ws) return false;
+    try {
+      this._sendJson(session.ws, { type: 'chat_chunk', text });
+      this._sendJson(session.ws, { type: 'chat_done', text });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   listSessions() {
     return [...this.sessions.entries()].map(([id, s]) => ({
       sessionId: id,

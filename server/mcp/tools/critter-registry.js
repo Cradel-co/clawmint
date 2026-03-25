@@ -119,4 +119,21 @@ function handleError(peerId, id, error) {
   entry.reject(new Error(error || 'Error desconocido del critter'));
 }
 
-module.exports = { register, unregister, isConnected, getPeerIdFromShellId, sendAction, handleResult, handleError };
+/**
+ * Envía datos directamente a un peer (sin esperar resultado).
+ * @param {string} peerId
+ * @param {object} data - objeto a enviar como JSON
+ * @returns {boolean} true si se envió, false si peer no conectado
+ */
+function sendToPeer(peerId, data) {
+  const peer = _peers.get(peerId);
+  if (!peer) return false;
+  try {
+    peer.send(data);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+module.exports = { register, unregister, isConnected, getPeerIdFromShellId, sendAction, sendToPeer, handleResult, handleError };
