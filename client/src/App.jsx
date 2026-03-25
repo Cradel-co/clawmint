@@ -5,6 +5,9 @@ import CommandBar from './components/CommandBar.jsx';
 import TerminalPanel from './components/TerminalPanel.jsx';
 import { API_BASE, WS_URL } from './config.js';
 import './App.css';
+import './components/AgentsPanel.css';
+import './components/TelegramPanel.css';
+import './components/WebChatPanel.css';
 
 // Lazy-load paneles que se abren bajo demanda
 const TelegramPanel = lazy(() => import('./components/TelegramPanel.jsx'));

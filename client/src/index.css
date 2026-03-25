@@ -9,11 +9,13 @@ body {
   color: #f0f0f0;
   font-family: 'Courier New', monospace;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
 }
 
 #root {
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
 }
