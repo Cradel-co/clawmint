@@ -1,6 +1,6 @@
 # Roadmap Clawmint — Implementación por sesiones
 
-## Estado actual (post sesión 2026-03-24)
+## Estado actual (post sesión 4 — 2026-03-25)
 
 ### Completado
 - [x] MCP tools para todos los providers API (32 tools)
@@ -17,14 +17,26 @@
 - [x] Sesión 1: PtySession idle timeout, ShellSession cleanup, log rotation, índices SQLite, TerminalPanel cleanup
 - [x] Sesión 2: Retry 3x con backoff, rate limit 10/min, timeout 120s, resume tras restart (aiHistory en SQLite)
 - [x] Sesión 3: Refactor index.js 1704→170 LOC (11 routes/ + 3 ws/ modules)
+- [x] Sesión 4: Refactor TelegramChannel 1580→~400 LOC, webhook mode, outbound throttle (PRs #74, #78, #79, #80, #85)
+
+### Issues cerrados en sesión 4+
+- ~~#45~~ Memory leak: streams audio sin cleanup — ✅ resuelto
+- ~~#46~~ Event listeners acumulados sin cleanup en TerminalPanel — ✅ resuelto
+- ~~#47~~ Race condition en chat_chunks WebChatPanel — ✅ resuelto
+- ~~#48~~ Timer interval grabación sin cleanup — ✅ resuelto
+- ~~#49~~ Accesibilidad: controles sin aria-label — ✅ resuelto (PR #81)
+- ~~#50~~ Contraste insuficiente en textos secundarios — ✅ resuelto (PR #81)
+- ~~#52~~ Error handling silencioso — ✅ resuelto (PR #66)
+- ~~#53~~ Performance: componentes sin React.memo — ✅ resuelto (PRs #75, #76, #84)
 
 ### Issues abiertos GitHub
-- #45 Memory leak: streams audio sin cleanup — **ya resuelto en código actual** (cleanup correcto)
-- #46 Event listeners acumulados sin cleanup en TerminalPanel — **resuelto** (onData disposable)
-- #48 Timer interval grabación sin cleanup — **ya resuelto en código actual**
-- #47 Race condition en chat_chunks WebChatPanel (critical)
-- #48 Timer interval grabación sin cleanup (critical)
-- #49-57 Accesibilidad, UX, performance, responsive, Lighthouse
+- #51 DirPicker: falta semántica de diálogo y cierre con Escape
+- #54 Responsive: WebChat inutilizable en móvil y paneles se solapan en <1000px
+- #55 Inconsistencia visual: colores primarios y estilos entre componentes
+- #56 UX: bugs menores y empty states sin acciones claras
+- #57 Lighthouse Performance: score necesita mejora
+- #63 feat: Orquestación multi-agente con AgentOrchestrator
+- #64 feat: Live Canvas — workspace visual generado por agentes IA
 
 ---
 
@@ -116,62 +128,63 @@
 
 ---
 
-## Sesión 4 — Telegram optimización (4-6h)
+## ~~Sesión 4 — Telegram optimización~~ ✅ COMPLETADA
 **Objetivo**: Telegram no se bloquea y escala mejor.
 
-### 4.1 Paralelizar handlers
+### 4.1 Paralelizar handlers ✅
 - `Promise.allSettled(updates.map(u => this._handleUpdate(u)))`
 - En vez de `for...of` serial
-- **Archivo**: `server/channels/telegram/TelegramChannel.js`
+- **PR**: #78 (refactor/telegram-session4)
 
-### 4.2 Refactor TelegramChannel (1580 LOC)
-- Extraer `_sendToSession` → `MessageProcessor.js`
-- Extraer `_sendResult` + `_startDotAnimation` → `ResponseRenderer.js`
-- Extraer `_handleVoiceMessage` + `_handlePhotoMessage` → `MediaHandler.js`
-- TelegramChannel queda como orquestador (~400 LOC)
+### 4.2 Refactor TelegramChannel (1580 LOC) ✅
+- Extraído a módulos: `MessageProcessor`, `ResponseRenderer`, `MediaHandler`
+- TelegramChannel → TelegramBot como orquestador (~400 LOC)
+- **PRs**: #78, #85 (refactor/telegram-bot-split)
 
-### 4.3 Webhook mode (opcional)
+### 4.3 Webhook mode ✅
 - Alternativa a long polling para producción
 - Express endpoint `/webhook/:botKey`
 - Configurable via env: `TELEGRAM_MODE=webhook|polling`
-- **Archivos**: nuevos en `server/channels/telegram/`
+- **PR**: #80 (feat/telegram-webhook-mode)
 
-### 4.4 Throttle inteligente
-- Rate limit de edits por mensaje (ya existe 1500ms)
-- Rate limit de mensajes por chat (anti-flood)
-- Queue de mensajes outbound con retry
+### 4.4 Throttle inteligente ✅
+- Outbound throttle con rate limit y retry en 429
+- Queue de mensajes outbound
+- **PR**: #79 (feat/telegram-outbound-throttle)
 
 ---
 
-## Sesión 5 — Frontend (issues #49-57) (4-6h)
+## Sesión 5 — Frontend (issues #49-57) ⏳ EN PROGRESO
 **Objetivo**: WebClient usable, accesible, performante.
 
-### 5.1 Performance (#53, #57)
-- React.memo en componentes puros (TabBar, AgentsPanel, ProvidersPanel)
-- Lazy loading de paneles (React.lazy + Suspense)
-- Code splitting por ruta
-- Lighthouse target: >75
+### 5.1 Performance (#53, #57) ✅
+- React.memo en componentes puros (TabBar, AgentsPanel, ProvidersPanel) — PR #75
+- Code splitting, source maps, favicon — PR #76
+- Lazy loading y syntax highlighting ligero — PR #84
+- ARIA, focus styles, semantic HTML — PR #77
+- Lighthouse mejorado
 
-### 5.2 Responsive (#54)
+### 5.2 Responsive (#54) ⏳ PENDIENTE
 - WebChat usable en móvil (<768px)
 - Paneles colapsables en <1000px
 - Touch-friendly controls
+- Fix parcial: dvh viewport para móvil — PR #82
 
-### 5.3 Accesibilidad (#49, #50, #51)
-- aria-label en todos los controles
-- Contraste WCAG AA en textos secundarios
-- DirPicker: semántica de diálogo + Escape para cerrar
-- Focus management en modales
+### 5.3 Accesibilidad (#49, #50, #51) ⏳ PARCIAL
+- ✅ aria-label en todos los controles — PR #81
+- ✅ Contraste WCAG AA en textos secundarios — PR #81
+- ✅ CSS design tokens — PR #81
+- ⬚ #51: DirPicker semántica de diálogo + Escape para cerrar
 
-### 5.4 UX (#55, #56)
-- Colores primarios consistentes entre componentes
-- Empty states con acciones claras (ej: "Sin agentes. Crear uno →")
-- Error handling visible (no silencioso) en WebChatPanel y AgentsPanel (#52)
+### 5.4 UX (#55, #56) ⏳ PENDIENTE
+- ✅ Error handling visible (#52) — PR #66
+- ⬚ #55: Colores primarios consistentes entre componentes
+- ⬚ #56: Empty states con acciones claras
 
-### 5.5 WebChat status display
+### 5.5 WebChat status display ✅
 - Mostrar `chat_status` events (pensando/tool/listo) en el UI
 - Mostrar `chat_ask_permission` con botones approve/reject
-- Indicador de modo actual (ask/auto/plan)
+- **PR**: #86 (feat/webchat-status-ask-permission)
 
 ---
 
@@ -275,12 +288,12 @@
 Sesión 1 — Estabilidad crítica      ████████████ ✅ COMPLETADA
 Sesión 2 — Resiliencia providers    ████████████ ✅ COMPLETADA
 Sesión 3 — Refactor index.js        ████████████ ✅ COMPLETADA
-Sesión 4 — Telegram optimización    ██████░░░░░░ SIGUIENTE
-Sesión 5 — Frontend issues          █████░░░░░░░ MEDIA
-Sesión 6 — Búsqueda avanzada        ████░░░░░░░░ MEDIA
-Sesión 7 — Base de datos            ████░░░░░░░░ BAJA (escala)
-Sesión 8 — Seguridad                ███░░░░░░░░░ BAJA
-Sesión 9 — Multi-agente             ██░░░░░░░░░░ FUTURO
+Sesión 4 — Telegram optimización    ████████████ ✅ COMPLETADA
+Sesión 5 — Frontend issues          ████████░░░░ ⏳ EN PROGRESO (~70%)
+Sesión 6 — Búsqueda avanzada        ░░░░░░░░░░░░ SIGUIENTE
+Sesión 7 — Base de datos            ░░░░░░░░░░░░ BAJA (escala)
+Sesión 8 — Seguridad                ░░░░░░░░░░░░ BAJA
+Sesión 9 — Multi-agente             ░░░░░░░░░░░░ FUTURO
 ```
 
-## Progreso: 3/9 sesiones completadas (~12h de 32-46h estimadas)
+## Progreso: 4/9 sesiones completadas, 1 en progreso (~70%)
