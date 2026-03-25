@@ -6,6 +6,21 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
 ---
 
+## [1.4.0] — 2026-03-25
+
+### Added
+- Comando `/restart` para reiniciar servidor PM2 desde Telegram
+- Comando `/run` (alias `/cmd`) para ejecutar comandos de terminal desde el chat
+- Botón 🔄 Restart en el submenú de monitor de Telegram
+- Registro de nuevos comandos en el menú del bot
+
+### Fixed
+- Suprimir mensaje duplicado cuando Claude ya respondió via MCP tools (#70)
+- Auto-remove de botones inline después de interacción con callback
+- Tests desactualizados: destructuring de tools, conteo hardcodeado, path comparison Linux (#72)
+
+---
+
 ## [1.3.0] — 2026-03-24
 
 ### Added
