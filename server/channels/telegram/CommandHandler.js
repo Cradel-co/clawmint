@@ -3,6 +3,7 @@
 const fs   = require('fs');
 const path = require('path');
 const os   = require('os');
+const { exec } = require('child_process');
 
 const ClaudePrintSession   = require('../../core/ClaudePrintSession');
 const { getSystemStats }   = require('../../core/systemStats');
@@ -992,6 +993,39 @@ class CommandHandler {
           } else {
             await bot.sendText(chatId, '❌ Uso: `/tts` (ver estado) | `/tts on` | `/tts off`');
           }
+        }
+        break;
+      }
+
+      // ── Terminal directa ─────────────────────────────────────────────────
+      case 'restart': {
+        await bot.sendText(chatId, '🔄 Reiniciando servidor…');
+        exec('pm2 restart clawmint', { timeout: 15000 }, () => {});
+        break;
+      }
+
+      case 'run':
+      case 'cmd': {
+        if (args.length === 0) {
+          await bot.sendText(chatId, '❌ Uso: `/run <comando>`\nEjemplo: `/run pm2 status`');
+          break;
+        }
+        const command = args.join(' ');
+        try {
+          const output = await new Promise((resolve, reject) => {
+            exec(command, { timeout: 30000, maxBuffer: 1024 * 512 }, (err, stdout, stderr) => {
+              if (err && !stdout && !stderr) return reject(err);
+              resolve(stdout || stderr || '(sin output)');
+            });
+          });
+          const truncated = output.length > 4000 ? output.slice(0, 4000) + '\n…(truncado)' : output;
+          await bot._apiCall('sendMessage', {
+            chat_id: chatId,
+            text: `<pre>${truncated}</pre>`,
+            parse_mode: 'HTML',
+          });
+        } catch (err) {
+          await bot.sendText(chatId, `❌ Error: \`${err.message}\``);
         }
         break;
       }
