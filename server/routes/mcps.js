@@ -4,9 +4,27 @@ const express = require('express');
 module.exports = function createMcpsRouter({ mcps }) {
   const router = express.Router();
 
-  // GET /mcps — listar MCPs configurados
+  // GET /mcps — listar MCPs configurados (env censurado)
   router.get('/', (_req, res) => {
-    res.json(mcps.list());
+    const list = mcps.list().map(m => {
+      const safe = { ...m };
+      if (safe.env) {
+        safe.env = Object.fromEntries(
+          Object.entries(safe.env).map(([k, v]) =>
+            [k, typeof v === 'string' && v.length > 8 ? v.slice(0, 8) + '…' : '***']
+          )
+        );
+      }
+      if (safe.headers) {
+        safe.headers = Object.fromEntries(
+          Object.entries(safe.headers).map(([k, v]) =>
+            [k, typeof v === 'string' && v.length > 8 ? v.slice(0, 8) + '…' : '***']
+          )
+        );
+      }
+      return safe;
+    });
+    res.json(list);
   });
 
   // POST /mcps — crear MCP
