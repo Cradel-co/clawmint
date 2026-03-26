@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { LogIn, UserPlus, Mail, Lock, User, Eye, EyeOff } from 'lucide-react';
-import { API_BASE } from '../config.js';
-import { login, register, setStoredTokens, setStoredUser } from '../authUtils.js';
+import { API_BASE } from '../config';
+import { login, register, setStoredTokens, setStoredUser } from '../authUtils';
 import './AuthPanel.css';
 
 export default function AuthPanel({ onAuth, onSkip }) {

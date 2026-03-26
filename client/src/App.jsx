@@ -8,7 +8,7 @@ import ReconnectBanner from './components/ReconnectBanner.jsx';
 import { AuthProvider } from './contexts/AuthContext.jsx';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext.jsx';
 import { ToastProvider } from './contexts/ToastContext.jsx';
-import { API_BASE, WS_URL } from './config.js';
+import { API_BASE, WS_URL } from './config';
 import './App.css';
 import './components/AgentsPanel.css';
 import './components/TelegramPanel.css';

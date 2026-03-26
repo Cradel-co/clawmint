@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Check, Pencil, Trash2, X, Plus, Plug } from 'lucide-react';
-import { API_BASE } from '../config.js';
+import { API_BASE } from '../config';
 
 const API = `${API_BASE}/api/mcps`;
 
