@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { API_BASE } from '../config';
 import { useAuth } from '../contexts/AuthContext.jsx';
+import { apiFetch } from '../authUtils';
 import useChatSocket from '../hooks/useChatSocket.js';
 import useChat from '../hooks/useChat.js';
 import useAudioRecorder from '../hooks/useAudioRecorder.js';
@@ -45,14 +46,14 @@ export default function WebChatPanel({ onClose }) {
   // ── Cargar providers y agentes ─────────────────────────────────────────────
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/providers`)
+    apiFetch(`${API_BASE}/api/providers`)
       .then(r => r.json())
       .then(data => {
         setProviders(data.providers || []);
         if (data.default) setProvider(data.default);
       })
       .catch(() => setStatusText('Error cargando providers'));
-    fetch(`${API_BASE}/api/agents`)
+    apiFetch(`${API_BASE}/api/agents`)
       .then(r => r.json())
       .then(data => setAgentsList(Array.isArray(data) ? data : []))
       .catch(() => setStatusText('Error cargando agentes'));

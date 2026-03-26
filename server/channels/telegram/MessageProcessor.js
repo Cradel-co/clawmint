@@ -162,6 +162,7 @@ class MessageProcessor {
         images:        images || null,
         history:       chat.aiHistory || [],
         claudeSession: chat.claudeSession,
+        geminiSession: chat.geminiSession,
         claudeMode:    mode,
         onChunk,
         onStatus,
@@ -181,8 +182,9 @@ class MessageProcessor {
 
       stopAnim();
 
-      if (result.newSession)       chat.claudeSession = result.newSession;
-      if (result.history)          chat.aiHistory     = result.history;
+      if (result.newSession)       chat.claudeSession  = result.newSession;
+      if (result.newGeminiSession) chat.geminiSession  = result.newGeminiSession;
+      if (result.history)          chat.aiHistory      = result.history;
 
       if (chat.claudeSession?.claudeSessionId && this._chatSettings) {
         this._chatSettings.saveSession(bot.key, chatId, {
@@ -192,7 +194,7 @@ class MessageProcessor {
         });
       }
 
-      if (result.history && this._chatSettings && chatProvider !== 'claude-code') {
+      if (result.history && this._chatSettings && !['claude-code', 'gemini-cli'].includes(chatProvider)) {
         this._chatSettings.saveHistory(bot.key, chatId, result.history);
       }
 

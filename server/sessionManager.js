@@ -20,7 +20,7 @@ function stripAnsi(str) {
 }
 
 class PtySession {
-  constructor({ type = 'pty', command, cols = 80, rows = 24 } = {}) {
+  constructor({ type = 'pty', command, cols = 80, rows = 24, cwd } = {}) {
     this.id = crypto.randomUUID();
     this.type = type;
     this.title = command || DEFAULT_SHELL;
@@ -32,10 +32,10 @@ class PtySession {
     this._outputListeners = new Map();
     this._pty = null;
 
-    this._spawn({ command, cols, rows });
+    this._spawn({ command, cols, rows, cwd });
   }
 
-  _spawn({ command, cols, rows }) {
+  _spawn({ command, cols, rows, cwd }) {
     const isWin = os.platform() === 'win32';
     const args = command
       ? (isWin ? ['-Command', command] : ['-c', command])
@@ -49,7 +49,7 @@ class PtySession {
       name: 'xterm-color',
       cols,
       rows,
-      cwd: process.env.HOME,
+      cwd: cwd || process.env.HOME,
       env,
     });
 
