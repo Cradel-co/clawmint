@@ -77,6 +77,11 @@ class ConversationService {
     this._usersRepo = usersRepo;
   }
 
+  /** Inyecta orchestrator para orquestación multi-agente */
+  setOrchestrator(orchestrator) {
+    this._orchestrator = orchestrator;
+  }
+
   _getExecuteTool() {
     if (!this._mcpExecuteTool) {
       try { this._mcpExecuteTool = require('../mcp').executeTool; } catch {}
@@ -186,6 +191,21 @@ class ConversationService {
       'Usá contact_add proactivamente cuando el usuario mencione personas, teléfonos o emails.',
       'Los contactos favoritos pueden ser destino de acciones programadas (target_type="favorites").',
     );
+
+    // Sección de orquestación (solo para coordinadores)
+    const agentDef = agentKey && this._agents ? this._agents.get(agentKey) : null;
+    if (agentDef?.role === 'coordinator') {
+      parts.push(
+        '',
+        '## Orquestación Multi-Agente',
+        'Sos un agente coordinador. Podés delegar tareas a otros agentes especializados.',
+        '- **delegate_task**: Delegar tarea a otro agente. Esperá el resultado. Máx 5 delegaciones.',
+        '- **ask_agent**: Pregunta rápida a otro agente.',
+        '- **list_agents**: Ver agentes disponibles.',
+        '',
+        'Usá list_agents primero para saber quién puede ayudar. Delegá subtareas específicas y sintetizá los resultados.',
+      );
+    }
 
     return parts.join('\n');
   }
@@ -616,6 +636,10 @@ class ConversationService {
 
     // Inyectar executor con contexto de shell para persistencia de cwd/env
     const mcpExec  = this._getExecuteTool();
+    // Resolver role del agente para filtrado de tools
+    const agentDef  = agentKey && this._agents ? this._agents.get(agentKey) : null;
+    const agentRole = agentDef?.role || undefined;
+
     const rawExecFn = mcpExec
       ? (name, args) => mcpExec(name, args, {
           shellId,
@@ -623,6 +647,9 @@ class ConversationService {
           memory: this._memory,
           scheduler: this._scheduler,
           usersRepo: this._usersRepo,
+          orchestrator: this._orchestrator,
+          _convSvc: this,
+          agents: this._agents,
           chatId,
           channel: channel || 'telegram',
           agentKey,
@@ -712,7 +739,7 @@ class ConversationService {
 
     if (onStatus) onStatus('thinking');
 
-    const chatArgs = { systemPrompt, history: updatedHistory, apiKey, model: useModel, executeTool: execToolFn, channel: toolChannel, ...extraOpts };
+    const chatArgs = { systemPrompt, history: updatedHistory, apiKey, model: useModel, executeTool: execToolFn, channel: toolChannel, agentRole, ...extraOpts };
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       // No reintentar si ya se ejecutaron tools (side effects no son idempotentes)

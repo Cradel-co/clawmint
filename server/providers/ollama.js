@@ -74,7 +74,7 @@ module.exports = {
     return this.models;
   },
 
-  async *chat({ systemPrompt, history, model, images, executeTool: execToolFn, channel }) {
+  async *chat({ systemPrompt, history, model, images, executeTool: execToolFn, channel, agentRole }) {
     const baseUrl   = getBaseUrl();
     // Cargar modelos disponibles si no hay
     if (!this.models.length) await this.fetchModels();
@@ -117,7 +117,7 @@ module.exports = {
     const baseURL = baseUrl + '/v1';
     const client = new OpenAI({ apiKey: 'ollama', baseURL });
 
-    const toolDefs = tools.toOpenAIFormat({ channel });
+    const toolDefs = tools.toOpenAIFormat({ channel, agentRole });
     const execTool = execToolFn || tools.executeTool;
     const hasTools = toolDefs.length > 0 && execToolFn;
 
