@@ -47,7 +47,7 @@
 }
 
 .wc-select {
-  background: #2a2a2a;
+  background: var(--bg-hover);
   color: var(--text-secondary);
   border: 1px solid var(--border-primary);
   border-radius: 4px;
@@ -170,7 +170,7 @@
 }
 
 .wc-msg-assistant .wc-msg-content {
-  background: #2a2a2a;
+  background: var(--bg-hover);
   color: var(--text-primary);
   border-radius: 12px 12px 12px 4px;
   padding: 8px 12px;
@@ -330,7 +330,7 @@
   cursor: not-allowed;
 }
 .wc-send-mic {
-  background: #2a2a2a;
+  background: var(--bg-hover);
   color: var(--text-muted);
   font-size: 15px;
 }
@@ -404,7 +404,7 @@
   color: #ff8a85;
 }
 .wc-rec-pause {
-  background: #2a2a2a;
+  background: var(--bg-hover);
   color: var(--text-secondary);
 }
 .wc-rec-pause:hover {
@@ -483,7 +483,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: #2a2a2a;
+  background: var(--bg-hover);
   border: 1px solid #3a3a3a;
   border-radius: 4px;
   padding: 3px 8px;
@@ -516,7 +516,7 @@
   margin-top: 6px;
 }
 .wc-inline-btn {
-  background: #2a2a2a;
+  background: var(--bg-hover);
   color: #58a6ff;
   border: 1px solid #3a3a3a;
   border-radius: 6px;
@@ -613,7 +613,7 @@
 /* ─── Media messages (photo, video, voice, document) ──────────────────────── */
 .wc-media-content {
   padding: 4px !important;
-  background: #2a2a2a;
+  background: var(--bg-hover);
   border-radius: 12px;
   overflow: hidden;
 }
