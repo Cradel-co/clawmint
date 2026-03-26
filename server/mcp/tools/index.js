@@ -9,8 +9,11 @@ const webchat       = require('./webchat');        // array
 const git           = require('./git');
 const critter       = require('./critter');        // array, channel: 'p2p'
 const critterStatus = require('./critter-status');
+const users         = require('./users');          // array
+const scheduled     = require('./scheduled');      // array
+const contacts      = require('./contacts');       // array
 
-const ALL_TOOLS = [bash, git, ...files, ...pty, ...telegram, ...memory, ...webchat, ...critter, critterStatus];
+const ALL_TOOLS = [bash, git, ...files, ...pty, ...telegram, ...memory, ...webchat, ...critter, critterStatus, ...users, ...scheduled, ...contacts];
 
 const _byName = new Map(ALL_TOOLS.map(t => [t.name, t]));
 

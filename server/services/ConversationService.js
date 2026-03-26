@@ -65,6 +65,16 @@ class ConversationService {
 
     // Lazy-load para evitar dependencias circulares
     this._mcpExecuteTool = null;
+
+    // Inyectados vía setter (evita dependencias circulares)
+    this._scheduler  = null;
+    this._usersRepo  = null;
+  }
+
+  /** Inyecta scheduler y usersRepo para que las MCP tools los reciban en ctx */
+  setSchedulerDeps({ scheduler, usersRepo }) {
+    this._scheduler = scheduler;
+    this._usersRepo = usersRepo;
   }
 
   _getExecuteTool() {
@@ -101,25 +111,43 @@ class ConversationService {
     if (channel === 'telegram' && botKey && chatId) {
       parts.push(
         '',
+        '## REGLA DE COMUNICACIÓN',
+        '',
+        'TODA tu comunicación con el usuario DEBE ser a través de herramientas.',
+        'NO devuelvas texto plano como respuesta — el usuario NO lo verá.',
+        '',
+        `Para responder con texto: usá \`telegram_send_message\` con bot="${botKey}" y chat_id=${chatId}.`,
+        'Para enviar imágenes: usá `telegram_send_photo`.',
+        'Para enviar archivos: usá `telegram_send_document`.',
+        'Para enviar audio: usá `telegram_send_voice`.',
+        '',
+        'Si tu respuesta es larga, dividila en múltiples llamadas a `telegram_send_message` (un párrafo por mensaje).',
+        '',
         '## Telegram',
         `Contexto: bot="${botKey}", chat_id=${chatId}, agent="${agentKey || 'claude'}"`,
-        '- **telegram_send_message**: Enviar texto adicional (con botones opcionales).',
-        '- **telegram_send_photo / telegram_send_document / telegram_send_voice / telegram_send_video**: Enviar multimedia.',
+        '- **telegram_send_message**: Enviar texto al chat. Params: bot, chat_id, text, parse_mode?, reply_markup?.',
+        '  Soporta botones inline: reply_markup=`{"inline_keyboard":[[{"text":"Opción","callback_data":"dato"}]]}`',
+        '- **telegram_send_photo / telegram_send_document / telegram_send_voice / telegram_send_video**: Enviar multimedia. Params: bot, chat_id, file_path, caption?.',
         '- **telegram_edit_message / telegram_delete_message**: Editar/borrar mensajes.',
         '',
-        'IMPORTANTE: Tu respuesta de texto se envía automáticamente al chat — NO necesitás usar telegram_send_message para responder.',
-        'Usá telegram_send_message SOLO para enviar mensajes adicionales (ej: dividir respuesta larga, enviar extras).',
-        'Usá telegram_send_photo/document/voice/video cuando generes archivos y quieras enviarlos al chat.',
+        'Usá botones proactivamente cuando ofrezcas opciones o alternativas.',
       );
     } else if (channel === 'webchat') {
       parts.push(
         '',
+        '## REGLA DE COMUNICACIÓN',
+        '',
+        'TODA tu comunicación con el usuario DEBE ser a través de herramientas.',
+        'NO devuelvas texto plano como respuesta — el usuario NO lo verá.',
+        '',
+        'Para responder: usá `webchat_send_message`.',
+        'Si tu respuesta es larga, dividila en múltiples llamadas (un párrafo por mensaje).',
+        '',
         '## WebChat',
         `Contexto: agent="${agentKey || 'claude'}"`,
-        '- **webchat_send_message**: Enviar texto adicional.',
+        '- **webchat_send_message**: Enviar texto al chat. Params: session_id, text, buttons?, callbacks?.',
         '- **webchat_send_photo / webchat_send_document / webchat_send_voice / webchat_send_video**: Enviar multimedia.',
-        '',
-        'IMPORTANTE: Tu respuesta de texto se envía automáticamente — NO necesitás usar webchat_send_message para responder.',
+        '- **webchat_edit_message / webchat_delete_message**: Editar/borrar mensajes.',
       );
     }
 
@@ -129,6 +157,34 @@ class ConversationService {
       `Agente actual: "${agentKey || 'claude'}"`,
       'Guardá información importante proactivamente con memory_write (datos personales, preferencias, soluciones técnicas).',
       'Usá nombres descriptivos en español para los archivos (ej: preferencias-usuario.md).',
+      '',
+      '## Acciones Programadas',
+      '- **schedule_action**: Programar acción futura. Tipos: "notification" (texto directo) o "ai_task" (despierta al agente para ejecutar tarea compleja).',
+      '  Triggers: "once" (fecha/hora o delay "30m","2h") o "cron" ("0 8 * * *" = todos los días a las 8).',
+      '  Destinos: "self" (al usuario), "users" (lista de IDs), "whitelist", "all".',
+      '- **list_scheduled**: Ver acciones programadas.',
+      '- **cancel_scheduled**: Cancelar por ID.',
+      '- **update_scheduled**: Modificar acción existente.',
+      '',
+      'Usá schedule_action proactivamente cuando el usuario mencione fechas, horas, recordatorios o tareas recurrentes.',
+      '',
+      '## Usuarios',
+      '- **user_list**: Lista usuarios registrados con sus canales (Telegram, WebChat, P2P).',
+      '- **user_info**: Info detallada de un usuario por ID o nombre.',
+      '- **user_link**: Vincular identidad de otro canal a un usuario.',
+      '',
+      'Usá user_list cuando necesites saber a quién enviar mensajes o programar acciones para otros usuarios.',
+      '',
+      '## Agenda de Contactos',
+      '- **contact_add**: Agregar contacto (nombre, teléfono, email, notas, telegram_id para vincular).',
+      '- **contact_list**: Listar contactos (filtro: favorites).',
+      '- **contact_info**: Detalle por ID o nombre.',
+      '- **contact_update**: Modificar datos.',
+      '- **contact_delete**: Eliminar contacto.',
+      '- **contact_link**: Vincular contacto con usuario del sistema (por telegram_id, user_id o nombre).',
+      '',
+      'Usá contact_add proactivamente cuando el usuario mencione personas, teléfonos o emails.',
+      'Los contactos favoritos pueden ser destino de acciones programadas (target_type="favorites").',
     );
 
     return parts.join('\n');
@@ -561,7 +617,17 @@ class ConversationService {
     // Inyectar executor con contexto de shell para persistencia de cwd/env
     const mcpExec  = this._getExecuteTool();
     const rawExecFn = mcpExec
-      ? (name, args) => mcpExec(name, args, { shellId, sessionManager: this._sessionManager })
+      ? (name, args) => mcpExec(name, args, {
+          shellId,
+          sessionManager: this._sessionManager,
+          memory: this._memory,
+          scheduler: this._scheduler,
+          usersRepo: this._usersRepo,
+          chatId,
+          channel: channel || 'telegram',
+          agentKey,
+          botKey,
+        })
       : undefined;
 
     // Wrappear execToolFn según modo
@@ -724,6 +790,7 @@ class ConversationService {
       text:    finalText || '',
       history: updatedHistory,
       savedMemoryFiles,
+      usedMcpTools: usedToolsEver,
       usage,
     };
   }

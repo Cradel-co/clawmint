@@ -46,7 +46,7 @@ function _toolToMcp(tool) {
  * Crea un Express Router que implementa el protocolo MCP sobre HTTP (JSON-RPC 2.0).
  * Compatible con: claude mcp add-json clawmint '{"type":"http","url":"http://localhost:3001/mcp"}'
  */
-function createMcpRouter({ sessionManager, memory } = {}) {
+function createMcpRouter({ sessionManager, memory, scheduler, usersRepo } = {}) {
   const router = express.Router();
   router.use(express.json());
 
@@ -99,7 +99,7 @@ function createMcpRouter({ sessionManager, memory } = {}) {
             });
           }
           const shellId = req.headers['x-shell-id'] || `mcp-${id || 'global'}`;
-          const ctx     = { shellId, sessionManager, memory };
+          const ctx     = { shellId, sessionManager, memory, scheduler, usersRepo };
           const output  = await toolsIndex.execute(name, args || {}, ctx);
           result = { content: [{ type: 'text', text: output }] };
           break;

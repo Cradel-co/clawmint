@@ -33,10 +33,12 @@ class TelegramBot {
     events              = null,
     transcriber         = null,
     tts                 = null,
+    usersRepo           = null,
     logger              = console,
   } = {}) {
     this.key   = key;
     this.token = token;
+    this._usersRepo = usersRepo;
     this.running = false;
     this._webhookMode = false;
     this.offset  = initialOffset;
@@ -467,6 +469,15 @@ class TelegramBot {
     if (!this._isAllowed(chatId, msg.chat.type)) {
       await this.sendText(chatId, '⛔ No tenés acceso a este bot.', replyTo);
       return;
+    }
+
+    // Auto-crear usuario en el sistema unificado (DESPUÉS de whitelist check)
+    if (this._usersRepo && msg.from) {
+      try {
+        this._usersRepo.getOrCreate('telegram', String(chatId),
+          msg.from.first_name || `user_${chatId}`, this.key,
+          { username: msg.from.username, first_name: msg.from.first_name, last_name: msg.from.last_name });
+      } catch { /* no bloquear el flujo */ }
     }
 
     let chat = this.chats.get(chatId);

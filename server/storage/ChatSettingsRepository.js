@@ -29,13 +29,37 @@ class ChatSettingsRepository {
     this._db = db || null;
   }
 
-  /** Crea la tabla si no existe y aplica migraciones. Idempotente. */
+  static GLOBAL_SCHEMA = `
+    CREATE TABLE IF NOT EXISTS global_settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )
+  `;
+
+  /** Crea las tablas si no existen y aplica migraciones. Idempotente. */
   init() {
     if (!this._db) return;
     this._db.exec(ChatSettingsRepository.SCHEMA);
+    this._db.exec(ChatSettingsRepository.GLOBAL_SCHEMA);
     for (const sql of ChatSettingsRepository.MIGRATIONS) {
       try { this._db.exec(sql); } catch {}
     }
+  }
+
+  // ── Global Settings (key-value) ───────────────────────────────────────────
+
+  getGlobal(key) {
+    if (!this._db) return null;
+    const row = this._db.prepare('SELECT value FROM global_settings WHERE key = ?').get(key);
+    return row ? row.value : null;
+  }
+
+  setGlobal(key, value) {
+    if (!this._db) return;
+    this._db.prepare(`
+      INSERT INTO global_settings (key, value) VALUES (?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `).run(key, String(value));
   }
 
   /**

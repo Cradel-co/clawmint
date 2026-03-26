@@ -25,6 +25,7 @@ class TelegramChannel extends BaseChannel {
     skills            = null,
     memory            = null,
     reminders         = null,
+    usersRepo         = null,
     mcps              = null,
     consolidator      = null,
     providers         = null,
@@ -46,6 +47,7 @@ class TelegramChannel extends BaseChannel {
     this._skills          = skills;
     this._memory          = memory;
     this._reminders       = reminders;
+    this._usersRepo       = usersRepo;
     this._mcps            = mcps;
     this._consolidator    = consolidator;
     this._providers       = providers;
@@ -138,6 +140,7 @@ class TelegramChannel extends BaseChannel {
       events:         this._eventBus,
       transcriber:    this._transcriber,
       tts:            this._tts,
+      usersRepo:      this._usersRepo,
       logger:         this._logger,
     });
   }
@@ -147,8 +150,6 @@ class TelegramChannel extends BaseChannel {
   async start()  { return this.loadAndStart(); }
 
   async stop() {
-    clearInterval(this._reminderInterval);
-    this._reminderInterval = null;
     await Promise.all([...this.bots.values()].map(b => b.stop().catch(() => {})));
   }
 
@@ -198,25 +199,7 @@ class TelegramChannel extends BaseChannel {
       } catch (err) { console.error(`[Telegram] No se pudo iniciar bot "${key}":`, err.message); }
     }
 
-    this._reminderInterval = setInterval(() => this._checkReminders(), 30_000);
-    this._reminderInterval.unref();
-  }
-
-  async _checkReminders() {
-    if (!this._reminders) return;
-    const triggered = this._reminders.popTriggered();
-    for (const r of triggered) {
-      const bot = this.bots.get(r.botKey);
-      if (!bot || !bot.running) continue;
-      try {
-        await bot.sendWithButtons(r.chatId,
-          `🔔 *¡Recordatorio!*\n\n📝 ${r.text}`,
-          [[{ text: '✅ OK', callback_data: 'reminder_ack' }]]
-        );
-      } catch (err) {
-        console.error(`[Reminders] No se pudo enviar a ${r.chatId}:`, err.message);
-      }
-    }
+    // Nota: recordatorios ahora gestionados por Scheduler (server/scheduler.js)
   }
 
   async addBot(key, token) {

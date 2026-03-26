@@ -51,6 +51,18 @@ function createDataChannelHandler({ providerConfig, logger }) {
     const critterRegistry = require('../mcp/tools/critter-registry');
     critterRegistry.register(peerId, send);
 
+    // Auto-crear usuario P2P en el sistema unificado
+    if (container.usersRepo) {
+      try {
+        container.usersRepo.getOrCreate('p2p', peerId, `peer_${peerId}`, null);
+      } catch { /* no bloquear */ }
+    }
+
+    // Entregar mensajes pendientes
+    if (container.scheduler) {
+      container.scheduler.deliverPending('p2p', peerId).catch(() => {});
+    }
+
     // Crear handlers con las mismas deps que Telegram
     const cbHandler = new CallbackHandler({
       agents: container.agents,

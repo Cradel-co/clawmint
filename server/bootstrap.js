@@ -17,14 +17,18 @@ const path = require('path');
 const Logger     = require('./core/Logger');
 const EventBus   = require('./core/EventBus');
 
-const DatabaseProvider         = require('./storage/DatabaseProvider');
-const ChatSettingsRepository       = require('./storage/ChatSettingsRepository');
-const WebchatMessagesRepository   = require('./storage/WebchatMessagesRepository');
-const BotsRepository               = require('./storage/BotsRepository');
+const DatabaseProvider              = require('./storage/DatabaseProvider');
+const ChatSettingsRepository        = require('./storage/ChatSettingsRepository');
+const WebchatMessagesRepository     = require('./storage/WebchatMessagesRepository');
+const BotsRepository                = require('./storage/BotsRepository');
+const UsersRepository               = require('./storage/UsersRepository');
+const ScheduledActionsRepository    = require('./storage/ScheduledActionsRepository');
+const PendingDeliveriesRepository   = require('./storage/PendingDeliveriesRepository');
 const ConversationService      = require('./services/ConversationService');
 const { TelegramChannel }      = require('./channels/telegram/TelegramChannel');
 const WebChannel               = require('./channels/web/WebChannel');
 const ClaudePrintSession       = require('./core/ClaudePrintSession');
+const Scheduler                = require('./scheduler');
 
 let _container = null;
 
@@ -58,6 +62,15 @@ function createContainer() {
   messagesRepo.init();
 
   const botsRepo = new BotsRepository(path.join(__dirname, 'bots.json'));
+
+  const usersRepo = new UsersRepository(db);
+  usersRepo.init();
+
+  const actionsRepo = new ScheduledActionsRepository(db);
+  actionsRepo.init();
+
+  const pendingRepo = new PendingDeliveriesRepository(db);
+  pendingRepo.init();
 
   // ── Singletons de dominio ─────────────────────────────────────────────────
 
@@ -145,6 +158,7 @@ function createContainer() {
     skills,
     memory:        memoryModule,
     reminders,
+    usersRepo,
     mcps,
     consolidator,
     providers,
@@ -170,7 +184,35 @@ function createContainer() {
     logger,
     transcriber,
     tts,
+    usersRepo,
+    // scheduler se inyecta después via setter (dependencia circular)
   });
+
+  // ── Scheduler (acciones programadas) ──────────────────────────────────────
+
+  const scheduler = new Scheduler({
+    actionsRepo,
+    pendingRepo,
+    usersRepo,
+    convSvc,
+    chatSettingsRepo,
+    botsRepo,
+    agents,
+    logger,
+  });
+
+  // Inicializar default_agent global si no existe
+  if (!chatSettingsRepo.getGlobal('default_agent')) {
+    const bots = botsRepo.read();
+    const defaultFromBot = bots[0]?.defaultAgent;
+    const firstAgent = agents.list()[0]?.key;
+    chatSettingsRepo.setGlobal('default_agent', defaultFromBot || firstAgent || 'claude');
+  }
+  scheduler.setTelegramChannel(telegramChannel);
+  scheduler.setWebChannel(webChannel);
+  webChannel._scheduler = scheduler;  // inyectar scheduler post-creación
+  convSvc.setSchedulerDeps({ scheduler, usersRepo });
+  scheduler.start();
 
   // ── Container ─────────────────────────────────────────────────────────────
 
@@ -197,6 +239,8 @@ function createContainer() {
     tts,
     voiceProviders,
     ttsConfig,
+    usersRepo,
+    scheduler,
   };
 
   return _container;

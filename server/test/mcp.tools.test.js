@@ -220,7 +220,9 @@ describe('pty tools', () => {
 // ── tools/index.js ────────────────────────────────────────────────────────────
 
 describe('tools/index.js', () => {
-  const EXPECTED_CORE_TOOLS = ['bash', 'git', 'read_file', 'write_file', 'edit_file', 'list_dir', 'search_files', 'pty_create', 'pty_exec', 'pty_write', 'pty_read'];
+  const EXPECTED_CORE_TOOLS = ['bash', 'git', 'read_file', 'write_file', 'edit_file', 'list_dir', 'search_files', 'pty_create', 'pty_exec', 'pty_write', 'pty_read',
+    'user_list', 'user_info', 'user_link', 'schedule_action', 'list_scheduled', 'cancel_scheduled', 'update_scheduled',
+    'contact_add', 'contact_list', 'contact_info', 'contact_update', 'contact_delete', 'contact_link'];
 
   test('all() retorna un array con al menos los core tools', () => {
     expect(toolsIndex.all().length).toBeGreaterThanOrEqual(EXPECTED_CORE_TOOLS.length);
