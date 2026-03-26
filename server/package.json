@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node --stack-size=65536 --env-file-if-exists=.env index.js",
-    "dev": "nodemon --exec 'node --stack-size=65536 --env-file-if-exists=.env' index.js",
+    "dev": "nodemon index.js",
     "test": "jest",
     "test:watch": "jest --watch"
   },
