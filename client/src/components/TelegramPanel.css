@@ -215,7 +215,7 @@
 }
 
 .tg-chat-session code {
-  background: #2a2a2a;
+  background: var(--bg-hover);
   border-radius: 3px;
   padding: 1px 4px;
   color: var(--text-muted);
@@ -275,7 +275,7 @@
 .tg-input {
   flex: 1;
   background: var(--bg-secondary);
-  border: 1px solid #3a3a3a;
+  border: 1px solid var(--border-primary);
   border-radius: 6px;
   color: var(--text-primary);
   font-family: monospace;
@@ -320,7 +320,7 @@
 .tg-btn-primary { background: var(--accent-cyan); color: #000; flex: 1; }
 .tg-btn-primary:hover:not(:disabled) { background: #4fc3f7; }
 
-.tg-btn-ghost { background: #2a2a2a; color: #bbb; border: 1px solid #3a3a3a; }
+.tg-btn-ghost { background: var(--bg-hover); color: var(--text-secondary); border: 1px solid var(--border-primary); }
 .tg-btn-ghost:hover:not(:disabled) { background: var(--border-secondary); color: var(--text-primary); }
 
 .tg-btn-start { background: #28c84022; color: #28c840; border: 1px solid #28c84044; }
@@ -376,8 +376,8 @@
 /* ─── Agent select ────────────────────────────────────────────────────────── */
 
 .tg-agent-select {
-  background: #2a2a2a;
-  border: 1px solid #3a3a3a;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-primary);
   border-radius: 6px;
   color: var(--text-muted);
   font-size: 11px;
@@ -394,8 +394,8 @@
 /* ─── Agent chip ──────────────────────────────────────────────────────────── */
 
 .tg-agent-chip {
-  background: #2a2a2a;
-  border: 1px solid #3a3a3a;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-primary);
   border-radius: 10px;
   color: var(--text-muted);
   font-size: 10px;
@@ -406,7 +406,7 @@
   transition: background 0.15s, color 0.15s, border-color 0.15s;
   white-space: nowrap;
 }
-.tg-agent-chip:hover { background: var(--border-secondary); color: #bbb; border-color: #555; }
+.tg-agent-chip:hover { background: var(--border-secondary); color: var(--text-secondary); border-color: #555; }
 .tg-agent-chip.cc {
   background: #29b6f622;
   color: var(--accent-cyan);
