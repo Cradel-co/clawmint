@@ -28,7 +28,7 @@ logger.info('HOME:', process.env.HOME);
 
 // ── Carga de módulos (async por sql.js WASM) ─────────────────────────────────
 
-let sessionManager, telegram, webChannel, agents, skills, events, memory, providerConfig, providersModule, consolidator, convSvc, mcps;
+let sessionManager, telegram, webChannel, agents, skills, events, memory, providerConfig, providersModule, consolidator, convSvc, mcps, authService, usersRepo;
 let mcpRouter = null;
 let nodrizaInstance = null;
 
@@ -57,6 +57,8 @@ const _modulesReady = (async function loadModules() {
     consolidator = _c.consolidator;
     nodrizaInstance = _c.nodriza || null;
     convSvc      = _c.convSvc;
+    authService  = _c.authService;
+    usersRepo    = _c.usersRepo;
     try {
       const { createMcpRouter } = require('./mcp');
       mcpRouter = createMcpRouter({ sessionManager: _c.sessionManager, memory: _c.memory, scheduler: _c.scheduler, usersRepo: _c.usersRepo });
@@ -128,6 +130,7 @@ logger.info(`Iniciando servidor en ${HOST}:${PORT}...`);
 
 _modulesReady.then(() => {
   // Montar rutas REST (necesitan módulos async)
+  app.use('/api/auth',            require('./routes/auth')({ authService, usersRepo }));
   app.use('/api/sessions',        require('./routes/sessions')({ sessionManager }));
   app.use('/api/agents',          require('./routes/agents')({ agents }));
   app.use('/api/mcps',            require('./routes/mcps')({ mcps }));
