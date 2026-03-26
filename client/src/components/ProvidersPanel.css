@@ -1,0 +1,100 @@
+/* ─── ProvidersPanel ───────────────────────────────────────────────────────── */
+
+.pp-msg {
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  background: #1a2a1a;
+  border-radius: 4px;
+  color: var(--accent-green);
+  font-size: 12px;
+}
+
+.pp-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.pp-default-select {
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pp-default-select:focus {
+  border-color: var(--focus-ring);
+  outline: none;
+}
+
+.pp-provider-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.pp-status-badge {
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+}
+
+.pp-status-badge.configured {
+  background: #1a3a1a;
+  color: var(--accent-green);
+}
+
+.pp-status-badge.unconfigured {
+  background: #3a1a1a;
+  color: var(--accent-red);
+}
+
+.pp-field-label {
+  font-size: 11px;
+  color: var(--text-hint);
+  display: block;
+  margin-bottom: 3px;
+}
+
+.pp-input {
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 5px 8px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.pp-input:focus {
+  border-color: var(--focus-ring);
+  outline: none;
+}
+
+.pp-select {
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 5px 8px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.pp-select:focus {
+  border-color: var(--focus-ring);
+  outline: none;
+}

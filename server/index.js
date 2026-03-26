@@ -135,6 +135,7 @@ _modulesReady.then(() => {
   app.use('/api/memory',          require('./routes/memory')({ memory }));
   app.use('/api/logs',            require('./routes/logs')({ logger }));
   app.use('/api/telegram',        require('./routes/telegram')({ telegram, sessionManager }));
+  app.use('/webhook',             telegram.webhookRouter());
   app.use('/api/webchat',         require('./routes/webchat')({ webChannel }));
   app.use('/api/providers',       require('./routes/providers')({ providerConfig, providersModule }));
   app.use('/api/voice-providers', require('./routes/voice-providers')({}));

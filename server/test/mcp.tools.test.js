@@ -10,8 +10,12 @@ const ptyTools   = require('../mcp/tools/pty');     // array
 const toolsIndex = require('../mcp/tools');
 const { destroy: destroyShell, destroyAll } = require('../mcp/ShellSession');
 
-const [READ_FILE, WRITE_FILE, LIST_DIR, SEARCH_FILES] = filesTools;
-const [PTY_WRITE, PTY_READ]                            = ptyTools;
+const READ_FILE    = filesTools.find(t => t.name === 'read_file');
+const WRITE_FILE   = filesTools.find(t => t.name === 'write_file');
+const LIST_DIR     = filesTools.find(t => t.name === 'list_dir');
+const SEARCH_FILES = filesTools.find(t => t.name === 'search_files');
+const PTY_WRITE = ptyTools.find(t => t.name === 'pty_write');
+const PTY_READ  = ptyTools.find(t => t.name === 'pty_read');
 
 afterAll(() => destroyAll());
 
@@ -50,7 +54,8 @@ describe('bash tool', () => {
     const cwdCmd = isWin ? 'cd' : 'pwd';
     await bash.execute({ command: `cd ${tmpDir}`, session_id: id });
     const r = await bash.execute({ command: cwdCmd, session_id: id });
-    expect(r.trim().toLowerCase()).toContain(tmpDir.toLowerCase().replace(/\//g, '\\'));
+    const expected = process.platform === 'win32' ? tmpDir.toLowerCase().replace(/\//g, '\\') : tmpDir.toLowerCase();
+    expect(r.trim().toLowerCase()).toContain(expected);
     destroyShell(id);
   });
 });
@@ -215,16 +220,17 @@ describe('pty tools', () => {
 // ── tools/index.js ────────────────────────────────────────────────────────────
 
 describe('tools/index.js', () => {
-  const EXPECTED_TOOLS = ['bash', 'read_file', 'write_file', 'list_dir', 'search_files', 'pty_write', 'pty_read',
-    'user_list', 'user_info', 'user_link', 'schedule_action', 'list_scheduled', 'cancel_scheduled', 'update_scheduled'];
+  const EXPECTED_CORE_TOOLS = ['bash', 'git', 'read_file', 'write_file', 'edit_file', 'list_dir', 'search_files', 'pty_create', 'pty_exec', 'pty_write', 'pty_read',
+    'user_list', 'user_info', 'user_link', 'schedule_action', 'list_scheduled', 'cancel_scheduled', 'update_scheduled',
+    'contact_add', 'contact_list', 'contact_info', 'contact_update', 'contact_delete', 'contact_link'];
 
-  test('all() retorna un array con las tools esperadas', () => {
-    expect(toolsIndex.all().length).toBeGreaterThanOrEqual(EXPECTED_TOOLS.length);
+  test('all() retorna un array con al menos los core tools', () => {
+    expect(toolsIndex.all().length).toBeGreaterThanOrEqual(EXPECTED_CORE_TOOLS.length);
   });
 
-  test('all() incluye los tools esperados', () => {
+  test('all() incluye los core tools esperados', () => {
     const names = toolsIndex.all().map(t => t.name);
-    for (const name of EXPECTED_TOOLS) {
+    for (const name of EXPECTED_CORE_TOOLS) {
       expect(names).toContain(name);
     }
   });

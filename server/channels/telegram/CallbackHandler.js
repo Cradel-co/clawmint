@@ -124,6 +124,16 @@ class CallbackHandler {
     return { text, buttons };
   }
 
+  // ── Remover inline keyboard de un mensaje ───────────────────────────────────
+
+  _removeInlineKeyboard(bot, chatId, msgId) {
+    bot._apiCall('editMessageReplyMarkup', {
+      chat_id: chatId,
+      message_id: msgId,
+      reply_markup: JSON.stringify({ inline_keyboard: [] }),
+    }).catch(() => {}); // Ignorar si el mensaje ya fue editado
+  }
+
   // ── Ejecución de callbacks dinámicos ────────────────────────────────────────
 
   async _executeDynamicAction(bot, chatId, msgId, chat, action) {
@@ -369,7 +379,8 @@ class CallbackHandler {
             [{ text: `📁 ${listCmd}`,   id: 'menu:monitor:ls'      },
              { text: '🖥️ Consola',       id: 'menu:monitor:consola' }],
             [{ text: '📊 Status',        id: 'status_vps'           },
-             { text: '← Menú',           id: 'menu'                 }],
+             { text: '🔄 Restart',       id: 'menu:monitor:restart' }],
+            [{ text: '← Menú',           id: 'menu'                 }],
           ];
         },
       },
@@ -379,6 +390,12 @@ class CallbackHandler {
           await b._sendConsolePrompt(chatId,
             `🖥️ *Modo consola activado*\n\nEscribí comandos directamente.\n\`exit\` o /consola para salir.`,
             chat);
+        },
+      },
+      'menu:monitor:restart': {
+        action: async ({ chatId, bot: b }) => {
+          await b.sendText(chatId, '🔄 Reiniciando servidor…');
+          require('child_process').exec('pm2 restart clawmint', { timeout: 15000 }, () => {});
         },
       },
 
@@ -562,6 +579,10 @@ class CallbackHandler {
       const action = dynamicRegistry.get(data);
       if (action) {
         await this._executeDynamicAction(bot, chatId, msgId, chat, action);
+        // Remover botones del mensaje original (si la acción no editó el mensaje)
+        if (msgId && !(action.type === 'message' && action.edit)) {
+          this._removeInlineKeyboard(bot, chatId, msgId);
+        }
         return;
       }
     }
@@ -980,6 +1001,8 @@ class CallbackHandler {
 
       default:
         // Fallback: enviar callback_data como prompt al AI activo
+        // Remover botones del mensaje original
+        if (msgId) this._removeInlineKeyboard(bot, chatId, msgId);
         await bot._sendToSession(chatId, data, chat);
         break;
     }

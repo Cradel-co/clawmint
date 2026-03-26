@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Settings, X, CheckCircle } from 'lucide-react';
 import { API_BASE } from '../config.js';
+import './ProvidersPanel.css';
 
 const API = API_BASE;
 
@@ -75,26 +76,23 @@ export default function ProvidersPanel({ onClose }) {
   const configurable = providers.filter(p => p.name !== 'claude-code');
 
   return (
-    <div className="ap-panel">
+    <div className="ap-panel" role="region" aria-label="Panel de proveedores">
       <div className="ap-header">
         <span className="ap-title"><Settings size={16} style={{ marginRight: 6, verticalAlign: 'middle' }} />Providers de IA</span>
-        <button className="ap-close" onClick={onClose}><X size={16} /></button>
+        <button className="ap-close" onClick={onClose} aria-label="Cerrar panel de proveedores"><X size={16} /></button>
       </div>
 
       <div className="ap-body">
-        {msg && (
-          <div style={{ padding: '6px 10px', marginBottom: 8, background: '#1a2a1a', borderRadius: 4, color: '#7ec87e', fontSize: 12 }}>
-            {msg}
-          </div>
-        )}
+        {msg && <div className="pp-msg">{msg}</div>}
 
         {/* Provider por defecto */}
         <div className="ap-section">
-          <div className="ap-section-title">Provider por defecto (Telegram)</div>
+          <div className="pp-section-title">Provider por defecto (Telegram)</div>
           <select
+            className="pp-default-select"
             value={defaultProvider}
             onChange={e => saveDefault(e.target.value)}
-            style={{ width: '100%', padding: '6px 8px', background: '#1e1e2e', color: '#cdd6f4', border: '1px solid #45475a', borderRadius: 4 }}
+            aria-label="Provider por defecto"
           >
             {providers.map(p => (
               <option key={p.name} value={p.name}>{p.label}</option>
@@ -105,33 +103,31 @@ export default function ProvidersPanel({ onClose }) {
         {/* API Keys por provider */}
         {configurable.map(p => (
           <div key={p.name} className="ap-section">
-            <div className="ap-section-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div className="pp-provider-title">
               {p.label}
-              <span style={{
-                padding: '1px 6px', borderRadius: 10, fontSize: 10,
-                background: (p.configured || p.name === 'ollama') ? '#1a3a1a' : '#3a1a1a',
-                color: (p.configured || p.name === 'ollama') ? '#7ec87e' : '#f38ba8',
-              }}>
+              <span className={`pp-status-badge ${(p.configured || p.name === 'ollama') ? 'configured' : 'unconfigured'}`}>
                 {p.name === 'ollama' ? '● local' : p.configured ? '● configurado' : '○ sin key'}
               </span>
             </div>
 
             {p.name !== 'ollama' && (<>
-            <label style={{ fontSize: 11, color: '#6c7086', display: 'block', marginBottom: 3 }}>API Key</label>
+            <label className="pp-field-label">API Key</label>
             <input
+              className="pp-input"
               type="password"
               placeholder="sk-... / AIza... / sk-ant-..."
               value={keys[p.name]?.apiKey || ''}
               onChange={e => setKeys(k => ({ ...k, [p.name]: { ...k[p.name], apiKey: e.target.value } }))}
-              style={{ width: '100%', marginBottom: 6, padding: '5px 8px', background: '#1e1e2e', color: '#cdd6f4', border: '1px solid #45475a', borderRadius: 4, fontSize: 12, boxSizing: 'border-box' }}
+              aria-label={`API Key para ${p.label}`}
             />
             </>)}
 
-            <label style={{ fontSize: 11, color: '#6c7086', display: 'block', marginBottom: 3 }}>Modelo</label>
+            <label className="pp-field-label">Modelo</label>
             <select
+              className="pp-select"
               value={keys[p.name]?.model || p.defaultModel || ''}
               onChange={e => setKeys(k => ({ ...k, [p.name]: { ...k[p.name], model: e.target.value } }))}
-              style={{ width: '100%', marginBottom: 8, padding: '5px 8px', background: '#1e1e2e', color: '#cdd6f4', border: '1px solid #45475a', borderRadius: 4, fontSize: 12, boxSizing: 'border-box' }}
+              aria-label={`Modelo para ${p.label}`}
             >
               {(p.models || []).map(m => (
                 <option key={m} value={m}>{m}</option>
@@ -139,7 +135,7 @@ export default function ProvidersPanel({ onClose }) {
             </select>
 
             <button
-              className="ap-btn"
+              className="ap-btn ap-btn-primary"
               onClick={() => saveProvider(p.name)}
               disabled={saving[p.name]}
             >

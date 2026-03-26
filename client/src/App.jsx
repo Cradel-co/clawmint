@@ -1,15 +1,21 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, lazy, Suspense } from 'react';
 import { MessageCircle, Settings, Plug, Users, Bot } from 'lucide-react';
 import TabBar from './components/TabBar.jsx';
 import CommandBar from './components/CommandBar.jsx';
-import TerminalPanel from './components/TerminalPanel.jsx';
-import TelegramPanel from './components/TelegramPanel.jsx';
-import AgentsPanel from './components/AgentsPanel.jsx';
-import ProvidersPanel from './components/ProvidersPanel.jsx';
-import McpsPanel from './components/McpsPanel.jsx';
-import WebChatPanel from './components/WebChatPanel.jsx';
 import { API_BASE, WS_URL } from './config.js';
 import './App.css';
+import './components/AgentsPanel.css';
+import './components/TelegramPanel.css';
+import './components/WebChatPanel.css';
+import './components/ProvidersPanel.css';
+
+// Lazy-load paneles que se abren bajo demanda
+const TerminalPanel = lazy(() => import('./components/TerminalPanel.jsx'));
+const TelegramPanel = lazy(() => import('./components/TelegramPanel.jsx'));
+const AgentsPanel = lazy(() => import('./components/AgentsPanel.jsx'));
+const ProvidersPanel = lazy(() => import('./components/ProvidersPanel.jsx'));
+const McpsPanel = lazy(() => import('./components/McpsPanel.jsx'));
+const WebChatPanel = lazy(() => import('./components/WebChatPanel.jsx'));
 let nextId = 0;
 
 function createSession(command = null, type = 'pty', httpSessionId = null, provider = null) {
@@ -56,12 +62,10 @@ export default function App() {
         const msg = JSON.parse(event.data);
         if (msg.type === 'telegram_session') {
           const { sessionId, from } = msg;
-          // Si ya hay una pestaña para esta sesión, solo activarla
           if (httpIdToTabId.current.has(sessionId)) {
             setActiveId(httpIdToTabId.current.get(sessionId));
             return;
           }
-          // Abrir pestaña nueva adjunta a la sesión Telegram
           setSessions((prev) => {
             const s = createSession(null, 'pty', sessionId);
             s.title = `TG: ${from}`;
@@ -69,8 +73,9 @@ export default function App() {
             return [...prev, s];
           });
         }
-      } catch { /* ignorar */ }
+      } catch { /* silenciar — no contaminar consola */ }
     };
+    ws.onerror = () => {}; // evitar error en consola cuando server no está disponible
     return () => ws.close();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -85,7 +90,7 @@ export default function App() {
             ? bots.reduce((n, b) => n + (b.chats?.length || 0), 0)
             : 0;
           setTelegramChatsCount(chats);
-        } catch { /* ignorar */ }
+        } catch { /* silenciar — polling en background */ }
       }, 5000);
       return () => clearInterval(interval);
     }
@@ -101,6 +106,10 @@ export default function App() {
   const closeSession = useCallback((id) => {
     setSessions((prev) => {
       const next = prev.filter((s) => s.id !== id);
+      // Limpiar httpIdToTabId para la sesión cerrada (evitar memory leak)
+      for (const [httpId, tabId] of httpIdToTabId.current) {
+        if (tabId === id) { httpIdToTabId.current.delete(httpId); break; }
+      }
       if (next.length === 0) {
         const s = createSession();
         setActiveId(s.id);
@@ -133,52 +142,58 @@ export default function App() {
 
   return (
     <div className="app">
+      <a href="#terminal-main" className="skip-link">Ir al contenido principal</a>
       <header className="app-header">
-        <span className="dot red" />
-        <span className="dot yellow" />
-        <span className="dot green" />
-        <span className="title">Terminal Live</span>
+        <span className="dot red" aria-hidden="true" />
+        <span className="dot yellow" aria-hidden="true" />
+        <span className="dot green" aria-hidden="true" />
+        <h1 className="title">Terminal Live</h1>
 
-        <div className="header-right">
+        <nav className="header-right" aria-label="Paneles">
           <button
             className={`telegram-btn ${chatOpen ? 'active' : ''}`}
             onClick={() => { setChatOpen(v => !v); setProvidersOpen(false); setMcpsOpen(false); setAgentsOpen(false); setTelegramOpen(false); }}
-            title="Chat con IA"
+            aria-label="Chat con IA"
+            aria-pressed={chatOpen}
           >
-            <MessageCircle size={16} />
+            <MessageCircle size={16} aria-hidden="true" />
           </button>
           <button
             className={`telegram-btn ${providersOpen ? 'active' : ''}`}
             onClick={() => { setProvidersOpen(v => !v); setMcpsOpen(false); setAgentsOpen(false); setTelegramOpen(false); setChatOpen(false); }}
-            title="Providers de IA"
+            aria-label="Providers de IA"
+            aria-pressed={providersOpen}
           >
-            <Settings size={16} />
+            <Settings size={16} aria-hidden="true" />
           </button>
           <button
             className={`telegram-btn ${mcpsOpen ? 'active' : ''}`}
             onClick={() => { setMcpsOpen(v => !v); setProvidersOpen(false); setAgentsOpen(false); setTelegramOpen(false); setChatOpen(false); }}
-            title="MCPs"
+            aria-label="MCPs"
+            aria-pressed={mcpsOpen}
           >
-            <Plug size={16} />
+            <Plug size={16} aria-hidden="true" />
           </button>
           <button
             className={`telegram-btn ${agentsOpen ? 'active' : ''}`}
             onClick={() => { setAgentsOpen(v => !v); setMcpsOpen(false); setTelegramOpen(false); setProvidersOpen(false); setChatOpen(false); }}
-            title="Agentes personalizados"
+            aria-label="Agentes personalizados"
+            aria-pressed={agentsOpen}
           >
-            <Users size={16} />
+            <Users size={16} aria-hidden="true" />
           </button>
           <button
             className={`telegram-btn ${telegramOpen ? 'active' : ''}`}
             onClick={() => { setTelegramOpen(v => !v); setMcpsOpen(false); setAgentsOpen(false); setProvidersOpen(false); setChatOpen(false); }}
-            title="Panel de Telegram"
+            aria-label="Panel de Telegram"
+            aria-pressed={telegramOpen}
           >
-            <Bot size={16} />
+            <Bot size={16} aria-hidden="true" />
             {telegramChatsCount > 0 && !telegramOpen && (
               <span className="telegram-badge">{telegramChatsCount}</span>
             )}
           </button>
-        </div>
+        </nav>
       </header>
 
       <TabBar
@@ -196,7 +211,7 @@ export default function App() {
       />
 
       <div className="app-body-wrap">
-        <main className="app-body">
+        <main id="terminal-main" className="app-body">
           {sessions.map((session) => (
             <TerminalPanel
               key={session.id}
@@ -209,28 +224,30 @@ export default function App() {
           ))}
         </main>
 
-        {telegramOpen && (
-          <TelegramPanel
-            onClose={() => setTelegramOpen(false)}
-            onOpenSession={handleOpenSession}
-          />
-        )}
+        <Suspense fallback={null}>
+          {telegramOpen && (
+            <TelegramPanel
+              onClose={() => setTelegramOpen(false)}
+              onOpenSession={handleOpenSession}
+            />
+          )}
 
-        {agentsOpen && (
-          <AgentsPanel onClose={() => setAgentsOpen(false)} />
-        )}
+          {agentsOpen && (
+            <AgentsPanel onClose={() => setAgentsOpen(false)} />
+          )}
 
-        {providersOpen && (
-          <ProvidersPanel onClose={() => setProvidersOpen(false)} />
-        )}
+          {providersOpen && (
+            <ProvidersPanel onClose={() => setProvidersOpen(false)} />
+          )}
 
-        {mcpsOpen && (
-          <McpsPanel onClose={() => setMcpsOpen(false)} />
-        )}
+          {mcpsOpen && (
+            <McpsPanel onClose={() => setMcpsOpen(false)} />
+          )}
 
-        {chatOpen && (
-          <WebChatPanel onClose={() => setChatOpen(false)} />
-        )}
+          {chatOpen && (
+            <WebChatPanel onClose={() => setChatOpen(false)} />
+          )}
+        </Suspense>
       </div>
     </div>
   );

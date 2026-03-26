@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { Lock, CheckCircle, Sparkles, Square, Play, X, ChevronUp, ChevronDown, Eye, EyeOff, Check, Plus, Bot } from 'lucide-react';
 import { API_BASE } from '../config.js';
 import './TelegramPanel.css';
@@ -13,7 +13,7 @@ function timeAgo(ts) {
   return `${Math.floor(mins / 60)}h`;
 }
 
-function ChatRow({ botKey, chat, onOpenSession, onRefresh }) {
+const ChatRow = memo(function ChatRow({ botKey, chat, onOpenSession, onRefresh }) {
   const [linking, setLinking] = useState(false);
   const [sessions, setSessions] = useState([]);
 
@@ -103,7 +103,7 @@ function ChatRow({ botKey, chat, onOpenSession, onRefresh }) {
       </div>
     </div>
   );
-}
+});
 
 function AccessConfig({ bot, onRefresh }) {
   const [ids, setIds] = useState((bot.whitelist || []).join(', '));
@@ -163,17 +163,9 @@ function AccessConfig({ bot, onRefresh }) {
   );
 }
 
-function BotCard({ bot, onOpenSession, onRefresh }) {
+const BotCard = memo(function BotCard({ bot, allAgents, onOpenSession, onRefresh }) {
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [allAgents, setAllAgents] = useState([]);
-
-  useEffect(() => {
-    fetch(`${API_BASE}/api/agents`)
-      .then(r => r.json())
-      .then(data => setAllAgents(Array.isArray(data) ? data : []))
-      .catch(() => {});
-  }, []);
 
   const handleStart = async () => {
     setLoading(true);
@@ -245,7 +237,7 @@ function BotCard({ bot, onOpenSession, onRefresh }) {
               <Play size={11} /> Start
             </button>
           )}
-          <button className="tg-btn tg-btn-sm tg-btn-delete" onClick={handleRemove} disabled={loading} title="Eliminar bot">
+          <button className="tg-btn tg-btn-sm tg-btn-delete" onClick={handleRemove} disabled={loading} title="Eliminar bot" aria-label="Eliminar bot">
             <X size={13} />
           </button>
           <span className="tg-bot-expand">{expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</span>
@@ -274,9 +266,9 @@ function BotCard({ bot, onOpenSession, onRefresh }) {
       )}
     </div>
   );
-}
+});
 
-function AddBotForm({ onAdd, onCancel }) {
+const AddBotForm = memo(function AddBotForm({ onAdd, onCancel }) {
   const [key, setKey] = useState('');
   const [token, setToken] = useState('');
   const [showToken, setShowToken] = useState(false);
@@ -326,7 +318,7 @@ function AddBotForm({ onAdd, onCancel }) {
           onChange={e => { setToken(e.target.value); setError(''); }}
           onKeyDown={e => e.key === 'Enter' && handleSubmit()}
         />
-        <button className="tg-icon-btn" onClick={() => setShowToken(v => !v)}>
+        <button className="tg-icon-btn" onClick={() => setShowToken(v => !v)} aria-label={showToken ? 'Ocultar token' : 'Mostrar token'}>
           {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
         </button>
       </div>
@@ -347,10 +339,11 @@ function AddBotForm({ onAdd, onCancel }) {
       </div>
     </div>
   );
-}
+});
 
 export default function TelegramPanel({ onClose, onOpenSession }) {
   const [bots, setBots] = useState([]);
+  const [allAgents, setAllAgents] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
   const intervalRef = useRef(null);
 
@@ -368,6 +361,14 @@ export default function TelegramPanel({ onClose, onOpenSession }) {
     return () => clearInterval(intervalRef.current);
   }, [fetchBots]);
 
+  // Cargar agentes una sola vez (en vez de por cada BotCard)
+  useEffect(() => {
+    fetch(`${API_BASE}/api/agents`)
+      .then(r => r.json())
+      .then(data => setAllAgents(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
+
   const handleAdd = () => {
     setShowAdd(false);
     fetchBots();
@@ -377,14 +378,14 @@ export default function TelegramPanel({ onClose, onOpenSession }) {
   const activeBots = bots.filter(b => b.running).length;
 
   return (
-    <div className="tg-panel">
+    <div className="tg-panel" role="region" aria-label="Panel de Telegram">
       <div className="tg-header">
         <span className="tg-header-title">
           <span className="tg-icon"><Bot size={16} /></span>
           Bots de Telegram
           {activeBots > 0 && <span className="tg-header-badge">{activeBots} activo{activeBots > 1 ? 's' : ''}</span>}
         </span>
-        <button className="tg-close" onClick={onClose} title="Cerrar"><X size={16} /></button>
+        <button className="tg-close" onClick={onClose} aria-label="Cerrar panel de Telegram"><X size={16} /></button>
       </div>
 
       <div className="tg-body">
@@ -409,6 +410,7 @@ export default function TelegramPanel({ onClose, onOpenSession }) {
           <BotCard
             key={bot.key}
             bot={bot}
+            allAgents={allAgents}
             onOpenSession={(sessionId) => { onOpenSession(sessionId); onClose(); }}
             onRefresh={fetchBots}
           />

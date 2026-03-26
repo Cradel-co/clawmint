@@ -44,11 +44,11 @@ export default function WebChatPanel({ onClose }) {
         setProviders(data.providers || []);
         if (data.default) setProvider(data.default);
       })
-      .catch(() => {});
+      .catch(() => setStatusText('Error cargando providers'));
     fetch(`${API_BASE}/api/agents`)
       .then(r => r.json())
       .then(data => setAgentsList(Array.isArray(data) ? data : []))
-      .catch(() => {});
+      .catch(() => setStatusText('Error cargando agentes'));
   }, []);
 
   // Conectar WebSocket
@@ -149,6 +149,24 @@ export default function WebChatPanel({ onClose }) {
             });
             break;
 
+          case 'chat_status':
+            if (msg.status === 'thinking') setStatusText(msg.detail ? `🤔 ${msg.detail}...` : '🤔 Pensando...');
+            else if (msg.status === 'tool_use') setStatusText(`⚡ ${msg.detail || 'Ejecutando tool'}...`);
+            else setStatusText(null);
+            break;
+
+          case 'chat_ask_permission':
+            setMessages(prev => [...prev, {
+              role: 'system',
+              content: `🔐 Permiso requerido — herramienta: ${msg.tool}\n${msg.args}`,
+              askPermission: true,
+              buttons: [
+                { text: '✅ Aprobar', callback_data: msg.approveId },
+                { text: '❌ Rechazar', callback_data: msg.rejectId },
+              ],
+            }]);
+            break;
+
           case 'chat:status':
             if (msg.status === 'transcribing') setStatusText('Transcribiendo...');
             else if (msg.status === 'synthesizing') setStatusText('Generando audio...');
@@ -233,13 +251,24 @@ export default function WebChatPanel({ onClose }) {
             if (msg.cwd) setCwd(msg.cwd);
             break;
         }
-      } catch { /* ignorar */ }
+      } catch (err) {
+        /* silenciar — no contaminar consola */
+      }
     };
 
     ws.onclose = () => setConnected(false);
-    ws.onerror = () => {};
+    ws.onerror = () => setStatusText('Error de conexión WebSocket');
 
     return () => ws.close();
+  }, []);
+
+  // Cleanup de grabación al desmontar el componente
+  useEffect(() => {
+    return () => {
+      streamRef.current?.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+      clearInterval(recTimerRef.current);
+    };
   }, []);
 
   // ── Enviar mensaje ─────────────────────────────────────────────────────────
@@ -465,6 +494,11 @@ export default function WebChatPanel({ onClose }) {
         }));
       }
     };
+    reader.onerror = () => {
+      setSending(false);
+      setStatusText(`Error leyendo archivo: ${file.name}`);
+      setTimeout(() => setStatusText(null), 5000);
+    };
     reader.readAsDataURL(file);
     // Reset input para permitir seleccionar el mismo archivo
     e.target.value = '';
@@ -519,6 +553,11 @@ export default function WebChatPanel({ onClose }) {
         }));
       }
     };
+    reader.onerror = () => {
+      setSending(false);
+      setStatusText(`Error leyendo archivo: ${file.name}`);
+      setTimeout(() => setStatusText(null), 5000);
+    };
     reader.readAsDataURL(file);
   }, [input, provider, agent]);
 
@@ -527,14 +566,22 @@ export default function WebChatPanel({ onClose }) {
   const providerLabel = providers.find(p => p.name === provider)?.label || provider;
 
   return (
-    <div className="wc-panel" onDrop={handleDrop} onDragOver={handleDragOver}>
+    <div className="wc-panel" onDrop={handleDrop} onDragOver={handleDragOver} role="region" aria-label="Panel de chat web">
       <div className="wc-header">
         <span className="wc-header-title">Chat</span>
         <div className="wc-header-controls">
           <select
             className="wc-select"
             value={provider}
-            onChange={e => setProvider(e.target.value)}
+            aria-label="Proveedor"
+            onChange={e => {
+              const val = e.target.value;
+              setProvider(val);
+              const ws = wsRef.current;
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'chat:settings', provider: val }));
+              }
+            }}
           >
             {providers.filter(p => p.configured).map(p => (
               <option key={p.name} value={p.name}>{p.label || p.name}</option>
@@ -543,15 +590,23 @@ export default function WebChatPanel({ onClose }) {
           <select
             className="wc-select"
             value={agent || ''}
-            onChange={e => setAgent(e.target.value || null)}
+            aria-label="Agente"
+            onChange={e => {
+              const val = e.target.value || null;
+              setAgent(val);
+              const ws = wsRef.current;
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'chat:settings', agent: val }));
+              }
+            }}
           >
             <option value="">Sin agente</option>
             {agentsList.map(a => (
               <option key={a.key} value={a.key}>{a.key}</option>
             ))}
           </select>
-          <button className="wc-btn-icon" onClick={clearChat} title="Nueva conversación"><Trash2 size={14} /></button>
-          <button className="wc-close" onClick={onClose}><X size={16} /></button>
+          <button className="wc-btn-icon" onClick={clearChat} title="Nueva conversación" aria-label="Nueva conversación"><Trash2 size={14} /></button>
+          <button className="wc-close" onClick={onClose} aria-label="Cerrar panel de chat"><X size={16} /></button>
         </div>
       </div>
 
@@ -566,10 +621,17 @@ export default function WebChatPanel({ onClose }) {
       <div className="wc-messages">
         {messages.length === 0 && (
           <div className="wc-empty">
-            <p>Escribí algo para comenzar</p>
-            <p className="wc-hint">
-              Usá / para comandos: /ayuda
-            </p>
+            {connected ? (
+              <>
+                <p>Escribí algo para comenzar</p>
+                <p className="wc-hint">Usá / para comandos: /ayuda</p>
+              </>
+            ) : (
+              <>
+                <p>Sin conexión al servidor</p>
+                <p className="wc-hint">Verificá que el servidor esté corriendo y recargá la página</p>
+              </>
+            )}
           </div>
         )}
         {messages.map((msg, i) => (

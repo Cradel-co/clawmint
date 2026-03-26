@@ -2,14 +2,14 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  background: #1e1e1e;
-  border-bottom: 1px solid #333;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-secondary);
   padding: 5px 12px;
   flex-shrink: 0;
 }
 
 .command-prefix {
-  color: #28c840;
+  color: var(--accent-green);
   font-size: 14px;
   font-family: monospace;
   font-weight: bold;
@@ -21,20 +21,20 @@
   background: transparent;
   border: none;
   outline: none;
-  color: #e0e0e0;
+  color: var(--text-primary);
   font-family: 'Cascadia Code', 'Fira Code', 'Courier New', monospace;
   font-size: 13px;
-  caret-color: #28c840;
+  caret-color: var(--accent-green);
 }
 
 .command-input::placeholder {
-  color: #444;
+  color: var(--text-hint);
 }
 
 .command-submit {
-  background: #2d2d2d;
-  border: 1px solid #444;
-  color: #aaa;
+  background: var(--bg-header);
+  border: 1px solid var(--border-primary);
+  color: var(--text-muted);
   font-size: 12px;
   padding: 3px 10px;
   border-radius: 4px;
@@ -43,13 +43,23 @@
 }
 
 .command-submit:hover {
-  background: #28c840;
-  border-color: #28c840;
+  background: var(--accent-green);
+  border-color: var(--accent-green);
   color: #000;
 }
 
+.command-submit:focus-visible {
+  outline: 2px solid var(--accent-green);
+  outline-offset: 2px;
+}
+
+.command-input:focus-visible {
+  outline: none;
+  box-shadow: 0 1px 0 0 var(--accent-green);
+}
+
 .command-error {
-  color: #ff5f57;
+  color: var(--accent-red);
   font-size: 11px;
   margin-left: 6px;
   white-space: nowrap;

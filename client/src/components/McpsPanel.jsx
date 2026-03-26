@@ -245,10 +245,11 @@ export default function McpsPanel({ onClose }) {
 
   const fetchMcps = useCallback(async () => {
     try {
+      setCliError('');
       const res = await fetch(API);
       const data = await res.json();
       setMcpList(Array.isArray(data) ? data : []);
-    } catch { /* ignorar */ }
+    } catch { setCliError('Error cargando MCPs'); }
   }, []);
 
   useEffect(() => { fetchMcps(); }, [fetchMcps]);
@@ -269,7 +270,7 @@ export default function McpsPanel({ onClose }) {
     try {
       await fetch(`${API}/${name}`, { method: 'DELETE' });
       fetchMcps();
-    } catch { /* ignorar */ }
+    } catch { setCliError('Error eliminando MCP'); }
   };
 
   const handleToggle = async (mcp) => {
@@ -289,13 +290,13 @@ export default function McpsPanel({ onClose }) {
   };
 
   return (
-    <div className="ap-panel">
+    <div className="ap-panel" role="region" aria-label="Panel de MCPs">
       <div className="ap-header">
         <span className="ap-header-title">
           <span className="ap-icon"><Plug size={16} /></span>
           MCPs
         </span>
-        <button className="ap-close" onClick={onClose} title="Cerrar"><X size={16} /></button>
+        <button className="ap-close" onClick={onClose} aria-label="Cerrar panel de MCPs"><X size={16} /></button>
       </div>
 
       <div className="ap-body">
@@ -303,6 +304,9 @@ export default function McpsPanel({ onClose }) {
           <div className="ap-empty-state">
             <p>Sin MCPs configurados</p>
             <p className="ap-empty-hint">Agregá un MCP para extender las capacidades de Claude con herramientas externas.</p>
+            <button className="ap-btn ap-btn-primary" style={{ marginTop: 10 }} onClick={() => { setEditMcp(null); setShowForm(true); }}>
+              <Plus size={13} /> Agregar primer MCP
+            </button>
           </div>
         )}
 
