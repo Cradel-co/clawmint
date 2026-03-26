@@ -83,7 +83,12 @@ class ClaudePrintSession {
       let exited = false;
       let eventCount = 0;
       let usedMcpTools = false;
-      const TELEGRAM_TOOLS = ['telegram_send_message', 'telegram_send_photo', 'telegram_send_document'];
+      const COMM_TOOLS = [
+        'telegram_send_message', 'telegram_send_photo', 'telegram_send_document',
+        'telegram_send_voice', 'telegram_send_video', 'telegram_edit_message',
+        'webchat_send_message', 'webchat_send_photo', 'webchat_send_document',
+        'webchat_send_voice', 'webchat_send_video', 'webchat_edit_message',
+      ];
 
       const emitStatus = (status, detail = null) => {
         if (onStatus) onStatus(status, detail);
@@ -112,8 +117,8 @@ class ClaudePrintSession {
             // Detectar inicio de tool_use para status
             if (inner.type === 'content_block_start' && inner.content_block?.type === 'tool_use') {
               const toolName = inner.content_block.name || 'herramienta';
-              if (TELEGRAM_TOOLS.includes(toolName)) usedMcpTools = true;
-              cpdbg('event', `#${eventCount} tool_use start: ${toolName} isTelegramTool=${TELEGRAM_TOOLS.includes(toolName)}`);
+              if (COMM_TOOLS.includes(toolName)) usedMcpTools = true;
+              cpdbg('event', `#${eventCount} tool_use start: ${toolName} isTelegramTool=${COMM_TOOLS.includes(toolName)}`);
               emitStatus('tool_use', toolName);
             }
             // Detectar inicio de bloque de texto
@@ -138,7 +143,7 @@ class ClaudePrintSession {
             cpdbg('event', `#${eventCount} assistant content=${Array.isArray(content) ? content.length + ' blocks' : 'none'} fullText=${fullText.length}`);
             if (Array.isArray(content)) {
               // Detectar tool_use de telegram en bloques de assistant
-              const hasTelegramTool = content.some(b => b.type === 'tool_use' && TELEGRAM_TOOLS.includes(b.name));
+              const hasTelegramTool = content.some(b => b.type === 'tool_use' && COMM_TOOLS.includes(b.name));
               if (hasTelegramTool) usedMcpTools = true;
 
               const textBlock = content.find(b => b.type === 'text');
