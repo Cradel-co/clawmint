@@ -94,7 +94,39 @@ export default function AuthPanel({ onAuth, onSkip }) {
 
   return (
     <div className="auth-overlay">
-      <div className="auth-card">
+      {/* Panel izquierdo — branding */}
+      <div className="auth-brand">
+        <div className="auth-brand-logo">Claw<span>mint</span></div>
+        <div className="auth-brand-tagline">Tu terminal en la nube</div>
+        <div className="auth-brand-desc">
+          Terminal PTY en tiempo real, agentes IA multi-proveedor y control
+          remoto desde cualquier dispositivo.
+        </div>
+        <div className="auth-brand-features">
+          <div className="auth-brand-feature">
+            <div className="auth-brand-feature-icon">⚡</div>
+            Terminal PTY en tiempo real vía WebSocket
+          </div>
+          <div className="auth-brand-feature">
+            <div className="auth-brand-feature-icon">🤖</div>
+            Claude, Gemini, GPT, Grok y Ollama
+          </div>
+          <div className="auth-brand-feature">
+            <div className="auth-brand-feature-icon">📱</div>
+            Telegram + WebChat integrados
+          </div>
+        </div>
+      </div>
+
+      {/* Panel derecho — formulario */}
+      <div className="auth-panel">
+        <div className="auth-panel-title">
+          {mode === 'login' ? 'Iniciar sesión' : 'Crear cuenta'}
+        </div>
+        <div className="auth-panel-subtitle">
+          {mode === 'login' ? 'Bienvenido de vuelta' : 'Empezá gratis, sin tarjeta'}
+        </div>
+
         <div className="auth-tabs">
           <button
             className={`auth-tab ${mode === 'login' ? 'active' : ''}`}
