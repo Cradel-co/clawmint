@@ -112,6 +112,25 @@ class WebChannel extends BaseChannel {
       this._scheduler.deliverPending('web', sessionId).catch(() => {});
     }
 
+    // ── Takeover: si ya hay sesión activa con este sessionId (otro device) ────
+    const existing = this.sessions.get(sessionId);
+    if (existing && existing.ws !== ws) {
+      // Notificar al device anterior y cerrar su WS
+      try {
+        this._sendJson(existing.ws, { type: 'session_taken', message: 'Sesión abierta desde otro dispositivo' });
+        existing.ws.close(4002, 'Session taken');
+      } catch { /* ws ya cerrado */ }
+      // Reusar el state existente
+      const state = existing.state;
+      state.processing = false;
+      this.sessions.set(sessionId, { ws, state });
+      this._sendStatus(ws, state);
+      this._sendHistory(ws, state);
+      this._bindWs(ws, sessionId, state);
+      this.logger.info(`[WebChannel] Sesión ${sessionId.slice(0, 8)} takeover (cross-device)`);
+      return;
+    }
+
     // Restaurar sesión parked
     const parked = this._parked.get(sessionId);
     if (parked) {

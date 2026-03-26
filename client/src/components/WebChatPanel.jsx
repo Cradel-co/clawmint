@@ -280,6 +280,15 @@ export default function WebChatPanel({ onClose }) {
             ));
             break;
 
+          case 'session_taken':
+            setMessages(prev => [...prev, {
+              role: 'system',
+              content: msg.message || 'Sesión abierta desde otro dispositivo',
+              error: true,
+            }]);
+            setConnected(false);
+            break;
+
           case 'status':
             if (msg.provider) setProvider(msg.provider);
             if (msg.agent !== undefined) setAgent(msg.agent);
@@ -296,6 +305,35 @@ export default function WebChatPanel({ onClose }) {
 
     return () => ws.close();
   }, []);
+
+  // Refresh proactivo del JWT antes de que expire
+  useEffect(() => {
+    const { accessToken } = getStoredTokens();
+    if (!accessToken) return;
+
+    const payload = (() => { try { const b = accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'); return JSON.parse(atob(b)); } catch { return null; } })();
+    if (!payload?.exp) return;
+
+    const expiresIn = payload.exp * 1000 - Date.now();
+    // Renovar 2 minutos antes de que expire
+    const refreshIn = Math.max(expiresIn - 2 * 60 * 1000, 5000);
+
+    const timer = setTimeout(async () => {
+      try {
+        const refreshed = await refreshAuthTokens();
+        // Enviar nuevo token por WS si está conectado
+        const ws = wsRef.current;
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'auth:refresh', refreshToken: refreshed.refreshToken }));
+        }
+      } catch {
+        clearStoredTokens();
+        setAuthUser(null);
+      }
+    }, refreshIn);
+
+    return () => clearTimeout(timer);
+  }, [authUser]);
 
   // Cleanup de grabación al desmontar el componente
   useEffect(() => {
