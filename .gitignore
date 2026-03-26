@@ -3,6 +3,7 @@ dist/
 .env
 *.local
 server/agents/*.json
+!server/agents/coordinator.json
 server/skills/
 server/bots.json
 server/whisper-config.json
