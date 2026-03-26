@@ -129,20 +129,26 @@ const HOST = process.env.HOST || '0.0.0.0';
 logger.info(`Iniciando servidor en ${HOST}:${PORT}...`);
 
 _modulesReady.then(() => {
-  // Montar rutas REST (necesitan módulos async)
+  // ── Auth middleware global ──────────────────────────────────────────────────
+  const createAuthMiddleware = require('./middleware/authMiddleware');
+  const { requireAuth } = createAuthMiddleware(authService);
+
+  // Rutas públicas (sin auth)
   app.use('/api/auth',            require('./routes/auth')({ authService, usersRepo, logger }));
-  app.use('/api/sessions',        require('./routes/sessions')({ sessionManager }));
-  app.use('/api/agents',          require('./routes/agents')({ agents }));
-  app.use('/api/mcps',            require('./routes/mcps')({ mcps }));
-  app.use('/api/skills',          require('./routes/skills')({ skills }));
-  app.use('/api/memory',          require('./routes/memory')({ memory }));
-  app.use('/api/logs',            require('./routes/logs')({ logger }));
-  app.use('/api/telegram',        require('./routes/telegram')({ telegram, sessionManager }));
   app.use('/webhook',             telegram.webhookRouter());
-  app.use('/api/webchat',         require('./routes/webchat')({ webChannel }));
-  app.use('/api/providers',       require('./routes/providers')({ providerConfig, providersModule }));
-  app.use('/api/voice-providers', require('./routes/voice-providers')({}));
-  app.use('/api/nodriza',         require('./routes/nodriza')({ nodrizaInstance, getDataChannelHandler: () => startAISessionForDataChannel }));
+
+  // Rutas protegidas (requieren JWT válido)
+  app.use('/api/sessions',        requireAuth, require('./routes/sessions')({ sessionManager }));
+  app.use('/api/agents',          requireAuth, require('./routes/agents')({ agents }));
+  app.use('/api/mcps',            requireAuth, require('./routes/mcps')({ mcps }));
+  app.use('/api/skills',          requireAuth, require('./routes/skills')({ skills }));
+  app.use('/api/memory',          requireAuth, require('./routes/memory')({ memory }));
+  app.use('/api/logs',            requireAuth, require('./routes/logs')({ logger }));
+  app.use('/api/telegram',        requireAuth, require('./routes/telegram')({ telegram, sessionManager }));
+  app.use('/api/webchat',         requireAuth, require('./routes/webchat')({ webChannel }));
+  app.use('/api/providers',       requireAuth, require('./routes/providers')({ providerConfig, providersModule }));
+  app.use('/api/voice-providers', requireAuth, require('./routes/voice-providers')({}));
+  app.use('/api/nodriza',         requireAuth, require('./routes/nodriza')({ nodrizaInstance, getDataChannelHandler: () => startAISessionForDataChannel }));
 
   // Montar MCP router si está disponible
   if (mcpRouter) app.use('/mcp', mcpRouter);
