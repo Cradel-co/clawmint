@@ -203,24 +203,12 @@ class MessageProcessor {
         }
       }
 
-      if (sentMsg) {
+      if (result.text && !result.usedMcpTools) {
+        // Fallback: la IA no usó MCP tools para comunicarse → enviar texto directo
+        tdbg('send', `fallback: enviando texto directo (${result.text.length} chars, usedMcpTools=false)`);
+        await bot._responseRenderer.sendResult(bot, chatId, result.text, sentMsg);
+      } else if (sentMsg) {
         try { await bot._apiCall('deleteMessage', { chat_id: chatId, message_id: sentMsg.message_id }); } catch (e) { tdbg('send', `deleteStatusMsg FAIL: ${e.message}`); }
-      }
-      if (result.text) {
-        const suppressed = result.text.trim();
-        tdbg('send', `texto suprimido (${suppressed.length} chars) — guardando en memoria`);
-        if (suppressed.length > 10 && this._memory && agentKey) {
-          try {
-            const ts = new Date().toISOString().replace(/[:.]/g, '-');
-            const filename = `_leaked-text-${ts}.md`;
-            this._memory.write(agentKey, filename,
-              `---\ntype: leaked-response\nts: ${new Date().toISOString()}\nchatId: ${chatId}\n---\n${suppressed}`
-            );
-            tdbg('send', `texto suprimido guardado en memoria → ${filename}`);
-          } catch (e) {
-            tdbg('send', `error guardando texto suprimido: ${e.message}`);
-          }
-        }
       }
 
       if (this._tts && this._tts.isEnabled() && result.text) {
