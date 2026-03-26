@@ -122,6 +122,62 @@
   transition: opacity 0.2s;
 }
 
+/* OAuth buttons */
+.auth-oauth {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.auth-oauth-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0.55rem;
+  border: 1px solid var(--border-primary, #333);
+  border-radius: 6px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.auth-oauth-google {
+  background: var(--bg-primary, #121212);
+  color: var(--text-primary, #ddd);
+}
+
+.auth-oauth-google:hover {
+  background: #1a1a2e;
+  border-color: #4285F4;
+}
+
+.auth-oauth-github {
+  background: #24292e;
+  color: #fff;
+}
+
+.auth-oauth-github:hover {
+  background: #2f363d;
+  border-color: #6e7681;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--text-secondary, #666);
+  font-size: 0.75rem;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--border-primary, #333);
+}
+
 .auth-submit:hover {
   opacity: 0.9;
 }

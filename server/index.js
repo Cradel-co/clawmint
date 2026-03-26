@@ -130,7 +130,7 @@ logger.info(`Iniciando servidor en ${HOST}:${PORT}...`);
 
 _modulesReady.then(() => {
   // Montar rutas REST (necesitan módulos async)
-  app.use('/api/auth',            require('./routes/auth')({ authService, usersRepo }));
+  app.use('/api/auth',            require('./routes/auth')({ authService, usersRepo, logger }));
   app.use('/api/sessions',        require('./routes/sessions')({ sessionManager }));
   app.use('/api/agents',          require('./routes/agents')({ agents }));
   app.use('/api/mcps',            require('./routes/mcps')({ mcps }));
