@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Check, Pencil, Trash2, X, Plus, Users, Sparkles } from 'lucide-react';
 import { API_BASE } from '../config';
+import { apiFetch } from '../authUtils';
 import './AgentsPanel.css';
 
 const API = `${API_BASE}/api/agents`;
@@ -21,7 +22,7 @@ function AgentForm({ initial, onSave, onCancel }) {
     try {
       const url = isEdit ? `${API}/${initial.key}` : API;
       const method = isEdit ? 'PATCH' : 'POST';
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: key.trim(), description: description.trim(), prompt: prompt.trim() }),
@@ -123,7 +124,7 @@ function SkillsSection() {
   const [error, setError] = useState('');
 
   const loadSkills = useCallback(() => {
-    fetch(SKILLS_API).then(r => r.json()).then(setSkillsList).catch(() => setError('Error cargando skills'));
+    apiFetch(SKILLS_API).then(r => r.json()).then(setSkillsList).catch(() => setError('Error cargando skills'));
   }, []);
 
   useEffect(() => { loadSkills(); }, [loadSkills]);
@@ -133,7 +134,7 @@ function SkillsSection() {
     setInstalling(true);
     setError('');
     try {
-      const res = await fetch(`${SKILLS_API}/install`, {
+      const res = await apiFetch(`${SKILLS_API}/install`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ slug: slug.trim() }),
@@ -150,7 +151,7 @@ function SkillsSection() {
   };
 
   const uninstall = async (s) => {
-    await fetch(`${SKILLS_API}/${s}`, { method: 'DELETE' });
+    await apiFetch(`${SKILLS_API}/${s}`, { method: 'DELETE' });
     loadSkills();
   };
 
@@ -198,7 +199,7 @@ export default function AgentsPanel({ onClose }) {
   const fetchAgents = useCallback(async () => {
     try {
       setLoadError('');
-      const res = await fetch(API);
+      const res = await apiFetch(API);
       const data = await res.json();
       setAgents(Array.isArray(data) ? data : []);
     } catch { setLoadError('Error cargando agentes'); }
@@ -220,7 +221,7 @@ export default function AgentsPanel({ onClose }) {
   const handleDelete = async (key) => {
     if (!confirm(`¿Eliminar el agente "${key}"?`)) return;
     try {
-      await fetch(`${API}/${key}`, { method: 'DELETE' });
+      await apiFetch(`${API}/${key}`, { method: 'DELETE' });
       fetchAgents();
     } catch { setLoadError('Error eliminando agente'); }
   };

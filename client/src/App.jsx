@@ -9,6 +9,7 @@ import { AuthProvider } from './contexts/AuthContext.jsx';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext.jsx';
 import { ToastProvider } from './contexts/ToastContext.jsx';
 import { API_BASE, WS_URL } from './config';
+import { apiFetch } from './authUtils';
 import './App.css';
 import './components/AgentsPanel.css';
 import './components/TelegramPanel.css';
@@ -126,7 +127,7 @@ function AppContent() {
     if (activePanel === 'telegram') return;
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/telegram/bots`);
+        const res = await apiFetch(`${API_BASE}/api/telegram/bots`);
         const bots = await res.json();
         const chats = Array.isArray(bots)
           ? bots.reduce((n, b) => n + (b.chats?.length || 0), 0)

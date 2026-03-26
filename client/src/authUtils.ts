@@ -136,6 +136,21 @@ export async function fetchMe(): Promise<User | null> {
 }
 
 /**
+ * fetch autenticado: agrega Authorization: Bearer <token> automáticamente.
+ * Usar en todos los paneles en lugar del fetch() nativo.
+ */
+export function apiFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const { accessToken } = getStoredTokens();
+  const authHeader: Record<string, string> = accessToken
+    ? { Authorization: `Bearer ${accessToken}` }
+    : {};
+  return fetch(url, {
+    ...options,
+    headers: { ...authHeader, ...(options.headers as Record<string, string> || {}) },
+  });
+}
+
+/**
  * Vincula una sesión anónima al usuario autenticado.
  */
 export async function linkSession(sessionId: string): Promise<boolean> {

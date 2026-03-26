@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Settings, X, CheckCircle } from 'lucide-react';
 import { API_BASE } from '../config';
+import { apiFetch } from '../authUtils';
 import './ProvidersPanel.css';
 
 const API = API_BASE;
@@ -27,7 +28,7 @@ export default function ProvidersPanel({ onClose }) {
 
   async function fetchProviders() {
     try {
-      const res = await fetch(`${API}/api/providers`);
+      const res = await apiFetch(`${API}/api/providers`);
       const data = await res.json();
       setProviders(data.providers || []);
       setDefaultProvider(data.default || 'claude-code');
@@ -45,7 +46,7 @@ export default function ProvidersPanel({ onClose }) {
     setSaving(s => ({ ...s, [name]: true }));
     try {
       const { apiKey, model } = keys[name] || {};
-      await fetch(`${API}/api/providers/${name}`, {
+      await apiFetch(`${API}/api/providers/${name}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ apiKey: apiKey || undefined, model: model || undefined }),
@@ -61,7 +62,7 @@ export default function ProvidersPanel({ onClose }) {
 
   async function saveDefault(name) {
     try {
-      await fetch(`${API}/api/providers/default`, {
+      await apiFetch(`${API}/api/providers/default`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider: name }),
