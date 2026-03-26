@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Trash2, Paperclip, Volume2, Send, Mic, Square, X, Pause, Play } from 'lucide-react';
+import { Trash2, Paperclip, Volume2, Send, Mic, Square, X, Pause, Play, LogIn, LogOut, User } from 'lucide-react';
 import { API_BASE, WS_URL } from '../config.js';
+import { getStoredTokens, setStoredTokens, getStoredUser, setStoredUser, clearStoredTokens, isTokenExpired, refreshTokens as refreshAuthTokens, linkSession } from '../authUtils.js';
 import ChatMessage from './ChatMessage.jsx';
+import AuthPanel from './AuthPanel.jsx';
 import './WebChatPanel.css';
 
 export default function WebChatPanel({ onClose }) {
@@ -18,6 +20,8 @@ export default function WebChatPanel({ onClose }) {
   const [recPaused, setRecPaused] = useState(false);
   const [recTime, setRecTime] = useState(0);
   const [statusText, setStatusText] = useState(null);
+  const [authUser, setAuthUser] = useState(() => getStoredUser());
+  const [showAuthPanel, setShowAuthPanel] = useState(false);
   const wsRef = useRef(null);
   const sessionIdRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -56,14 +60,29 @@ export default function WebChatPanel({ onClose }) {
     const ws = new WebSocket(WS_URL);
     wsRef.current = ws;
 
-    ws.onopen = () => {
+    ws.onopen = async () => {
       const savedSessionId = localStorage.getItem('wc-session-id');
       const authToken = localStorage.getItem('wc-auth-token') || undefined;
+      let { accessToken } = getStoredTokens();
+
+      // Si el token expiró, intentar renovar antes de conectar
+      if (accessToken && isTokenExpired(accessToken)) {
+        try {
+          const refreshed = await refreshAuthTokens();
+          accessToken = refreshed.accessToken;
+        } catch {
+          accessToken = null;
+          clearStoredTokens();
+          setAuthUser(null);
+        }
+      }
+
       ws.send(JSON.stringify({
         type: 'init',
         sessionType: 'webchat',
         ...(savedSessionId ? { sessionId: savedSessionId } : {}),
         ...(authToken ? { authToken } : {}),
+        ...(accessToken ? { jwt: accessToken } : {}),
       }));
       setConnected(true);
     };
@@ -75,6 +94,17 @@ export default function WebChatPanel({ onClose }) {
           case 'session_id':
             sessionIdRef.current = msg.id;
             localStorage.setItem('wc-session-id', msg.id);
+            if (msg.user) {
+              setAuthUser(msg.user);
+              setStoredUser(msg.user);
+            }
+            break;
+
+          case 'auth:tokens':
+            // Tokens renovados via WS
+            if (msg.accessToken) {
+              setStoredTokens(msg.accessToken, msg.refreshToken);
+            }
             break;
 
           case 'chat_chunk':
@@ -132,6 +162,11 @@ export default function WebChatPanel({ onClose }) {
             break;
 
           case 'auth_error':
+            if (msg.code === 'TOKEN_EXPIRED' || msg.code === 'REFRESH_FAILED') {
+              clearStoredTokens();
+              setAuthUser(null);
+              setShowAuthPanel(true);
+            }
             setMessages([{ role: 'system', content: msg.error || 'Error de autenticación', error: true }]);
             setConnected(false);
             break;
@@ -245,6 +280,15 @@ export default function WebChatPanel({ onClose }) {
             ));
             break;
 
+          case 'session_taken':
+            setMessages(prev => [...prev, {
+              role: 'system',
+              content: msg.message || 'Sesión abierta desde otro dispositivo',
+              error: true,
+            }]);
+            setConnected(false);
+            break;
+
           case 'status':
             if (msg.provider) setProvider(msg.provider);
             if (msg.agent !== undefined) setAgent(msg.agent);
@@ -261,6 +305,35 @@ export default function WebChatPanel({ onClose }) {
 
     return () => ws.close();
   }, []);
+
+  // Refresh proactivo del JWT antes de que expire
+  useEffect(() => {
+    const { accessToken } = getStoredTokens();
+    if (!accessToken) return;
+
+    const payload = (() => { try { const b = accessToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'); return JSON.parse(atob(b)); } catch { return null; } })();
+    if (!payload?.exp) return;
+
+    const expiresIn = payload.exp * 1000 - Date.now();
+    // Renovar 2 minutos antes de que expire
+    const refreshIn = Math.max(expiresIn - 2 * 60 * 1000, 5000);
+
+    const timer = setTimeout(async () => {
+      try {
+        const refreshed = await refreshAuthTokens();
+        // Enviar nuevo token por WS si está conectado
+        const ws = wsRef.current;
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'auth:refresh', refreshToken: refreshed.refreshToken }));
+        }
+      } catch {
+        clearStoredTokens();
+        setAuthUser(null);
+      }
+    }, refreshIn);
+
+    return () => clearTimeout(timer);
+  }, [authUser]);
 
   // Cleanup de grabación al desmontar el componente
   useEffect(() => {
@@ -300,6 +373,37 @@ export default function WebChatPanel({ onClose }) {
       ws.send(JSON.stringify({ type: 'chat', text: '/nueva', provider, agent }));
     }
   };
+
+  // ── Auth ─────────────────────────────────────────────────────────────────────
+
+  const handleAuth = useCallback(async (result) => {
+    setAuthUser(result.user);
+    setShowAuthPanel(false);
+
+    // Vincular sesión anónima existente al usuario nuevo
+    const anonSessionId = sessionIdRef.current;
+    if (anonSessionId && anonSessionId !== result.user.id) {
+      try { await linkSession(anonSessionId); } catch {}
+    }
+
+    // Reconectar WS con JWT
+    const ws = wsRef.current;
+    if (ws) {
+      try { ws.close(); } catch {}
+    }
+    // El useEffect de WS se encargará de reconectar
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    const oldSessionId = sessionIdRef.current;
+    clearStoredTokens();
+    setAuthUser(null);
+    // Reconectar como anónimo
+    const ws = wsRef.current;
+    if (ws) {
+      try { ws.close(); } catch {}
+    }
+  }, []);
 
   // ── Botones inline ─────────────────────────────────────────────────────────
 
@@ -605,6 +709,20 @@ export default function WebChatPanel({ onClose }) {
               <option key={a.key} value={a.key}>{a.key}</option>
             ))}
           </select>
+          {authUser ? (
+            <button className="wc-user-badge" onClick={handleLogout} title="Cerrar sesión">
+              {authUser.avatar_url
+                ? <img src={authUser.avatar_url} alt="" className="wc-user-avatar" />
+                : <User size={12} />
+              }
+              {authUser.name || authUser.email}
+              <LogOut size={10} />
+            </button>
+          ) : (
+            <button className="wc-login-btn" onClick={() => setShowAuthPanel(true)} title="Iniciar sesión">
+              <LogIn size={12} /> Login
+            </button>
+          )}
           <button className="wc-btn-icon" onClick={clearChat} title="Nueva conversación" aria-label="Nueva conversación"><Trash2 size={14} /></button>
           <button className="wc-close" onClick={onClose} aria-label="Cerrar panel de chat"><X size={16} /></button>
         </div>
@@ -618,7 +736,14 @@ export default function WebChatPanel({ onClose }) {
         {statusText && <span className="wc-status-text"> &middot; {statusText}</span>}
       </div>
 
-      <div className="wc-messages">
+      {showAuthPanel && (
+        <AuthPanel
+          onAuth={handleAuth}
+          onSkip={() => setShowAuthPanel(false)}
+        />
+      )}
+
+      {!showAuthPanel && <div className="wc-messages">
         {messages.length === 0 && (
           <div className="wc-empty">
             {connected ? (
@@ -665,9 +790,9 @@ export default function WebChatPanel({ onClose }) {
           </div>
         )}
         <div ref={messagesEndRef} />
-      </div>
+      </div>}
 
-      <div className="wc-input-area">
+      {!showAuthPanel && <div className="wc-input-area">
         {recording ? (
           /* ── Barra de grabación ── */
           <div className="wc-rec-bar">
@@ -741,7 +866,7 @@ export default function WebChatPanel({ onClose }) {
             )}
           </>
         )}
-      </div>
+      </div>}
     </div>
   );
 }
