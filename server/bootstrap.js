@@ -189,6 +189,7 @@ function createContainer() {
     transcriber,
     tts,
     usersRepo,
+    authService,
     // scheduler se inyecta después via setter (dependencia circular)
   });
 
