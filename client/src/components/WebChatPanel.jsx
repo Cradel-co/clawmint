@@ -338,9 +338,16 @@ export default function WebChatPanel({ onClose }) {
 
   // ── Auth ─────────────────────────────────────────────────────────────────────
 
-  const handleAuth = useCallback((result) => {
+  const handleAuth = useCallback(async (result) => {
     setAuthUser(result.user);
     setShowAuthPanel(false);
+
+    // Vincular sesión anónima existente al usuario nuevo
+    const anonSessionId = sessionIdRef.current;
+    if (anonSessionId && anonSessionId !== result.user.id) {
+      try { await linkSession(anonSessionId); } catch {}
+    }
+
     // Reconectar WS con JWT
     const ws = wsRef.current;
     if (ws) {
