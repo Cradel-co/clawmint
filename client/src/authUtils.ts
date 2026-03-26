@@ -1,61 +1,79 @@
 /**
  * authUtils — utilidades de autenticación para WebChat.
  */
-import { API_BASE } from './config.js';
+import { API_BASE } from './config';
 
 const ACCESS_TOKEN_KEY  = 'wc-access-token';
 const REFRESH_TOKEN_KEY = 'wc-refresh-token';
 const USER_KEY          = 'wc-user';
 
-export function getStoredTokens() {
+export interface StoredTokens {
+  accessToken: string | null;
+  refreshToken: string | null;
+}
+
+export interface User {
+  id: number;
+  name: string;
+  email: string;
+  [key: string]: unknown;
+}
+
+export interface AuthResponse {
+  accessToken: string;
+  refreshToken: string;
+  user: User;
+}
+
+export function getStoredTokens(): StoredTokens {
   return {
     accessToken:  localStorage.getItem(ACCESS_TOKEN_KEY),
     refreshToken: localStorage.getItem(REFRESH_TOKEN_KEY),
   };
 }
 
-export function setStoredTokens(accessToken, refreshToken) {
+export function setStoredTokens(accessToken: string, refreshToken: string): void {
   localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
   localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
 }
 
-export function clearStoredTokens() {
+export function clearStoredTokens(): void {
   localStorage.removeItem(ACCESS_TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
 }
 
-export function getStoredUser() {
+export function getStoredUser(): User | null {
   try {
     const raw = localStorage.getItem(USER_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch { return null; }
 }
 
-export function setStoredUser(user) {
+export function setStoredUser(user: User): void {
   localStorage.setItem(USER_KEY, JSON.stringify(user));
 }
 
 /**
  * Decodifica el payload de un JWT (sin verificar firma).
  */
-export function parseJwt(token) {
+export function parseJwt(token: string | null): Record<string, unknown> | null {
   try {
-    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const base64 = token!.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
     return JSON.parse(atob(base64));
   } catch { return null; }
 }
 
-export function isTokenExpired(token) {
+export function isTokenExpired(token: string | null): boolean {
   const payload = parseJwt(token);
   if (!payload || !payload.exp) return true;
-  return payload.exp * 1000 < Date.now();
+  return (payload.exp as number) * 1000 < Date.now();
 }
 
 /**
  * Registra un nuevo usuario.
  */
-export async function register(email, password, name) {
+export async function register(email: string, password: string, name: string): Promise<AuthResponse> {
   const res = await fetch(`${API_BASE}/api/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -71,7 +89,7 @@ export async function register(email, password, name) {
 /**
  * Login con email y contraseña.
  */
-export async function login(email, password) {
+export async function login(email: string, password: string): Promise<AuthResponse> {
   const res = await fetch(`${API_BASE}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -87,7 +105,7 @@ export async function login(email, password) {
 /**
  * Renueva tokens usando el refresh token.
  */
-export async function refreshTokens() {
+export async function refreshTokens(): Promise<AuthResponse> {
   const { refreshToken } = getStoredTokens();
   if (!refreshToken) throw new Error('No hay refresh token');
   const res = await fetch(`${API_BASE}/api/auth/refresh`, {
@@ -107,7 +125,7 @@ export async function refreshTokens() {
 /**
  * Obtiene el perfil del usuario actual.
  */
-export async function fetchMe() {
+export async function fetchMe(): Promise<User | null> {
   const { accessToken } = getStoredTokens();
   if (!accessToken) return null;
   const res = await fetch(`${API_BASE}/api/auth/me`, {
@@ -120,7 +138,7 @@ export async function fetchMe() {
 /**
  * Vincula una sesión anónima al usuario autenticado.
  */
-export async function linkSession(sessionId) {
+export async function linkSession(sessionId: string): Promise<boolean> {
   const { accessToken } = getStoredTokens();
   if (!accessToken || !sessionId) return false;
   const res = await fetch(`${API_BASE}/api/auth/link-session`, {

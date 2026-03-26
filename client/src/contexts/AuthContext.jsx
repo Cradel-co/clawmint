@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useCallback, useEffect, useRef } f
 import {
   getStoredUser, setStoredUser, getStoredTokens, setStoredTokens,
   clearStoredTokens, isTokenExpired, refreshTokens as refreshAuthTokens, linkSession,
-} from '../authUtils.js';
+} from '../authUtils';
 
 const AuthContext = createContext(null);
 

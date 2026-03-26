@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { Lock, CheckCircle, Sparkles, Square, Play, X, ChevronUp, ChevronDown, Eye, EyeOff, Check, Plus, Bot } from 'lucide-react';
-import { API_BASE } from '../config.js';
+import { API_BASE } from '../config';
 import './TelegramPanel.css';
 
 const API = `${API_BASE}/api/telegram`;

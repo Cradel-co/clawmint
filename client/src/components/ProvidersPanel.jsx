@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Settings, X, CheckCircle } from 'lucide-react';
-import { API_BASE } from '../config.js';
+import { API_BASE } from '../config';
 import './ProvidersPanel.css';
 
 const API = API_BASE;

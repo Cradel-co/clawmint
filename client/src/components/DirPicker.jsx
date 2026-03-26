@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Folder, X } from 'lucide-react';
-import { API_BASE } from '../config.js';
+import { API_BASE } from '../config';
 import './DirPicker.css';
 
 const API = API_BASE;

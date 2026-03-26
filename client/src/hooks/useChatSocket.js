@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { WS_URL } from '../config.js';
-import { getStoredTokens, setStoredTokens, clearStoredTokens, isTokenExpired, refreshTokens as refreshAuthTokens } from '../authUtils.js';
+import { WS_URL } from '../config';
+import { getStoredTokens, setStoredTokens, clearStoredTokens, isTokenExpired, refreshTokens as refreshAuthTokens } from '../authUtils';
 
 /**
  * Hook para la conexión WebSocket del WebChat.
