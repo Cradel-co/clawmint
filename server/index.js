@@ -149,6 +149,7 @@ _modulesReady.then(() => {
   app.use('/api/providers',       requireAuth, require('./routes/providers')({ providerConfig, providersModule }));
   app.use('/api/voice-providers', requireAuth, require('./routes/voice-providers')({}));
   app.use('/api/nodriza',         requireAuth, require('./routes/nodriza')({ nodrizaInstance, getDataChannelHandler: () => startAISessionForDataChannel }));
+  app.use('/api/contacts',        requireAuth, require('./routes/contacts')({ usersRepo }));
 
   // Montar MCP router si está disponible
   if (mcpRouter) app.use('/mcp', mcpRouter);
