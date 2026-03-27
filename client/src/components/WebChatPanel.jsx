@@ -13,7 +13,7 @@ import ChatInput from './chat/ChatInput.jsx';
 import AuthPanel from './AuthPanel.jsx';
 import './WebChatPanel.css';
 
-export default function WebChatPanel({ onClose, embedded }) {
+export default function WebChatPanel({ onClose, embedded, onNewMessage }) {
   const [providers, setProviders] = useState([]);
   const [agentsList, setAgentsList] = useState([]);
 
@@ -33,7 +33,7 @@ export default function WebChatPanel({ onClose, embedded }) {
     addUserMessage,
     clearMessages,
     setError,
-  } = useChat({ onAuthMessage: handleWsAuthMessage });
+  } = useChat({ onAuthMessage: handleWsAuthMessage, onNewMessage });
 
   const { connected, send, getSessionId, reconnect, wsRef } = useChatSocket({
     onMessage: handleWsMessage,
