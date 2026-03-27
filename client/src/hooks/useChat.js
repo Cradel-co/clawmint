@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react';
  * Hook que maneja el estado del chat y procesamiento de mensajes WS.
  * Extrae la lógica de mensajes de WebChatPanel para testabilidad.
  */
-export default function useChat({ onAuthMessage }) {
+export default function useChat({ onAuthMessage, onNewMessage }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -42,6 +42,7 @@ export default function useChat({ onAuthMessage }) {
         });
         setSending(false);
         setStatusText(null);
+        onNewMessage?.();
         break;
 
       case 'chat_error':
@@ -180,7 +181,7 @@ export default function useChat({ onAuthMessage }) {
         if (msg.cwd) setCwd(msg.cwd);
         break;
     }
-  }, [onAuthMessage]);
+  }, [onAuthMessage, onNewMessage]);
 
   const addUserMessage = useCallback((content, extra = {}) => {
     setMessages(prev => [...prev, { role: 'user', content, ...extra }]);

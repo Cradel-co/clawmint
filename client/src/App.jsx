@@ -12,8 +12,7 @@ import { AuthProvider } from './contexts/AuthContext.jsx';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext.jsx';
 import { ToastProvider } from './contexts/ToastContext.jsx';
 import { useAuth } from './contexts/AuthContext.jsx';
-import { API_BASE, WS_URL } from './config';
-import { apiFetch } from './authUtils';
+import { WS_URL } from './config';
 import './App.css';
 
 const TerminalPanel  = lazy(() => import('./components/TerminalPanel.jsx'));
@@ -58,9 +57,10 @@ const CONFIG_TABS = [
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 
-function Sidebar({ section, onSection, telegramBadge, expanded, onToggle }) {
+function Sidebar({ section, onSection, chatBadge, telegramBadge, expanded, onToggle }) {
   const renderItem = (key) => {
     const { Icon, label } = SECTION_META[key];
+    const badge = key === 'telegram' ? telegramBadge : key === 'chat' ? chatBadge : 0;
     return (
       <button
         key={key}
@@ -72,8 +72,8 @@ function Sidebar({ section, onSection, telegramBadge, expanded, onToggle }) {
       >
         <Icon size={18} aria-hidden="true" />
         <span className="sidebar-label">{label}</span>
-        {key === 'telegram' && telegramBadge > 0 && (
-          <span className="sidebar-badge" aria-label={`${telegramBadge} chats`}>{telegramBadge}</span>
+        {badge > 0 && (
+          <span className="sidebar-badge" aria-label={`${badge} nuevos`}>{badge > 99 ? '99+' : badge}</span>
         )}
       </button>
     );
@@ -107,16 +107,13 @@ function Sidebar({ section, onSection, telegramBadge, expanded, onToggle }) {
 
 // ── Barra de sección ──────────────────────────────────────────────────────────
 
-function SectionBar({ section, telegramBadge }) {
+function SectionBar({ section }) {
   if (!['chat', 'telegram', 'contacts'].includes(section)) return null;
   const { Icon, label } = SECTION_META[section];
   return (
     <div className="section-bar">
       <Icon size={14} className="section-bar-icon" aria-hidden="true" />
       <span className="section-bar-title">{label}</span>
-      {section === 'telegram' && telegramBadge > 0 && (
-        <span className="section-bar-badge">{telegramBadge} chats</span>
-      )}
     </div>
   );
 }
@@ -162,18 +159,23 @@ function AppContent() {
   const [mounted, setMounted]   = useState({ terminal: true });
   const [sessions, setSessions] = useState(() => { const s = createSession(); return [s]; });
   const [activeId, setActiveId] = useState(() => nextId);
-  const [telegramChatsCount, setTelegramChatsCount] = useState(0);
+  const [chatBadge, setChatBadge]         = useState(0);
+  const [telegramBadge, setTelegramBadge] = useState(0);
   const [wsConnected, setWsConnected] = useState(true);
   const [sidebarExpanded, setSidebarExpanded] = useState(() => {
     try { return localStorage.getItem('sidebar-expanded') === 'true'; } catch { return false; }
   });
 
   const httpIdToTabId = useRef(new Map());
+  const sectionRef    = useRef('terminal');
 
-  // Cambia de sección y monta la sección si es la primera vez
+  // Cambia de sección, monta si primera vez, limpia badge
   const handleSection = useCallback((key) => {
     setMounted(prev => prev[key] ? prev : { ...prev, [key]: true });
     setSection(key);
+    sectionRef.current = key;
+    if (key === 'chat')     setChatBadge(0);
+    if (key === 'telegram') setTelegramBadge(0);
   }, []);
 
   const toggleSidebar = useCallback(() => {
@@ -184,7 +186,12 @@ function AppContent() {
     });
   }, []);
 
-  // Listener WebSocket global (eventos de Telegram → nuevas tabs)
+  // Callback para WebChatPanel: nuevo mensaje IA → badge si no estamos en chat
+  const handleNewChatMessage = useCallback(() => {
+    if (sectionRef.current !== 'chat') setChatBadge(b => b + 1);
+  }, []);
+
+  // Listener WebSocket global (eventos de Telegram + badges)
   useEffect(() => {
     let ws, reconnectTimer;
     function connect() {
@@ -197,6 +204,8 @@ function AppContent() {
           const msg = JSON.parse(event.data);
           if (msg.type === 'telegram_session') {
             const { sessionId, from } = msg;
+            // Badge: nuevo mensaje de Telegram mientras no estamos en esa sección
+            if (sectionRef.current !== 'telegram') setTelegramBadge(b => b + 1);
             if (httpIdToTabId.current.has(sessionId)) {
               setActiveId(httpIdToTabId.current.get(sessionId));
               return;
@@ -214,20 +223,6 @@ function AppContent() {
     connect();
     return () => { clearTimeout(reconnectTimer); ws?.close(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Polling badge Telegram (solo cuando no está en la sección telegram)
-  useEffect(() => {
-    if (section === 'telegram') return;
-    const interval = setInterval(async () => {
-      try {
-        const res = await apiFetch(`${API_BASE}/api/telegram/bots`);
-        const bots = await res.json();
-        const count = Array.isArray(bots) ? bots.reduce((n, b) => n + (b.chats?.length || 0), 0) : 0;
-        setTelegramChatsCount(count);
-      } catch { /* silenciar */ }
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [section]);
 
   const openNew = useCallback((command = null, type = 'pty', httpSessionId = null, provider = null) => {
     const s = createSession(command, type, httpSessionId, provider);
@@ -273,6 +268,11 @@ function AppContent() {
         <span className="dot yellow" aria-hidden="true" />
         <span className="dot green"  aria-hidden="true" />
         <h1 className="title">Clawmint</h1>
+        <span
+          className={`ws-status-dot${wsConnected ? '' : ' disconnected'}`}
+          title={wsConnected ? 'Conectado' : 'Sin conexión'}
+          aria-label={wsConnected ? 'Servidor conectado' : 'Sin conexión al servidor'}
+        />
 
         <div className="header-right">
           {user && (
@@ -298,7 +298,8 @@ function AppContent() {
         <Sidebar
           section={section}
           onSection={handleSection}
-          telegramBadge={telegramChatsCount}
+          chatBadge={chatBadge}
+          telegramBadge={telegramBadge}
           expanded={sidebarExpanded}
           onToggle={toggleSidebar}
         />
@@ -338,10 +339,10 @@ function AppContent() {
           {/* ── Chat IA — montado en primer acceso, persiste con CSS ── */}
           {mounted.chat && (
             <div className={`section section-full ${section === 'chat' ? 'section-active' : ''}`} aria-hidden={section !== 'chat'}>
-              <SectionBar section="chat" telegramBadge={0} />
+              <SectionBar section="chat" />
               <ErrorBoundary>
                 <Suspense fallback={<Skeleton lines={6} style={{ padding: '24px' }} />}>
-                  <WebChatPanel onClose={toTerminal} embedded />
+                  <WebChatPanel onClose={toTerminal} embedded onNewMessage={handleNewChatMessage} />
                 </Suspense>
               </ErrorBoundary>
             </div>
@@ -350,7 +351,7 @@ function AppContent() {
           {/* ── Telegram — montado en primer acceso, persiste con CSS ── */}
           {mounted.telegram && (
             <div className={`section section-full ${section === 'telegram' ? 'section-active' : ''}`} aria-hidden={section !== 'telegram'}>
-              <SectionBar section="telegram" telegramBadge={telegramChatsCount} />
+              <SectionBar section="telegram" />
               <ErrorBoundary>
                 <Suspense fallback={<Skeleton lines={6} style={{ padding: '24px' }} />}>
                   <TelegramPanel onClose={toTerminal} onOpenSession={handleOpenSession} embedded />
@@ -362,7 +363,7 @@ function AppContent() {
           {/* ── Contactos — montado en primer acceso, persiste con CSS ── */}
           {mounted.contacts && (
             <div className={`section section-full ${section === 'contacts' ? 'section-active' : ''}`} aria-hidden={section !== 'contacts'}>
-              <SectionBar section="contacts" telegramBadge={0} />
+              <SectionBar section="contacts" />
               <ErrorBoundary>
                 <Suspense fallback={<Skeleton lines={6} style={{ padding: '24px' }} />}>
                   <ContactsPanel onClose={toTerminal} embedded />
@@ -389,18 +390,21 @@ function AppContent() {
       <nav className="mobile-bottom-nav" aria-label="Navegación móvil">
         {[
           { key: 'terminal', Icon: Terminal,      label: 'Terminal' },
-          { key: 'chat',     Icon: MessageCircle, label: 'Chat'     },
-          { key: 'telegram', Icon: Send,          label: 'TG'       },
+          { key: 'chat',     Icon: MessageCircle, label: 'Chat',     badge: chatBadge     },
+          { key: 'telegram', Icon: Send,          label: 'TG',       badge: telegramBadge },
           { key: 'contacts', Icon: BookUser,      label: 'Contactos' },
           { key: 'config',   Icon: Settings,      label: 'Config'   },
-        ].map(({ key, Icon, label }) => (
+        ].map(({ key, Icon, label, badge }) => (
           <button
             key={key}
             className={section === key ? 'active' : ''}
             onClick={() => handleSection(key)}
             aria-label={label}
           >
-            <Icon size={20} aria-hidden="true" />
+            <span className="mobile-nav-icon">
+              <Icon size={20} aria-hidden="true" />
+              {badge > 0 && <span className="mobile-nav-badge">{badge > 99 ? '99+' : badge}</span>}
+            </span>
             <span>{label}</span>
           </button>
         ))}
