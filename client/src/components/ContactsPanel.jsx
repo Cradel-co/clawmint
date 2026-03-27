@@ -46,8 +46,9 @@ function ContactForm({ initial, onSave, onCancel }) {
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || 'Error');
 
-      // En edición, vincular por Telegram ID o username si se proporcionó
-      if (isEdit && telegramId.trim()) {
+      // En edición, vincular solo si el telegramId cambió respecto al original
+      const originalTid = initial?.linkedUser?.identities?.find(i => i.channel === 'telegram')?.identifier || '';
+      if (isEdit && telegramId.trim() && telegramId.trim() !== originalTid) {
         const tid = telegramId.trim();
         const linkBody = tid.startsWith('@') ? { username: tid } : { telegram_id: tid };
         const linkRes = await apiFetch(`${API}/${initial.id}/link`, {
@@ -225,17 +226,7 @@ function ContactDetail({ contactId, onBack, onEdit, onDelete }) {
   );
 }
 
-function ContactRow({ contact, onSelect, onToggleFav, onDelete }) {
-  const handleFav = async (e) => {
-    e.stopPropagation();
-    await onToggleFav(contact);
-  };
-
-  const handleDelete = async (e) => {
-    e.stopPropagation();
-    onDelete(contact);
-  };
-
+function ContactRow({ contact, onSelect, onToggleFav, onEdit, onDelete }) {
   return (
     <div className="cp-contact-row" onClick={() => onSelect(contact.id)} role="button" tabIndex={0}
       onKeyDown={e => e.key === 'Enter' && onSelect(contact.id)}>
@@ -253,10 +244,14 @@ function ContactRow({ contact, onSelect, onToggleFav, onDelete }) {
       </div>
       <div className="cp-contact-actions" onClick={e => e.stopPropagation()}>
         <button className={`cp-icon-btn ${contact.is_favorite ? 'cp-fav-active' : ''}`}
-          onClick={handleFav} aria-label={contact.is_favorite ? 'Quitar favorito' : 'Marcar favorito'}>
+          onClick={e => { e.stopPropagation(); onToggleFav(contact); }}
+          aria-label={contact.is_favorite ? 'Quitar favorito' : 'Marcar favorito'}>
           {contact.is_favorite ? <Star size={14} /> : <StarOff size={14} />}
         </button>
-        <button className="cp-icon-btn cp-icon-btn-danger" onClick={handleDelete} aria-label="Eliminar">
+        <button className="cp-icon-btn" onClick={e => { e.stopPropagation(); onEdit(contact); }} aria-label="Editar">
+          <Pencil size={14} />
+        </button>
+        <button className="cp-icon-btn cp-icon-btn-danger" onClick={e => { e.stopPropagation(); onDelete(contact); }} aria-label="Eliminar">
           <Trash2 size={14} />
         </button>
       </div>
@@ -269,7 +264,8 @@ export default function ContactsPanel({ onClose, embedded }) {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [view, setView] = useState('list'); // 'list' | 'new' | 'edit' | 'detail'
-  const [selected, setSelected] = useState(null); // contacto editando o detalle
+  const [selected, setSelected] = useState(null);     // string ID del contacto en detalle
+  const [editContact, setEditContact] = useState(null); // objeto completo para el form de edición
   const [favOnly, setFavOnly] = useState(false);
 
   const load = useCallback(async () => {
@@ -309,6 +305,7 @@ export default function ContactsPanel({ onClose, embedded }) {
   const handleSaved = () => {
     setView('list');
     setSelected(null);
+    setEditContact(null);
     load();
   };
 
@@ -364,6 +361,7 @@ export default function ContactsPanel({ onClose, embedded }) {
                 contact={c}
                 onSelect={id => { setSelected(id); setView('detail'); }}
                 onToggleFav={handleToggleFav}
+                onEdit={c => { setEditContact(c); setView('edit'); }}
                 onDelete={handleDelete}
               />
             ))}
@@ -373,9 +371,9 @@ export default function ContactsPanel({ onClose, embedded }) {
 
       {(view === 'new' || view === 'edit') && (
         <ContactForm
-          initial={view === 'edit' ? selected : null}
+          initial={view === 'edit' ? editContact : null}
           onSave={handleSaved}
-          onCancel={() => { setView(selected?.id ? 'detail' : 'list'); }}
+          onCancel={() => { setEditContact(null); setView(selected ? 'detail' : 'list'); }}
         />
       )}
 
@@ -383,7 +381,7 @@ export default function ContactsPanel({ onClose, embedded }) {
         <ContactDetail
           contactId={selected}
           onBack={() => { setSelected(null); setView('list'); }}
-          onEdit={c => { setSelected(c); setView('edit'); }}
+          onEdit={c => { setEditContact(c); setView('edit'); }}
           onDelete={handleDelete}
         />
       )}

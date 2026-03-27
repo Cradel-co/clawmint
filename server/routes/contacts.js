@@ -77,7 +77,7 @@ module.exports = function createContactsRouter({ usersRepo }) {
     if (!ownerId) return res.status(401).json({ error: 'No autenticado' });
 
     const contact = usersRepo.getContact(req.params.id);
-    if (!contact || contact.owner_id !== ownerId) return res.status(404).json({ error: 'No encontrado' });
+    if (!contact || String(contact.owner_id) !== String(ownerId)) return res.status(404).json({ error: 'No encontrado' });
 
     const fields = {};
     const { name, phone, email, notes, is_favorite } = req.body || {};
@@ -87,8 +87,12 @@ module.exports = function createContactsRouter({ usersRepo }) {
     if (notes !== undefined) fields.notes       = notes;
     if (is_favorite !== undefined) fields.is_favorite = is_favorite === true || is_favorite === 'true';
 
-    usersRepo.updateContact(req.params.id, fields);
-    res.json(usersRepo.getContact(req.params.id));
+    try {
+      usersRepo.updateContact(req.params.id, fields);
+      res.json(usersRepo.getContact(req.params.id));
+    } catch (err) {
+      res.status(500).json({ error: err.message || 'Error al actualizar contacto' });
+    }
   });
 
   // DELETE /contacts/:id — eliminar
