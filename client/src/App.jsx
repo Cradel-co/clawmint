@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect, lazy, Suspense } from 'react'
 import {
   Terminal, MessageCircle, Send, BookUser, Settings,
   Plug, Bot, Sun, Moon, ChevronLeft, ChevronRight,
+  PanelsLeftRight,
 } from 'lucide-react';
 import TabBar from './components/TabBar.jsx';
 import CommandBar from './components/CommandBar.jsx';
@@ -118,6 +119,31 @@ function SectionBar({ section }) {
   );
 }
 
+// ── Context bar (terminal section) ───────────────────────────────────────────
+
+function ContextBar({ splitMode, onToggleSplit, chatState }) {
+  return (
+    <div className="context-bar">
+      {splitMode && chatState.cwd && (
+        <span className="context-cwd" title={chatState.cwd}>📁 {chatState.cwd}</span>
+      )}
+      {splitMode && chatState.provider && (
+        <span className="context-provider">⚡ {chatState.provider}</span>
+      )}
+      <span className="context-spacer" />
+      <button
+        className={`split-toggle-btn${splitMode ? ' active' : ''}`}
+        onClick={onToggleSplit}
+        title={splitMode ? 'Cerrar split' : 'Abrir split con Chat IA'}
+        aria-label={splitMode ? 'Cerrar modo split' : 'Abrir modo split'}
+      >
+        <PanelsLeftRight size={13} aria-hidden="true" />
+        <span>{splitMode ? 'Cerrar split' : 'Split'}</span>
+      </button>
+    </div>
+  );
+}
+
 // ── Config section — tabs internos ────────────────────────────────────────────
 
 function ConfigSection() {
@@ -166,10 +192,61 @@ function AppContent() {
     try { return localStorage.getItem('sidebar-expanded') === 'true'; } catch { return false; }
   });
 
+  // ── Split mode ───────────────────────────────────────────────────────────────
+  const [splitMode, setSplitMode] = useState(() => {
+    try { return localStorage.getItem('split-mode') === 'true'; } catch { return false; }
+  });
+  const [splitRatio, setSplitRatioState] = useState(() => {
+    try { return parseFloat(localStorage.getItem('split-ratio')) || 55; } catch { return 55; }
+  });
+  const [splitChatState, setSplitChatState] = useState({ cwd: '~', provider: 'anthropic' });
+
+  const splitRatioRef     = useRef(splitRatio);
+  const splitContainerRef = useRef(null);
+
+  const setSplitRatio = useCallback((v) => {
+    splitRatioRef.current = v;
+    setSplitRatioState(v);
+  }, []);
+
+  const toggleSplit = useCallback(() => {
+    setSplitMode(v => {
+      const next = !v;
+      try { localStorage.setItem('split-mode', String(next)); } catch {}
+      return next;
+    });
+  }, []);
+
+  const onSplitMouseDown = useCallback((e) => {
+    e.preventDefault();
+    const container = splitContainerRef.current;
+    if (!container) return;
+    const onMove = (ev) => {
+      const rect = container.getBoundingClientRect();
+      const ratio = Math.min(80, Math.max(20, ((ev.clientX - rect.left) / rect.width) * 100));
+      setSplitRatio(ratio);
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      try { localStorage.setItem('split-ratio', String(splitRatioRef.current)); } catch {}
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [setSplitRatio]);
+
+  const handleSplitChatStateChange = useCallback(({ cwd, provider }) => {
+    setSplitChatState(prev => ({
+      cwd:      cwd      !== undefined ? cwd      : prev.cwd,
+      provider: provider !== undefined ? provider : prev.provider,
+    }));
+  }, []);
+
+  // ── Resto del estado ─────────────────────────────────────────────────────────
+
   const httpIdToTabId = useRef(new Map());
   const sectionRef    = useRef('terminal');
 
-  // Cambia de sección, monta si primera vez, limpia badge
   const handleSection = useCallback((key) => {
     setMounted(prev => prev[key] ? prev : { ...prev, [key]: true });
     setSection(key);
@@ -186,12 +263,10 @@ function AppContent() {
     });
   }, []);
 
-  // Callback para WebChatPanel: nuevo mensaje IA → badge si no estamos en chat
   const handleNewChatMessage = useCallback(() => {
     if (sectionRef.current !== 'chat') setChatBadge(b => b + 1);
   }, []);
 
-  // Listener WebSocket global (eventos de Telegram + badges)
   useEffect(() => {
     let ws, reconnectTimer;
     function connect() {
@@ -204,7 +279,6 @@ function AppContent() {
           const msg = JSON.parse(event.data);
           if (msg.type === 'telegram_session') {
             const { sessionId, from } = msg;
-            // Badge: nuevo mensaje de Telegram mientras no estamos en esa sección
             if (sectionRef.current !== 'telegram') setTelegramBadge(b => b + 1);
             if (httpIdToTabId.current.has(sessionId)) {
               setActiveId(httpIdToTabId.current.get(sessionId));
@@ -320,20 +394,55 @@ function AppContent() {
               onClaude={(sys) => openNew(sys || null, 'ai', null, 'anthropic')}
               onAI={(provider, sys) => openNew(sys || null, 'ai', null, provider)}
             />
-            <main className="terminal-body">
-              <Suspense fallback={<Skeleton lines={5} style={{ padding: '24px' }} />}>
-                {sessions.map((s) => (
-                  <TerminalPanel
-                    key={s.id}
-                    session={s}
-                    wsUrl={WS_URL}
-                    active={s.id === activeId}
-                    onClose={() => closeSession(s.id)}
-                    onSessionId={(httpId) => handleSessionId(s.id, httpId)}
+            <ContextBar
+              splitMode={splitMode}
+              onToggleSplit={toggleSplit}
+              chatState={splitChatState}
+            />
+
+            {/* ── Split layout ── */}
+            <div className={splitMode ? 'split-layout' : 'terminal-body'} ref={splitContainerRef}>
+
+              {/* Panel izquierdo: Terminal */}
+              <main className={splitMode ? 'split-panel' : undefined} style={splitMode ? { width: `${splitRatio}%` } : undefined}>
+                <Suspense fallback={<Skeleton lines={5} style={{ padding: '24px' }} />}>
+                  {sessions.map((s) => (
+                    <TerminalPanel
+                      key={s.id}
+                      session={s}
+                      wsUrl={WS_URL}
+                      active={s.id === activeId}
+                      onClose={() => closeSession(s.id)}
+                      onSessionId={(httpId) => handleSessionId(s.id, httpId)}
+                    />
+                  ))}
+                </Suspense>
+              </main>
+
+              {/* Divisor + panel derecho: Chat IA (solo en split mode) */}
+              {splitMode && (
+                <>
+                  <div
+                    className="split-divider"
+                    onMouseDown={onSplitMouseDown}
+                    role="separator"
+                    aria-label="Divisor redimensionable"
+                    aria-orientation="vertical"
                   />
-                ))}
-              </Suspense>
-            </main>
+                  <div className="split-panel split-chat-panel" style={{ width: `${100 - splitRatio}%` }}>
+                    <ErrorBoundary>
+                      <Suspense fallback={<Skeleton lines={6} style={{ padding: '24px' }} />}>
+                        <WebChatPanel
+                          embedded
+                          onNewMessage={handleNewChatMessage}
+                          onStateChange={handleSplitChatStateChange}
+                        />
+                      </Suspense>
+                    </ErrorBoundary>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
 
           {/* ── Chat IA — montado en primer acceso, persiste con CSS ── */}

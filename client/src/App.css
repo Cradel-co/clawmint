@@ -315,6 +315,94 @@
   position: relative;
 }
 
+/* ── Context bar ──────────────────────────────────────────────────────────── */
+.context-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 26px;
+  padding: 0 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.context-cwd {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
+}
+
+.context-provider {
+  color: var(--accent-cyan);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.context-spacer { flex: 1; }
+
+.split-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 8px;
+  font-size: 11px;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+.split-toggle-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+.split-toggle-btn.active {
+  color: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+  background: color-mix(in srgb, var(--accent-cyan) 10%, transparent);
+}
+
+/* ── Split layout ─────────────────────────────────────────────────────────── */
+.split-layout {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.split-panel {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  position: relative;
+}
+
+.split-chat-panel {
+  border-left: none;
+}
+
+.split-divider {
+  width: 4px;
+  background: var(--border-primary);
+  cursor: col-resize;
+  flex-shrink: 0;
+  transition: background 0.15s;
+  position: relative;
+  z-index: 5;
+}
+.split-divider:hover,
+.split-divider:active {
+  background: var(--accent-cyan);
+}
+
 /* Full-width sections (chat, telegram, contacts, config) */
 .section-full {
   flex-direction: column;
