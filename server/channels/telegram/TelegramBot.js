@@ -34,6 +34,7 @@ class TelegramBot {
     transcriber         = null,
     tts                 = null,
     usersRepo           = null,
+    tgMsgsRepo          = null,
     logger              = console,
   } = {}) {
     this.key   = key;
@@ -76,6 +77,7 @@ class TelegramBot {
     this._events          = events;
     this._transcriber     = transcriber;
     this._tts             = tts;
+    this._tgMsgsRepo      = tgMsgsRepo;
     this._logger          = logger;
 
     // Throttle inteligente: rate limit outbound + retry en 429
@@ -508,6 +510,7 @@ class TelegramBot {
         pendingAction:  null,
         lastMessageAt:  Date.now(),
         lastPreview:    '',
+        unreadCount:    0,
         rateLimited:    false,
         rateLimitedUntil: 0,
         monitorCwd:     defaultCwd,
@@ -552,6 +555,15 @@ class TelegramBot {
     console.log(`[Telegram:${this.key}] Mensaje de ${chatId}: ${text.slice(0, 60)}`);
     chat.lastMessageAt = Date.now();
     chat.lastPreview   = text.slice(0, 60);
+
+    // Historial para la UI + contador de no leídos
+    this._tgMsgsRepo?.push(this.key, String(chatId), 'user', text, msg.message_id);
+    if (!chat.unreadCount) chat.unreadCount = 0;
+    chat.unreadCount++;
+    this._events?.emit('telegram:ui:message', {
+      botKey: this.key, chatId, role: 'user', text,
+      ts: Date.now(), tgMsgId: msg.message_id, chat,
+    });
 
     if (chat.consoleMode && !text.startsWith('/')) {
       return await this._handleConsoleInput(chatId, text, chat);
@@ -664,19 +676,28 @@ class TelegramBot {
 
   async sendText(chatId, text, replyToMessageId) {
     const chunks = chunkText(stripAnsi(text), 4096);
+    const chat = this.chats.get(Number(chatId));
     for (const chunk of chunks) {
       if (!chunk.trim()) continue;
       const body = { chat_id: chatId, text: chunk, parse_mode: 'Markdown' };
       if (replyToMessageId) body.reply_to_message_id = replyToMessageId;
+      let result = null;
       try {
-        await this._apiCall('sendMessage', body);
+        result = await this._apiCall('sendMessage', body);
       } catch {
         try {
           delete body.parse_mode;
-          await this._apiCall('sendMessage', body);
+          result = await this._apiCall('sendMessage', body);
         } catch (e2) {
           console.error(`[Telegram:${this.key}] No se pudo enviar a ${chatId}:`, e2.message);
         }
+      }
+      if (result) {
+        this._tgMsgsRepo?.push(this.key, String(chatId), 'bot', chunk, result.message_id);
+        this._events?.emit('telegram:ui:message', {
+          botKey: this.key, chatId: Number(chatId), role: 'bot', text: chunk,
+          ts: Date.now(), tgMsgId: result.message_id, chat,
+        });
       }
     }
   }

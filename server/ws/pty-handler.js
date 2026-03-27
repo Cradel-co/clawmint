@@ -10,8 +10,9 @@
  * @param {Set} deps.allWebClients
  * @param {Function} deps.startAISession
  * @param {Object} deps.events
+ * @param {Object} [deps.telegramUIHandler]
  */
-function setupPtyHandler({ wss, sessionManager, webChannel, allWebClients, startAISession, events }) {
+function setupPtyHandler({ wss, sessionManager, webChannel, allWebClients, startAISession, events, telegramUIHandler }) {
 
   wss.on('connection', (ws) => {
     console.log('Cliente WS conectado');
@@ -39,6 +40,15 @@ function setupPtyHandler({ wss, sessionManager, webChannel, allWebClients, start
 
           // Listener puro: solo recibe broadcasts, sin PTY
           if (msg.sessionType === 'listener') {
+            return;
+          }
+
+          if (msg.sessionType === 'telegram-ui') {
+            if (telegramUIHandler) {
+              telegramUIHandler.handleConnection(ws);
+            } else {
+              ws.send(JSON.stringify({ type: 'error', error: 'TelegramUIHandler no disponible' }));
+            }
             return;
           }
 

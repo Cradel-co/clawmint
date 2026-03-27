@@ -472,7 +472,7 @@ function AppContent() {
               <SectionBar section="telegram" />
               <ErrorBoundary>
                 <Suspense fallback={<Skeleton lines={6} style={{ padding: '24px' }} />}>
-                  <TelegramPanel onClose={toTerminal} onOpenSession={handleOpenSession} embedded />
+                  <TelegramPanel onClose={toTerminal} onOpenSession={handleOpenSession} embedded onBadgeChange={(n) => { if (sectionRef.current !== 'telegram') setTelegramBadge(n); }} />
                 </Suspense>
               </ErrorBoundary>
             </div>

@@ -19,6 +19,7 @@ class TelegramChannel extends BaseChannel {
     botsFilePath      = null,
     botsRepo          = null,
     chatSettingsRepo  = null,
+    tgMsgsRepo        = null,
     convSvc           = null,
     sessionManager    = null,
     agents            = null,
@@ -53,6 +54,7 @@ class TelegramChannel extends BaseChannel {
     this._providers       = providers;
     this._providerConfig  = providerConfig;
     this._chatSettings    = chatSettingsRepo || chatSettings;
+    this._tgMsgsRepo      = tgMsgsRepo;
     this._eventBus        = eventBus;
     this._transcriber     = transcriber;
     this._tts             = tts;
@@ -141,6 +143,7 @@ class TelegramChannel extends BaseChannel {
       transcriber:    this._transcriber,
       tts:            this._tts,
       usersRepo:      this._usersRepo,
+      tgMsgsRepo:     this._tgMsgsRepo,
       logger:         this._logger,
     });
   }

@@ -20,6 +20,7 @@ const EventBus   = require('./core/EventBus');
 const DatabaseProvider              = require('./storage/DatabaseProvider');
 const ChatSettingsRepository        = require('./storage/ChatSettingsRepository');
 const WebchatMessagesRepository     = require('./storage/WebchatMessagesRepository');
+const TelegramMessagesRepository    = require('./storage/TelegramMessagesRepository');
 const BotsRepository                = require('./storage/BotsRepository');
 const UsersRepository               = require('./storage/UsersRepository');
 const ScheduledActionsRepository    = require('./storage/ScheduledActionsRepository');
@@ -61,6 +62,9 @@ function createContainer() {
 
   const messagesRepo = new WebchatMessagesRepository(db);
   messagesRepo.init();
+
+  const tgMsgsRepo = new TelegramMessagesRepository(db);
+  tgMsgsRepo.init();
 
   const botsRepo = new BotsRepository(path.join(__dirname, 'bots.json'));
 
@@ -156,6 +160,7 @@ function createContainer() {
   const telegramChannel = new TelegramChannel({
     botsRepo,
     chatSettingsRepo,
+    tgMsgsRepo,
     convSvc,
     sessionManager,
     agents,
@@ -229,6 +234,7 @@ function createContainer() {
     consolidator,
     chatSettingsRepo,
     botsRepo,
+    tgMsgsRepo,
     convSvc,
     telegramChannel,
     webChannel,

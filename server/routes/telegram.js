@@ -1,7 +1,7 @@
 'use strict';
 const express = require('express');
 
-module.exports = function createTelegramRouter({ telegram, sessionManager }) {
+module.exports = function createTelegramRouter({ telegram, sessionManager, convSvc = null, telegramMessagesRepo = null }) {
   const router = express.Router();
 
   // GET /telegram/mode — modo actual (polling|webhook) y URL de webhook
@@ -258,6 +258,55 @@ module.exports = function createTelegramRouter({ telegram, sessionManager }) {
 
       await bot._apiCall('deleteMessage', { chat_id: chatId, message_id });
       res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /telegram/bots/:key/chats/:chatId/messages — historial del chat para la UI
+  router.get('/bots/:key/chats/:chatId/messages', (req, res) => {
+    const bot = telegram.getBot(req.params.key);
+    if (!bot) return res.status(404).json({ error: 'Bot no encontrado' });
+    const chatId = String(req.params.chatId);
+    const limit  = Math.min(parseInt(req.query.limit) || 100, 100);
+    const messages = telegramMessagesRepo
+      ? telegramMessagesRepo.load(req.params.key, chatId, limit)
+      : [];
+    res.json(messages);
+  });
+
+  // POST /telegram/bots/:key/chats/:chatId/suggest — sugerencia de IA sin enviar
+  router.post('/bots/:key/chats/:chatId/suggest', async (req, res) => {
+    if (!convSvc) return res.status(503).json({ error: 'ConversationService no disponible' });
+    const bot = telegram.getBot(req.params.key);
+    if (!bot) return res.status(404).json({ error: 'Bot no encontrado' });
+    const chatId = Number(req.params.chatId);
+    const chat   = bot.chats.get(chatId);
+
+    // Cargar historial reciente como contexto
+    const recent = telegramMessagesRepo
+      ? telegramMessagesRepo.load(req.params.key, String(chatId), 20)
+      : [];
+    const history = recent.map(m => ({
+      role:    m.role === 'bot' ? 'assistant' : 'user',
+      content: m.text,
+    }));
+
+    const suggestPrompt = 'Generá una sugerencia de respuesta corta y útil para el último mensaje del usuario. Devuelve solo el texto de la respuesta, sin explicaciones adicionales.';
+    try {
+      const result = await convSvc.processMessage({
+        chatId:    `suggest_${chatId}`,
+        agentKey:  bot.defaultAgent || 'claude',
+        provider:  chat?.provider   || 'claude-code',
+        model:     chat?.model      || null,
+        text:      suggestPrompt,
+        history,
+        claudeMode: 'auto',
+        shellId:   String(chatId),
+        botKey:    req.params.key,
+        channel:   'telegram',
+      });
+      res.json({ suggestion: result.text || '' });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

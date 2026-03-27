@@ -28,7 +28,7 @@ logger.info('HOME:', process.env.HOME);
 
 // ── Carga de módulos (async por sql.js WASM) ─────────────────────────────────
 
-let sessionManager, telegram, webChannel, agents, skills, events, memory, providerConfig, providersModule, consolidator, convSvc, mcps, authService, usersRepo;
+let sessionManager, telegram, webChannel, agents, skills, events, memory, providerConfig, providersModule, consolidator, convSvc, mcps, authService, usersRepo, tgMsgsRepo;
 let mcpRouter = null;
 let nodrizaInstance = null;
 
@@ -59,6 +59,7 @@ const _modulesReady = (async function loadModules() {
     convSvc      = _c.convSvc;
     authService  = _c.authService;
     usersRepo    = _c.usersRepo;
+    tgMsgsRepo   = _c.tgMsgsRepo;
     try {
       const { createMcpRouter } = require('./mcp');
       mcpRouter = createMcpRouter({ sessionManager: _c.sessionManager, memory: _c.memory, scheduler: _c.scheduler, usersRepo: _c.usersRepo });
@@ -144,7 +145,7 @@ _modulesReady.then(() => {
   app.use('/api/skills',          requireAuth, require('./routes/skills')({ skills }));
   app.use('/api/memory',          requireAuth, require('./routes/memory')({ memory }));
   app.use('/api/logs',            requireAuth, require('./routes/logs')({ logger }));
-  app.use('/api/telegram',        requireAuth, require('./routes/telegram')({ telegram, sessionManager }));
+  app.use('/api/telegram',        requireAuth, require('./routes/telegram')({ telegram, sessionManager, convSvc, telegramMessagesRepo: tgMsgsRepo }));
   app.use('/api/webchat',         requireAuth, require('./routes/webchat')({ webChannel }));
   app.use('/api/providers',       requireAuth, require('./routes/providers')({ providerConfig, providersModule }));
   app.use('/api/voice-providers', requireAuth, require('./routes/voice-providers')({}));
@@ -165,9 +166,15 @@ _modulesReady.then(() => {
   }
 
   // Inicializar WS handlers (necesitan módulos async)
+  const TelegramUIHandler = require('./ws/telegram-ui-handler');
+  const telegramUIHandler = new TelegramUIHandler({ telegram, logger });
+  if (events) {
+    events.on('telegram:ui:message', (data) => telegramUIHandler.notifyNewMessage(data));
+  }
+
   startAISession = createAIHandler({ providersModule, agents, memory, providerConfig });
   startAISessionForDataChannel = createDataChannelHandler({ providerConfig, logger });
-  setupPtyHandler({ wss, sessionManager, webChannel, allWebClients, startAISession, events });
+  setupPtyHandler({ wss, sessionManager, webChannel, allWebClients, startAISession, events, telegramUIHandler });
 
   server.listen(PORT, HOST, async () => {
     logger.info(`Servidor escuchando en http://${HOST}:${PORT}`);
