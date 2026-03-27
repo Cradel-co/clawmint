@@ -342,7 +342,7 @@ const AddBotForm = memo(function AddBotForm({ onAdd, onCancel }) {
   );
 });
 
-export default function TelegramPanel({ onClose, onOpenSession }) {
+export default function TelegramPanel({ onClose, onOpenSession, embedded }) {
   const [bots, setBots] = useState([]);
   const [allAgents, setAllAgents] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
@@ -380,14 +380,16 @@ export default function TelegramPanel({ onClose, onOpenSession }) {
 
   return (
     <div className="tg-panel" role="region" aria-label="Panel de Telegram">
-      <div className="tg-header">
-        <span className="tg-header-title">
-          <span className="tg-icon"><Bot size={16} /></span>
-          Bots de Telegram
-          {activeBots > 0 && <span className="tg-header-badge">{activeBots} activo{activeBots > 1 ? 's' : ''}</span>}
-        </span>
-        <button className="tg-close" onClick={onClose} aria-label="Cerrar panel de Telegram"><X size={16} /></button>
-      </div>
+      {!embedded && (
+        <div className="tg-header">
+          <span className="tg-header-title">
+            <span className="tg-icon"><Bot size={16} /></span>
+            Bots de Telegram
+            {activeBots > 0 && <span className="tg-header-badge">{activeBots} activo{activeBots > 1 ? 's' : ''}</span>}
+          </span>
+          <button className="tg-close" onClick={onClose} aria-label="Cerrar panel de Telegram"><X size={16} /></button>
+        </div>
+      )}
 
       <div className="tg-body">
         {/* Resumen */}

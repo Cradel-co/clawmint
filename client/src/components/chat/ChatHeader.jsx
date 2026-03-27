@@ -2,11 +2,11 @@ import { Trash2, X, LogIn, LogOut, User } from 'lucide-react';
 
 export default function ChatHeader({
   providers, provider, setProvider, agentsList, agent, setAgent,
-  authUser, onLogout, onShowAuth, onClear, onClose, onSettingsChange,
+  authUser, onLogout, onShowAuth, onClear, onClose, onSettingsChange, embedded,
 }) {
   return (
     <div className="wc-header">
-      <span className="wc-header-title">Chat</span>
+      {!embedded && <span className="wc-header-title">Chat</span>}
       <div className="wc-header-controls">
         <select
           className="wc-select"
@@ -52,7 +52,7 @@ export default function ChatHeader({
           </button>
         )}
         <button className="wc-btn-icon" onClick={onClear} title="Nueva conversación" aria-label="Nueva conversación"><Trash2 size={14} /></button>
-        <button className="wc-close" onClick={onClose} aria-label="Cerrar panel de chat"><X size={16} /></button>
+        {!embedded && <button className="wc-close" onClick={onClose} aria-label="Cerrar panel de chat"><X size={16} /></button>}
       </div>
     </div>
   );
