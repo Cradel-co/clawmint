@@ -341,7 +341,7 @@ function AppContent() {
         <span className="dot red"    aria-hidden="true" />
         <span className="dot yellow" aria-hidden="true" />
         <span className="dot green"  aria-hidden="true" />
-        <h1 className="title">Clawmint</h1>
+        <h1 className="title"><span>Claw</span><em>mint</em></h1>
         <span
           className={`ws-status-dot${wsConnected ? '' : ' disconnected'}`}
           title={wsConnected ? 'Conectado' : 'Sin conexión'}

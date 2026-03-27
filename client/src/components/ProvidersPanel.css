@@ -3,7 +3,7 @@
 .pp-msg {
   padding: 6px 10px;
   margin-bottom: 8px;
-  background: #1a2a1a;
+  background: rgba(74,222,128,0.10);
   border-radius: 4px;
   color: var(--accent-green);
   font-size: 12px;
@@ -49,12 +49,12 @@
 }
 
 .pp-status-badge.configured {
-  background: #1a3a1a;
+  background: rgba(74,222,128,0.14);
   color: var(--accent-green);
 }
 
 .pp-status-badge.unconfigured {
-  background: #3a1a1a;
+  background: rgba(248,113,113,0.10);
   color: var(--accent-red);
 }
 
