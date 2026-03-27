@@ -5,10 +5,26 @@ const fs   = require('fs');
 
 const API_BASE = `http://localhost:${process.env.PORT || 3002}`;
 
+// Token interno para bypass de auth en requests localhost
+let _internalToken = null;
+function getInternalToken() {
+  if (!_internalToken) {
+    _internalToken = require('../../middleware/authMiddleware').INTERNAL_TOKEN;
+  }
+  return _internalToken;
+}
+
 // Helper: HTTP request a la API local
 function apiGet(path) {
   return new Promise((resolve, reject) => {
-    http.get(`${API_BASE}${path}`, (res) => {
+    const url = new URL(`${API_BASE}${path}`);
+    const options = {
+      hostname: url.hostname,
+      port: url.port,
+      path: url.pathname + url.search,
+      headers: { 'X-Internal-Token': getInternalToken() },
+    };
+    http.get(options, (res) => {
       let raw = '';
       res.on('data', c => { raw += c; });
       res.on('end', () => {
@@ -33,6 +49,7 @@ function apiPost(path, body, contentType = 'application/json') {
       headers: {
         'Content-Type': contentType,
         'Content-Length': Buffer.byteLength(data),
+        'X-Internal-Token': getInternalToken(),
       },
     };
 

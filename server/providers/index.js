@@ -2,6 +2,7 @@
 
 const providers = {
   'claude-code': require('./claude-code'),
+  'gemini-cli':  require('./gemini-cli'),
   'anthropic':   require('./anthropic'),
   'gemini':      require('./gemini'),
   'openai':      require('./openai'),

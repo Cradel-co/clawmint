@@ -56,26 +56,32 @@ class AgentManager {
     }
   }
 
-  list() {
-    return [...this.agents.values()];
+  list(userId = null) {
+    const all = [...this.agents.values()];
+    if (!userId || userId === '__internal__') return all;
+    return all.filter(a => !a.userId || a.userId === userId);
   }
 
   get(key) {
     return this.agents.get(key);
   }
 
-  add(key, command, description = '', prompt = '', provider = '') {
+  add(key, command, description = '', prompt = '', provider = '', userId = null) {
     if (!/^[a-zA-Z0-9_-]+$/.test(key)) throw new Error('key inválida (solo letras, números, _ y -)');
     const agent = { key, command: command || null, description, prompt };
     if (provider) agent.provider = provider;
+    if (userId) agent.userId = userId;
     this.agents.set(key, agent);
     this._save();
     return agent;
   }
 
-  update(key, { command, description, prompt, provider }) {
+  update(key, { command, description, prompt, provider }, userId = null) {
     const agent = this.agents.get(key);
     if (!agent) throw new Error(`Agente "${key}" no encontrado`);
+    if (agent.userId && userId && agent.userId !== userId && userId !== '__internal__') {
+      throw new Error(`Sin permisos para editar el agente "${key}"`);
+    }
     if (command !== undefined) agent.command = command || null;
     if (description !== undefined) agent.description = description;
     if (prompt !== undefined) agent.prompt = prompt;
@@ -87,8 +93,10 @@ class AgentManager {
     return agent;
   }
 
-  remove(key) {
-    if (!this.agents.has(key)) return false;
+  remove(key, userId = null) {
+    const agent = this.agents.get(key);
+    if (!agent) return false;
+    if (agent.userId && userId && agent.userId !== userId && userId !== '__internal__') return false;
     this.agents.delete(key);
     this._save();
     return true;
@@ -98,9 +106,9 @@ class AgentManager {
 const manager = new AgentManager();
 
 module.exports = {
-  list:   ()                        => manager.list(),
-  get:    (key)                     => manager.get(key),
-  add:    (key, command, desc, prompt, provider) => manager.add(key, command, desc, prompt, provider),
-  update: (key, opts)               => manager.update(key, opts),
-  remove: (key)                     => manager.remove(key),
+  list:   (userId)                              => manager.list(userId),
+  get:    (key)                                 => manager.get(key),
+  add:    (key, command, desc, prompt, provider, userId) => manager.add(key, command, desc, prompt, provider, userId),
+  update: (key, opts, userId)                   => manager.update(key, opts, userId),
+  remove: (key, userId)                         => manager.remove(key, userId),
 };

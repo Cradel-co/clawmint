@@ -1,7 +1,7 @@
 .tab-bar {
   display: flex;
   align-items: stretch;
-  background: #252525;
+  background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-primary);
   overflow-x: auto;
   flex-shrink: 0;
@@ -62,7 +62,7 @@
 
 .tab-close:hover {
   color: var(--accent-red);
-  background: #3a3a3a;
+  background: var(--bg-active);
 }
 
 .tab-close:focus-visible {

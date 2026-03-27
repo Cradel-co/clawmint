@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { Lock, CheckCircle, Sparkles, Square, Play, X, ChevronUp, ChevronDown, Eye, EyeOff, Check, Plus, Bot } from 'lucide-react';
-import { API_BASE } from '../config.js';
+import { API_BASE } from '../config';
+import { apiFetch } from '../authUtils';
 import './TelegramPanel.css';
 
 const API = `${API_BASE}/api/telegram`;
@@ -20,7 +21,7 @@ const ChatRow = memo(function ChatRow({ botKey, chat, onOpenSession, onRefresh }
   const handleLink = async () => {
     if (linking) { setLinking(false); return; }
     try {
-      const res = await fetch(`${API_BASE}/api/sessions`);
+      const res = await apiFetch(`${API_BASE}/api/sessions`);
       const data = await res.json();
       setSessions(Array.isArray(data) ? data.filter(s => s.active) : []);
     } catch { setSessions([]); }
@@ -30,7 +31,7 @@ const ChatRow = memo(function ChatRow({ botKey, chat, onOpenSession, onRefresh }
   const handleSelectSession = async (sessionId) => {
     setLinking(false);
     try {
-      await fetch(`${API}/bots/${botKey}/chats/${chat.chatId}/session`, {
+      await apiFetch(`${API}/bots/${botKey}/chats/${chat.chatId}/session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId }),
@@ -41,7 +42,7 @@ const ChatRow = memo(function ChatRow({ botKey, chat, onOpenSession, onRefresh }
 
   const handleDisconnect = async () => {
     try {
-      await fetch(`${API}/bots/${botKey}/chats/${chat.chatId}`, { method: 'DELETE' });
+      await apiFetch(`${API}/bots/${botKey}/chats/${chat.chatId}`, { method: 'DELETE' });
       onRefresh();
     } catch { /* ignorar */ }
   };
@@ -117,7 +118,7 @@ function AccessConfig({ bot, onRefresh }) {
     setSaving(true);
     const whitelist = ids.split(',').map(s => Number(s.trim())).filter(Boolean);
     const groupWhitelist = groupIds.split(',').map(s => Number(s.trim())).filter(Boolean);
-    await fetch(`${API}/bots/${bot.key}`, {
+    await apiFetch(`${API}/bots/${bot.key}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ whitelist, groupWhitelist, rateLimit: Number(limit), rateLimitKeyword: keyword }),
@@ -170,7 +171,7 @@ const BotCard = memo(function BotCard({ bot, allAgents, onOpenSession, onRefresh
   const handleStart = async () => {
     setLoading(true);
     try {
-      await fetch(`${API}/bots/${bot.key}/start`, { method: 'POST' });
+      await apiFetch(`${API}/bots/${bot.key}/start`, { method: 'POST' });
       onRefresh();
     } catch { /* ignorar */ } finally { setLoading(false); }
   };
@@ -178,7 +179,7 @@ const BotCard = memo(function BotCard({ bot, allAgents, onOpenSession, onRefresh
   const handleStop = async () => {
     setLoading(true);
     try {
-      await fetch(`${API}/bots/${bot.key}/stop`, { method: 'POST' });
+      await apiFetch(`${API}/bots/${bot.key}/stop`, { method: 'POST' });
       onRefresh();
     } catch { /* ignorar */ } finally { setLoading(false); }
   };
@@ -187,7 +188,7 @@ const BotCard = memo(function BotCard({ bot, allAgents, onOpenSession, onRefresh
     if (!confirm(`¿Eliminar el bot "${bot.key}"?`)) return;
     setLoading(true);
     try {
-      await fetch(`${API}/bots/${bot.key}`, { method: 'DELETE' });
+      await apiFetch(`${API}/bots/${bot.key}`, { method: 'DELETE' });
       onRefresh();
     } catch { /* ignorar */ } finally { setLoading(false); }
   };
@@ -195,7 +196,7 @@ const BotCard = memo(function BotCard({ bot, allAgents, onOpenSession, onRefresh
   const handleChangeAgent = async (e) => {
     e.stopPropagation();
     try {
-      await fetch(`${API}/bots/${bot.key}`, {
+      await apiFetch(`${API}/bots/${bot.key}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ defaultAgent: e.target.value }),
@@ -280,7 +281,7 @@ const AddBotForm = memo(function AddBotForm({ onAdd, onCancel }) {
     if (!key.trim() || !token.trim()) { setError('Completá ambos campos'); return; }
     setLoading(true);
     try {
-      const res = await fetch(`${API}/bots`, {
+      const res = await apiFetch(`${API}/bots`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key: key.trim(), token: token.trim() }),
@@ -349,7 +350,7 @@ export default function TelegramPanel({ onClose, onOpenSession }) {
 
   const fetchBots = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/bots`);
+      const res = await apiFetch(`${API}/bots`);
       const data = await res.json();
       setBots(Array.isArray(data) ? data : []);
     } catch { /* ignorar */ }
@@ -363,7 +364,7 @@ export default function TelegramPanel({ onClose, onOpenSession }) {
 
   // Cargar agentes una sola vez (en vez de por cada BotCard)
   useEffect(() => {
-    fetch(`${API_BASE}/api/agents`)
+    apiFetch(`${API_BASE}/api/agents`)
       .then(r => r.json())
       .then(data => setAllAgents(Array.isArray(data) ? data : []))
       .catch(() => {});

@@ -43,7 +43,6 @@
 .dot.yellow { background: #febc2e; }
 .dot.green  { background: #28c840; }
 
-
 .title {
   margin: 0 0 0 8px;
   font-size: 12px;
@@ -52,7 +51,7 @@
   letter-spacing: 0.05em;
 }
 
-/* Empuja el botón de Telegram a la derecha */
+/* Empuja los botones a la derecha */
 .header-right {
   margin-left: auto;
   display: flex;
@@ -60,7 +59,7 @@
   gap: 8px;
 }
 
-/* ─── Botón Telegram ──────────────────────────────────────────────────────── */
+/* ─── Header buttons ──────────────────────────────────────────────────────── */
 
 .telegram-btn {
   position: relative;
@@ -90,6 +89,13 @@
   color: var(--accent-cyan);
   border-color: #29b6f644;
   background: #29b6f618;
+}
+
+/* Theme toggle — warm colors */
+.theme-toggle:hover {
+  color: var(--accent-yellow);
+  border-color: rgba(254, 188, 46, 0.2);
+  background: rgba(254, 188, 46, 0.07);
 }
 
 /* Badge con conteo de chats */
@@ -125,8 +131,44 @@
   position: relative;
 }
 
-/* ─── Responsive: móvil (<768px) ──────────────────────────────────────────── */
-@media (max-width: 768px) {
+/* ─── Responsive: móvil (<640px) ──────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .app-header {
+    padding: 6px 10px;
+    gap: 6px;
+  }
+  .title {
+    display: none;
+  }
+  .dot {
+    display: none;
+  }
+
+  /* Hide desktop header nav on mobile — bottom nav replaces it */
+  .header-right .telegram-btn:not(.theme-toggle) {
+    display: none;
+  }
+
+  .app-body-wrap {
+    position: relative;
+    /* Leave space for bottom nav */
+    margin-bottom: 56px;
+  }
+
+  /* Side panels become fullscreen overlay on mobile */
+  .app-body-wrap > *:not(.app-body) {
+    position: absolute;
+    inset: 0;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    border-left: none !important;
+    z-index: 20;
+  }
+}
+
+/* ─── Responsive: tablet (641px-768px) ────────────────────────────────────── */
+@media (max-width: 768px) and (min-width: 641px) {
   .app-header {
     padding: 6px 10px;
     gap: 6px;
@@ -140,7 +182,6 @@
   .app-body-wrap {
     position: relative;
   }
-  /* Side panels become fullscreen overlay on mobile */
   .app-body-wrap > *:not(.app-body) {
     position: absolute;
     inset: 0;
@@ -152,9 +193,8 @@
   }
 }
 
-/* ─── Responsive: tablet (768px-1000px) ───────────────────────────────────── */
+/* ─── Responsive: tablet (769px-1000px) ───────────────────────────────────── */
 @media (max-width: 1000px) and (min-width: 769px) {
-  /* Side panels become overlay on tablet */
   .app-body-wrap > *:not(.app-body) {
     position: absolute;
     right: 0;

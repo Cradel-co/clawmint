@@ -25,6 +25,7 @@ const UsersRepository               = require('./storage/UsersRepository');
 const ScheduledActionsRepository    = require('./storage/ScheduledActionsRepository');
 const PendingDeliveriesRepository   = require('./storage/PendingDeliveriesRepository');
 const ConversationService      = require('./services/ConversationService');
+const AuthService              = require('./services/AuthService');
 const { TelegramChannel }      = require('./channels/telegram/TelegramChannel');
 const WebChannel               = require('./channels/web/WebChannel');
 const ClaudePrintSession       = require('./core/ClaudePrintSession');
@@ -65,6 +66,9 @@ function createContainer() {
 
   const usersRepo = new UsersRepository(db);
   usersRepo.init();
+
+  const authService = new AuthService({ db, usersRepo, logger });
+  authService.init();
 
   const actionsRepo = new ScheduledActionsRepository(db);
   actionsRepo.init();
@@ -185,6 +189,7 @@ function createContainer() {
     transcriber,
     tts,
     usersRepo,
+    authService,
     // scheduler se inyecta después via setter (dependencia circular)
   });
 
@@ -246,6 +251,7 @@ function createContainer() {
     voiceProviders,
     ttsConfig,
     usersRepo,
+    authService,
     scheduler,
     orchestrator,
   };

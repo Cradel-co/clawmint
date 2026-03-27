@@ -66,7 +66,7 @@
 /* ─── Agent rows ─── */
 
 .ap-agent-row {
-  background: #252525;
+  background: var(--bg-secondary);
   border: 1px solid var(--border-secondary);
   border-radius: 6px;
   padding: 10px 12px;
@@ -305,7 +305,7 @@
 }
 
 .ap-skill-row {
-  background: #252525;
+  background: var(--bg-secondary);
   border: 1px solid var(--border-secondary);
   border-radius: 6px;
   padding: 8px 10px;

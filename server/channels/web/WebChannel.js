@@ -24,7 +24,7 @@ const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
  * y upload de imágenes.
  */
 class WebChannel extends BaseChannel {
-  constructor({ convSvc, providers, providerConfig, agents, chatSettingsRepo, messagesRepo, eventBus, logger, transcriber, tts, usersRepo, scheduler } = {}) {
+  constructor({ convSvc, providers, providerConfig, agents, chatSettingsRepo, messagesRepo, eventBus, logger, transcriber, tts, usersRepo, authService, scheduler } = {}) {
     super({ eventBus, logger });
     this.convSvc          = convSvc;
     this.providers        = providers;
@@ -35,6 +35,7 @@ class WebChannel extends BaseChannel {
     this.transcriber      = transcriber;
     this.tts              = tts;
     this._usersRepo       = usersRepo || null;
+    this._authService     = authService || null;
     this._scheduler       = scheduler || null;
     /** @type {Map<string, object>} sessionId → { ws, state } */
     this.sessions         = new Map();
@@ -78,11 +79,29 @@ class WebChannel extends BaseChannel {
       return;
     }
 
-    const sessionId = opts.sessionId || crypto.randomUUID();
-    this._sendJson(ws, { type: 'session_id', id: sessionId });
+    // ── Autenticación JWT (opcional) ──────────────────────────────────────────
+    let authUser = null;
+    if (opts.jwt && this._authService) {
+      const payload = this._authService.verifyAccessToken(opts.jwt);
+      if (payload) {
+        authUser = this._authService.getUserById(payload.sub);
+      } else {
+        this._sendJson(ws, { type: 'auth_error', error: 'Token JWT expirado o inválido.', code: 'TOKEN_EXPIRED' });
+        ws.close(4003, 'JWT expired');
+        return;
+      }
+    }
 
-    // Auto-crear usuario en el sistema unificado
-    if (this._usersRepo) {
+    // Si hay usuario autenticado, usar userId como sessionId para cross-device
+    const sessionId = authUser ? authUser.id : (opts.sessionId || crypto.randomUUID());
+    this._sendJson(ws, {
+      type: 'session_id',
+      id: sessionId,
+      ...(authUser ? { user: { id: authUser.id, name: authUser.name, email: authUser.email, avatar_url: authUser.avatar_url } } : {}),
+    });
+
+    // Auto-crear usuario en el sistema unificado (solo para anónimos)
+    if (this._usersRepo && !authUser) {
       try {
         this._usersRepo.getOrCreate('web', sessionId, opts.userName || 'Web User', 'web');
       } catch { /* no bloquear */ }
@@ -101,6 +120,25 @@ class WebChannel extends BaseChannel {
       const orchEvents = ['orchestration:start', 'orchestration:task', 'orchestration:done'];
       for (const evt of orchEvents) this.eventBus.on(evt, orchListener);
       ws.on('close', () => { for (const evt of orchEvents) this.eventBus.removeListener(evt, orchListener); });
+    }
+
+    // ── Takeover: si ya hay sesión activa con este sessionId (otro device) ────
+    const existing = this.sessions.get(sessionId);
+    if (existing && existing.ws !== ws) {
+      // Notificar al device anterior y cerrar su WS
+      try {
+        this._sendJson(existing.ws, { type: 'session_taken', message: 'Sesión abierta desde otro dispositivo' });
+        existing.ws.close(4002, 'Session taken');
+      } catch { /* ws ya cerrado */ }
+      // Reusar el state existente
+      const state = existing.state;
+      state.processing = false;
+      this.sessions.set(sessionId, { ws, state });
+      this._sendStatus(ws, state);
+      this._sendHistory(ws, state);
+      this._bindWs(ws, sessionId, state);
+      this.logger.info(`[WebChannel] Sesión ${sessionId.slice(0, 8)} takeover (cross-device)`);
+      return;
     }
 
     // Restaurar sesión parked
@@ -205,6 +243,18 @@ class WebChannel extends BaseChannel {
           case 'chat:tts': {
             // Solicitud de TTS para un texto
             await this._handleTTS(ws, msg.text);
+            break;
+          }
+
+          case 'auth:refresh': {
+            // Renovar tokens JWT sin reconectar
+            if (!this._authService || !msg.refreshToken) break;
+            try {
+              const tokens = this._authService.refreshTokens(msg.refreshToken);
+              this._sendJson(ws, { type: 'auth:tokens', ...tokens });
+            } catch (err) {
+              this._sendJson(ws, { type: 'auth_error', error: err.message, code: 'REFRESH_FAILED' });
+            }
             break;
           }
 

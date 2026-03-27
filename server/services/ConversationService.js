@@ -41,6 +41,7 @@ class ConversationService {
     agents         = null,
     skills         = null,
     ClaudePrintSession,
+    GeminiCliSession = null,
     consolidator   = null,
     logger         = console,
   }) {
@@ -60,6 +61,9 @@ class ConversationService {
     this._agents             = agents;
     this._skills             = skills;
     this._ClaudePrintSession = ClaudePrintSession;
+    this._GeminiCliSession   = GeminiCliSession || (() => {
+      try { return require('../core/GeminiCliSession'); } catch { return null; }
+    })();
     this._consolidator       = consolidator;
     this._logger             = logger;
 
@@ -285,6 +289,7 @@ class ConversationService {
     files         = null,
     history       = [],
     claudeSession = null,
+    geminiSession = null,
     claudeMode    = 'auto',
     onChunk       = null,
     onStatus      = null,
@@ -301,8 +306,9 @@ class ConversationService {
     const resolvedShellId = shellId || String(chatId);
     csdbg('msg', `chatId=${chatId} provider=${provider} agent=${agentKey} model=${model} textLen=${text.length} images=${images?.length || 0} histLen=${history.length} hasSession=${!!claudeSession}`);
 
-    // Rate limiting: 10 mensajes/minuto por chat (solo providers API)
-    if (provider !== 'claude-code') {
+    // Rate limiting: 10 mensajes/minuto por chat (solo providers API, no CLI)
+    const CLI_PROVIDERS = new Set(['claude-code', 'gemini-cli']);
+    if (!CLI_PROVIDERS.has(provider)) {
       const MAX_PER_MIN = 10;
       const now = Date.now();
       const key = `${botKey || 'web'}:${chatId}`;
@@ -319,10 +325,17 @@ class ConversationService {
       this._rateLimits.set(key, rl);
     }
 
-    if (provider !== 'claude-code' && this._providers) {
+    if (!CLI_PROVIDERS.has(provider) && this._providers) {
       csdbg('msg', `→ _processApiProvider mode=${claudeMode}`);
       return this._processApiProvider({
         chatId, agentKey, provider, model, text, images, history, onChunk, onStatus, onAskPermission, claudeMode, shellId: resolvedShellId, botKey, channel,
+      });
+    }
+
+    if (provider === 'gemini-cli') {
+      csdbg('msg', `→ _processGeminiCli mode=${claudeMode}`);
+      return this._processGeminiCli({
+        chatId, agentKey, text, geminiSession, claudeMode, onChunk, onStatus, botKey, channel,
       });
     }
 
@@ -399,6 +412,105 @@ class ConversationService {
       return `[El usuario adjuntó ${files.length} archivo(s):]\n\n${fileContext}\n\n[Mensaje del usuario: "${text}"]`;
     }
     return text;
+  }
+
+  // ── Proveedor gemini-cli (GeminiCliSession) ───────────────────────────────
+
+  async _processGeminiCli({ chatId, agentKey, text, geminiSession, claudeMode, onChunk, onStatus, botKey, channel }) {
+    const MAX_SESSION_MESSAGES = 10;
+    let session = geminiSession;
+    let isNewSession = false;
+
+    const isWebChannel = channel === 'web' || botKey === 'web';
+    const channelCtx = (botKey && chatId)
+      ? `\n\n## Contexto del canal\n- Canal: ${channel || 'telegram'}\n- Bot key: ${botKey}\n- Chat ID: ${chatId}\n- Agente activo: ${agentKey || 'default'}\nPara herramientas de memoria, usa agent="${agentKey || 'default'}".`
+      : '';
+
+    // Auto-reset de sesión y guardado de resumen en memoria
+    if (session && session.messageCount >= MAX_SESSION_MESSAGES) {
+      csdbg('gemini', `auto-reset: session tiene ${session.messageCount} msgs`);
+      if (agentKey && this._memory) {
+        try {
+          const ts = new Date().toISOString().slice(0, 16).replace('T', ' ');
+          const summary = `---\nSesión anterior (${ts}, ${session.messageCount} mensajes, chatId: ${chatId})\n---\n` +
+            `Último mensaje del usuario: ${text.slice(0, 500)}`;
+          this._memory.write(agentKey, 'last-session-summary.md', summary);
+        } catch {}
+      }
+      session = null;
+    }
+
+    if (!session) {
+      if (!this._GeminiCliSession) {
+        return { text: 'Error: GeminiCliSession no disponible. Instalá gemini CLI.' };
+      }
+      session = new this._GeminiCliSession({
+        permissionMode: claudeMode || 'auto',
+      });
+      isNewSession = true;
+      csdbg('gemini', `nueva GeminiCliSession mode=${claudeMode}`);
+    }
+
+    // Detección de señales de memoria e inyección de contexto
+    const { shouldNudge, signals } = (agentKey && this._memory)
+      ? this._memory.detectSignals(agentKey, text)
+      : { shouldNudge: false, signals: [] };
+
+    let messageText = text;
+    if (agentKey && this._memory && (session.messageCount <= 1 || isNewSession)) {
+      let memCtxRaw = this._memory.buildMemoryContext(agentKey, text, { provider: 'local' });
+      if (memCtxRaw && typeof memCtxRaw.then === 'function') {
+        memCtxRaw = await memCtxRaw.catch(() => '');
+      }
+      const memCtx = memCtxRaw || '';
+      const toolInstr = shouldNudge ? this._memory.TOOL_INSTRUCTIONS : '';
+      let sessionSummary = '';
+      try {
+        const summary = this._memory.read(agentKey, 'last-session-summary.md');
+        if (summary) sessionSummary = `## Resumen de sesión anterior\n${summary}`;
+      } catch {}
+      const parts = [sessionSummary, memCtx, channelCtx, toolInstr].filter(Boolean);
+      if (parts.length > 0) messageText = `${parts.join('\n\n')}\n\n---\n\n${text}`;
+    }
+    if (shouldNudge && this._memory) messageText += this._memory.buildNudge(signals);
+
+    csdbg('gemini', `→ session.sendMessage() textLen=${messageText.length}`);
+    let result;
+    try {
+      result = await session.sendMessage(messageText, onChunk, onStatus);
+    } catch (err) {
+      // Reintentar como nueva sesión si --resume falló
+      if (session.geminiSessionId && session.messageCount > 0) {
+        csdbg('gemini', `--resume falló (${err.message}), reintentando sin resume`);
+        session.geminiSessionId = null;
+        session.messageCount    = 0;
+        isNewSession = true;
+        result = await session.sendMessage(messageText, onChunk, onStatus);
+      } else {
+        throw err;
+      }
+    }
+
+    const rawResponse = typeof result === 'string' ? result : (result?.text || '');
+
+    // Extraer y aplicar operaciones de memoria
+    let response = rawResponse;
+    const savedMemoryFiles = [];
+    if (agentKey && rawResponse && this._memory) {
+      const { clean, ops } = this._memory.extractMemoryOps(rawResponse);
+      if (ops.length > 0) {
+        const saved = this._memory.applyOps(agentKey, ops);
+        response = clean || rawResponse;
+        savedMemoryFiles.push(...saved);
+      }
+    }
+
+    return {
+      text: response || '',
+      usedMcpTools: false,
+      savedMemoryFiles,
+      ...(isNewSession ? { newGeminiSession: session } : {}),
+    };
   }
 
   // ── Proveedor claude-code (ClaudePrintSession) ────────────────────────────

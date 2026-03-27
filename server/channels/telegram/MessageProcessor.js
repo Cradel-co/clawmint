@@ -162,6 +162,7 @@ class MessageProcessor {
         images:        images || null,
         history:       chat.aiHistory || [],
         claudeSession: chat.claudeSession,
+        geminiSession: chat.geminiSession,
         claudeMode:    mode,
         onChunk,
         onStatus,
@@ -181,8 +182,9 @@ class MessageProcessor {
 
       stopAnim();
 
-      if (result.newSession)       chat.claudeSession = result.newSession;
-      if (result.history)          chat.aiHistory     = result.history;
+      if (result.newSession)       chat.claudeSession  = result.newSession;
+      if (result.newGeminiSession) chat.geminiSession  = result.newGeminiSession;
+      if (result.history)          chat.aiHistory      = result.history;
 
       if (chat.claudeSession?.claudeSessionId && this._chatSettings) {
         this._chatSettings.saveSession(bot.key, chatId, {
@@ -192,7 +194,7 @@ class MessageProcessor {
         });
       }
 
-      if (result.history && this._chatSettings && chatProvider !== 'claude-code') {
+      if (result.history && this._chatSettings && !['claude-code', 'gemini-cli'].includes(chatProvider)) {
         this._chatSettings.saveHistory(bot.key, chatId, result.history);
       }
 
@@ -203,21 +205,14 @@ class MessageProcessor {
         }
       }
 
-      if (sentMsg) {
+      if (result.text && !result.usedMcpTools) {
+        // Fallback: la IA no usó MCP tools para comunicarse → enviar texto directo
+        tdbg('send', `fallback: enviando texto directo (${result.text.length} chars, usedMcpTools=false)`);
+        await bot._responseRenderer.sendResult(bot, chatId, result.text, sentMsg);
+      } else if (sentMsg) {
         try { await bot._apiCall('deleteMessage', { chat_id: chatId, message_id: sentMsg.message_id }); } catch (e) { tdbg('send', `deleteStatusMsg FAIL: ${e.message}`); }
       }
-      if (result.text) {
-        const suppressed = result.text.trim();
-        if (suppressed.length > 0) {
-          // Enviar al usuario si no usó tools de comunicación (leaked text)
-          if (!result.usedMcpTools) {
-            tdbg('send', `leaked text (${suppressed.length} chars) — reenviando al usuario`);
-            try { await bot.sendText(chatId, suppressed); } catch {}
-          } else {
-            tdbg('send', `texto suprimido (${suppressed.length} chars) — ya comunicó vía tools`);
-          }
-        }
-      }
+      // Main ya maneja fallback en sendResult (línea 211)
 
       if (this._tts && this._tts.isEnabled() && result.text) {
         try {

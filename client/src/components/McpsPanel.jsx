@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Check, Pencil, Trash2, X, Plus, Plug } from 'lucide-react';
-import { API_BASE } from '../config.js';
+import { API_BASE } from '../config';
+import { apiFetch } from '../authUtils';
 
 const API = `${API_BASE}/api/mcps`;
 
@@ -81,7 +82,7 @@ function McpForm({ initial, onSave, onCancel }) {
     try {
       const endpoint = isEdit ? `${API}/${initial.name}` : API;
       const method = isEdit ? 'PATCH' : 'POST';
-      const res = await fetch(endpoint, {
+      const res = await apiFetch(endpoint, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -246,7 +247,7 @@ export default function McpsPanel({ onClose }) {
   const fetchMcps = useCallback(async () => {
     try {
       setCliError('');
-      const res = await fetch(API);
+      const res = await apiFetch(API);
       const data = await res.json();
       setMcpList(Array.isArray(data) ? data : []);
     } catch { setCliError('Error cargando MCPs'); }
@@ -268,7 +269,7 @@ export default function McpsPanel({ onClose }) {
   const handleDelete = async (name) => {
     if (!confirm(`¿Eliminar el MCP "${name}"?`)) return;
     try {
-      await fetch(`${API}/${name}`, { method: 'DELETE' });
+      await apiFetch(`${API}/${name}`, { method: 'DELETE' });
       fetchMcps();
     } catch { setCliError('Error eliminando MCP'); }
   };
@@ -278,7 +279,7 @@ export default function McpsPanel({ onClose }) {
     setToggling(mcp.name);
     try {
       const action = mcp.enabled ? 'disable' : 'enable';
-      const res = await fetch(`${API}/${mcp.name}/${action}`, { method: 'POST' });
+      const res = await apiFetch(`${API}/${mcp.name}/${action}`, { method: 'POST' });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || 'Error CLI');
       fetchMcps();

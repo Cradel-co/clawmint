@@ -1,11 +1,19 @@
-import { useState, useCallback, useRef, useEffect, lazy, Suspense } from 'react';
-import { MessageCircle, Settings, Plug, Users, Bot } from 'lucide-react';
+import { useState, useCallback, useRef, useEffect, useReducer, lazy, Suspense } from 'react';
+import { MessageCircle, Settings, Plug, Users, Bot, Sun, Moon, Terminal, BookUser } from 'lucide-react';
 import TabBar from './components/TabBar.jsx';
 import CommandBar from './components/CommandBar.jsx';
-import { API_BASE, WS_URL } from './config.js';
+import ErrorBoundary from './components/ErrorBoundary.jsx';
+import Skeleton from './components/Skeleton.jsx';
+import ReconnectBanner from './components/ReconnectBanner.jsx';
+import { AuthProvider } from './contexts/AuthContext.jsx';
+import { ThemeProvider, useTheme } from './contexts/ThemeContext.jsx';
+import { ToastProvider } from './contexts/ToastContext.jsx';
+import { API_BASE, WS_URL } from './config';
+import { apiFetch } from './authUtils';
 import './App.css';
 import './components/AgentsPanel.css';
 import './components/TelegramPanel.css';
+import './components/ContactsPanel.css';
 import './components/WebChatPanel.css';
 import './components/ProvidersPanel.css';
 
@@ -16,6 +24,8 @@ const AgentsPanel = lazy(() => import('./components/AgentsPanel.jsx'));
 const ProvidersPanel = lazy(() => import('./components/ProvidersPanel.jsx'));
 const McpsPanel = lazy(() => import('./components/McpsPanel.jsx'));
 const WebChatPanel = lazy(() => import('./components/WebChatPanel.jsx'));
+const ContactsPanel = lazy(() => import('./components/ContactsPanel.jsx'));
+
 let nextId = 0;
 
 function createSession(command = null, type = 'pty', httpSessionId = null, provider = null) {
@@ -35,66 +45,101 @@ function createSession(command = null, type = 'pty', httpSessionId = null, provi
   return { id, title, command, type, httpSessionId, provider };
 }
 
-export default function App() {
+// ── Panel reducer: reemplaza 5 booleans por un estado único ──────────────────
+
+function panelReducer(state, action) {
+  switch (action.type) {
+    case 'toggle':
+      return state === action.panel ? null : action.panel;
+    case 'close':
+      return null;
+    default:
+      return state;
+  }
+}
+
+const PANELS = [
+  { key: 'chat', icon: MessageCircle, label: 'Chat con IA' },
+  { key: 'providers', icon: Settings, label: 'Providers de IA' },
+  { key: 'mcps', icon: Plug, label: 'MCPs' },
+  { key: 'agents', icon: Users, label: 'Agentes personalizados' },
+  { key: 'telegram', icon: Bot, label: 'Panel de Telegram' },
+  { key: 'contacts', icon: BookUser, label: 'Contactos' },
+];
+
+function AppContent() {
+  const { theme, toggleTheme } = useTheme();
+
   const [sessions, setSessions] = useState(() => {
     const initial = createSession();
     return [initial];
   });
   const [activeId, setActiveId] = useState(() => nextId);
-  const [telegramOpen, setTelegramOpen] = useState(false);
+  const [activePanel, dispatchPanel] = useReducer(panelReducer, null);
   const [telegramChatsCount, setTelegramChatsCount] = useState(0);
-  const [agentsOpen, setAgentsOpen] = useState(false);
-  const [providersOpen, setProvidersOpen] = useState(false);
-  const [mcpsOpen, setMcpsOpen] = useState(false);
-  const [chatOpen, setChatOpen] = useState(false);
+  const [wsConnected, setWsConnected] = useState(true);
 
   // Mapa: httpSessionId → frontendTabId
   const httpIdToTabId = useRef(new Map());
 
   // WebSocket listener para eventos de Telegram (abre pestañas automáticamente)
   useEffect(() => {
-    const ws = new WebSocket(WS_URL);
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'init', sessionType: 'listener' }));
-    };
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'telegram_session') {
-          const { sessionId, from } = msg;
-          if (httpIdToTabId.current.has(sessionId)) {
-            setActiveId(httpIdToTabId.current.get(sessionId));
-            return;
+    let ws;
+    let reconnectTimer;
+
+    function connect() {
+      ws = new WebSocket(WS_URL);
+      ws.onopen = () => {
+        setWsConnected(true);
+        ws.send(JSON.stringify({ type: 'init', sessionType: 'listener' }));
+      };
+      ws.onclose = () => {
+        setWsConnected(false);
+        reconnectTimer = setTimeout(connect, 3000);
+      };
+      ws.onerror = () => {};
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'telegram_session') {
+            const { sessionId, from } = msg;
+            if (httpIdToTabId.current.has(sessionId)) {
+              setActiveId(httpIdToTabId.current.get(sessionId));
+              return;
+            }
+            setSessions((prev) => {
+              const s = createSession(null, 'pty', sessionId);
+              s.title = `TG: ${from}`;
+              setActiveId(s.id);
+              return [...prev, s];
+            });
           }
-          setSessions((prev) => {
-            const s = createSession(null, 'pty', sessionId);
-            s.title = `TG: ${from}`;
-            setActiveId(s.id);
-            return [...prev, s];
-          });
-        }
-      } catch { /* silenciar — no contaminar consola */ }
+        } catch { /* silenciar */ }
+      };
+    }
+
+    connect();
+    return () => {
+      clearTimeout(reconnectTimer);
+      ws?.close();
     };
-    ws.onerror = () => {}; // evitar error en consola cuando server no está disponible
-    return () => ws.close();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Obtener cantidad de chats activos del bot para el badge
   useEffect(() => {
-    if (!telegramOpen) {
-      const interval = setInterval(async () => {
-        try {
-          const res = await fetch(`${API_BASE}/api/telegram/bots`);
-          const bots = await res.json();
-          const chats = Array.isArray(bots)
-            ? bots.reduce((n, b) => n + (b.chats?.length || 0), 0)
-            : 0;
-          setTelegramChatsCount(chats);
-        } catch { /* silenciar — polling en background */ }
-      }, 5000);
-      return () => clearInterval(interval);
-    }
-  }, [telegramOpen]);
+    if (activePanel === 'telegram') return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await apiFetch(`${API_BASE}/api/telegram/bots`);
+        const bots = await res.json();
+        const chats = Array.isArray(bots)
+          ? bots.reduce((n, b) => n + (b.chats?.length || 0), 0)
+          : 0;
+        setTelegramChatsCount(chats);
+      } catch { /* silenciar — polling en background */ }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [activePanel]);
 
   const openNew = useCallback((command = null, type = 'pty', httpSessionId = null, provider = null) => {
     const session = createSession(command, type, httpSessionId, provider);
@@ -106,7 +151,6 @@ export default function App() {
   const closeSession = useCallback((id) => {
     setSessions((prev) => {
       const next = prev.filter((s) => s.id !== id);
-      // Limpiar httpIdToTabId para la sesión cerrada (evitar memory leak)
       for (const [httpId, tabId] of httpIdToTabId.current) {
         if (tabId === id) { httpIdToTabId.current.delete(httpId); break; }
       }
@@ -122,27 +166,27 @@ export default function App() {
     });
   }, [activeId]);
 
-  // Registrar httpSessionId → frontendTabId
   const handleSessionId = useCallback((frontendTabId, httpId) => {
     httpIdToTabId.current.set(httpId, frontendTabId);
   }, []);
 
-  // Abrir o activar tab por httpSessionId (llamado desde TelegramPanel)
   const handleOpenSession = useCallback((httpSessionId) => {
     const tabId = httpIdToTabId.current.get(httpSessionId);
     if (tabId) {
       setActiveId(tabId);
-      setTelegramOpen(false);
+      dispatchPanel({ type: 'close' });
     } else {
-      // La sesión no tiene tab abierto → abrir uno nuevo adjunto a esa sesión HTTP
       openNew(null, 'pty', httpSessionId);
-      setTelegramOpen(false);
+      dispatchPanel({ type: 'close' });
     }
   }, [openNew]);
 
   return (
     <div className="app">
       <a href="#terminal-main" className="skip-link">Ir al contenido principal</a>
+
+      <ReconnectBanner connected={wsConnected} />
+
       <header className="app-header">
         <span className="dot red" aria-hidden="true" />
         <span className="dot yellow" aria-hidden="true" />
@@ -151,48 +195,27 @@ export default function App() {
 
         <nav className="header-right" aria-label="Paneles">
           <button
-            className={`telegram-btn ${chatOpen ? 'active' : ''}`}
-            onClick={() => { setChatOpen(v => !v); setProvidersOpen(false); setMcpsOpen(false); setAgentsOpen(false); setTelegramOpen(false); }}
-            aria-label="Chat con IA"
-            aria-pressed={chatOpen}
+            className="telegram-btn theme-toggle"
+            onClick={toggleTheme}
+            aria-label={theme === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
           >
-            <MessageCircle size={16} aria-hidden="true" />
+            {theme === 'dark' ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
           </button>
-          <button
-            className={`telegram-btn ${providersOpen ? 'active' : ''}`}
-            onClick={() => { setProvidersOpen(v => !v); setMcpsOpen(false); setAgentsOpen(false); setTelegramOpen(false); setChatOpen(false); }}
-            aria-label="Providers de IA"
-            aria-pressed={providersOpen}
-          >
-            <Settings size={16} aria-hidden="true" />
-          </button>
-          <button
-            className={`telegram-btn ${mcpsOpen ? 'active' : ''}`}
-            onClick={() => { setMcpsOpen(v => !v); setProvidersOpen(false); setAgentsOpen(false); setTelegramOpen(false); setChatOpen(false); }}
-            aria-label="MCPs"
-            aria-pressed={mcpsOpen}
-          >
-            <Plug size={16} aria-hidden="true" />
-          </button>
-          <button
-            className={`telegram-btn ${agentsOpen ? 'active' : ''}`}
-            onClick={() => { setAgentsOpen(v => !v); setMcpsOpen(false); setTelegramOpen(false); setProvidersOpen(false); setChatOpen(false); }}
-            aria-label="Agentes personalizados"
-            aria-pressed={agentsOpen}
-          >
-            <Users size={16} aria-hidden="true" />
-          </button>
-          <button
-            className={`telegram-btn ${telegramOpen ? 'active' : ''}`}
-            onClick={() => { setTelegramOpen(v => !v); setMcpsOpen(false); setAgentsOpen(false); setProvidersOpen(false); setChatOpen(false); }}
-            aria-label="Panel de Telegram"
-            aria-pressed={telegramOpen}
-          >
-            <Bot size={16} aria-hidden="true" />
-            {telegramChatsCount > 0 && !telegramOpen && (
-              <span className="telegram-badge">{telegramChatsCount}</span>
-            )}
-          </button>
+
+          {PANELS.map(({ key, icon: Icon, label }) => (
+            <button
+              key={key}
+              className={`telegram-btn ${activePanel === key ? 'active' : ''}`}
+              onClick={() => dispatchPanel({ type: 'toggle', panel: key })}
+              aria-label={label}
+              aria-pressed={activePanel === key}
+            >
+              <Icon size={16} aria-hidden="true" />
+              {key === 'telegram' && telegramChatsCount > 0 && activePanel !== 'telegram' && (
+                <span className="telegram-badge">{telegramChatsCount}</span>
+              )}
+            </button>
+          ))}
         </nav>
       </header>
 
@@ -212,43 +235,85 @@ export default function App() {
 
       <div className="app-body-wrap">
         <main id="terminal-main" className="app-body">
-          {sessions.map((session) => (
-            <TerminalPanel
-              key={session.id}
-              session={session}
-              wsUrl={WS_URL}
-              active={session.id === activeId}
-              onClose={() => closeSession(session.id)}
-              onSessionId={(httpId) => handleSessionId(session.id, httpId)}
-            />
-          ))}
+          <Suspense fallback={<Skeleton lines={5} style={{ padding: '24px' }} />}>
+            {sessions.map((session) => (
+              <TerminalPanel
+                key={session.id}
+                session={session}
+                wsUrl={WS_URL}
+                active={session.id === activeId}
+                onClose={() => closeSession(session.id)}
+                onSessionId={(httpId) => handleSessionId(session.id, httpId)}
+              />
+            ))}
+          </Suspense>
         </main>
 
-        <Suspense fallback={null}>
-          {telegramOpen && (
-            <TelegramPanel
-              onClose={() => setTelegramOpen(false)}
-              onOpenSession={handleOpenSession}
-            />
-          )}
+        <Suspense fallback={<Skeleton lines={4} style={{ width: 380, padding: '16px' }} />}>
+          <ErrorBoundary>
+            {activePanel === 'telegram' && (
+              <TelegramPanel
+                onClose={() => dispatchPanel({ type: 'close' })}
+                onOpenSession={handleOpenSession}
+              />
+            )}
 
-          {agentsOpen && (
-            <AgentsPanel onClose={() => setAgentsOpen(false)} />
-          )}
+            {activePanel === 'agents' && (
+              <AgentsPanel onClose={() => dispatchPanel({ type: 'close' })} />
+            )}
 
-          {providersOpen && (
-            <ProvidersPanel onClose={() => setProvidersOpen(false)} />
-          )}
+            {activePanel === 'providers' && (
+              <ProvidersPanel onClose={() => dispatchPanel({ type: 'close' })} />
+            )}
 
-          {mcpsOpen && (
-            <McpsPanel onClose={() => setMcpsOpen(false)} />
-          )}
+            {activePanel === 'mcps' && (
+              <McpsPanel onClose={() => dispatchPanel({ type: 'close' })} />
+            )}
 
-          {chatOpen && (
-            <WebChatPanel onClose={() => setChatOpen(false)} />
-          )}
+            {activePanel === 'chat' && (
+              <WebChatPanel onClose={() => dispatchPanel({ type: 'close' })} />
+            )}
+
+            {activePanel === 'contacts' && (
+              <ContactsPanel onClose={() => dispatchPanel({ type: 'close' })} />
+            )}
+          </ErrorBoundary>
         </Suspense>
       </div>
+
+      {/* Mobile bottom nav — visible solo en <640px */}
+      <nav className="mobile-bottom-nav" aria-label="Navegación móvil">
+        <button
+          className={activePanel === null ? 'active' : ''}
+          onClick={() => dispatchPanel({ type: 'close' })}
+        >
+          <Terminal size={20} aria-hidden="true" />
+          <span>Terminal</span>
+        </button>
+        {PANELS.map(({ key, icon: Icon, label }) => (
+          <button
+            key={key}
+            className={activePanel === key ? 'active' : ''}
+            onClick={() => dispatchPanel({ type: 'toggle', panel: key })}
+            aria-label={label}
+          >
+            <Icon size={20} aria-hidden="true" />
+            <span>{key === 'chat' ? 'Chat' : key === 'telegram' ? 'TG' : key.slice(0, 4)}</span>
+          </button>
+        ))}
+      </nav>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
+      </ToastProvider>
+    </ThemeProvider>
   );
 }

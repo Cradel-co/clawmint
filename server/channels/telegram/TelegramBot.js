@@ -483,13 +483,15 @@ class TelegramBot {
     let chat = this.chats.get(chatId);
     if (!chat) {
       const saved = this._chatSettings ? this._chatSettings.load(this.key, chatId) : null;
+      const agentDef = this._agents ? this._agents.get(this.defaultAgent) : null;
+      const defaultCwd = saved?.cwd || agentDef?.cwd || process.env.HOME;
 
       let restoredSession = null;
       if (saved?.claude_session_id && saved.message_count > 0) {
         restoredSession = new ClaudePrintSession({
           claudeSessionId: saved.claude_session_id,
           messageCount:    saved.message_count,
-          cwd:             saved.cwd || process.env.HOME,
+          cwd:             defaultCwd,
           model:           saved.model || null,
           permissionMode:  saved.claude_mode || 'auto',
         });
@@ -508,7 +510,7 @@ class TelegramBot {
         lastPreview:    '',
         rateLimited:    false,
         rateLimitedUntil: 0,
-        monitorCwd:     saved?.cwd || process.env.HOME,
+        monitorCwd:     defaultCwd,
         busy:           false,
         provider:       saved?.provider || 'claude-code',
         model:          saved?.model    || 'sonnet',
