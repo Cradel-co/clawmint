@@ -13,7 +13,7 @@ import ChatInput from './chat/ChatInput.jsx';
 import AuthPanel from './AuthPanel.jsx';
 import './WebChatPanel.css';
 
-export default function WebChatPanel({ onClose }) {
+export default function WebChatPanel({ onClose, embedded }) {
   const [providers, setProviders] = useState([]);
   const [agentsList, setAgentsList] = useState([]);
 
@@ -168,6 +168,7 @@ export default function WebChatPanel({ onClose }) {
         onClear={clearChat}
         onClose={onClose}
         onSettingsChange={handleSettingsChange}
+        embedded={embedded}
       />
 
       <StatusBar

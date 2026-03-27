@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { X, Plus, Star, StarOff, Pencil, Trash2, Check, Phone, Mail, FileText, Link } from 'lucide-react';
+import { X, Plus, Star, StarOff, Pencil, Trash2, Check, Phone, Mail, FileText, Link, MessageSquare } from 'lucide-react';
 import { API_BASE } from '../config';
 import { apiFetch } from '../authUtils';
 import './ContactsPanel.css';
@@ -13,6 +13,9 @@ function ContactForm({ initial, onSave, onCancel }) {
   const [email, setEmail] = useState(initial?.email || '');
   const [notes, setNotes] = useState(initial?.notes || '');
   const [isFavorite, setIsFavorite] = useState(!!initial?.is_favorite);
+  const [telegramId, setTelegramId] = useState(
+    initial?.linkedUser?.identities?.find(i => i.channel === 'telegram')?.identifier || ''
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -23,19 +26,39 @@ function ContactForm({ initial, onSave, onCancel }) {
     try {
       const url = isEdit ? `${API}/${initial.id}` : API;
       const method = isEdit ? 'PATCH' : 'POST';
+      const body = {
+        name: name.trim(),
+        phone: phone.trim() || null,
+        email: email.trim() || null,
+        notes: notes.trim() || null,
+        is_favorite: isFavorite,
+      };
+      if (!isEdit && telegramId.trim()) {
+        const tid = telegramId.trim();
+        if (tid.startsWith('@')) body.username = tid;
+        else body.telegram_id = tid;
+      }
       const res = await apiFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name.trim(),
-          phone: phone.trim() || null,
-          email: email.trim() || null,
-          notes: notes.trim() || null,
-          is_favorite: isFavorite,
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || 'Error');
+
+      // En edición, vincular por Telegram ID o username si se proporcionó
+      if (isEdit && telegramId.trim()) {
+        const tid = telegramId.trim();
+        const linkBody = tid.startsWith('@') ? { username: tid } : { telegram_id: tid };
+        const linkRes = await apiFetch(`${API}/${initial.id}/link`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(linkBody),
+        });
+        const linkData = await linkRes.json();
+        if (!linkRes.ok || linkData.error) throw new Error(linkData.error || 'Error al vincular Telegram');
+      }
+
       onSave();
     } catch (err) {
       setError(err.message);
@@ -76,6 +99,16 @@ function ContactForm({ initial, onSave, onCancel }) {
         value={email}
         onChange={e => setEmail(e.target.value)}
         aria-label="Email"
+      />
+
+      <label className="cp-label" style={{ marginTop: 8 }}>Telegram (ID o @username)</label>
+      <input
+        className="cp-input"
+        type="text"
+        placeholder="ej: 7874537448 o @bpadilla3570"
+        value={telegramId}
+        onChange={e => setTelegramId(e.target.value)}
+        aria-label="Telegram ID o username"
       />
 
       <label className="cp-label" style={{ marginTop: 8 }}>Notas</label>
@@ -162,6 +195,12 @@ function ContactDetail({ contactId, onBack, onEdit, onDelete }) {
             <span>{contact.notes}</span>
           </div>
         )}
+        {contact.linkedUser?.identities?.find(i => i.channel === 'telegram') && (
+          <div className="cp-detail-row">
+            <MessageSquare size={13} />
+            <span>Telegram: {contact.linkedUser.identities.find(i => i.channel === 'telegram').identifier}</span>
+          </div>
+        )}
         {contact.linkedUser ? (
           <div className="cp-detail-row cp-linked">
             <Link size={13} />
@@ -225,7 +264,7 @@ function ContactRow({ contact, onSelect, onToggleFav, onDelete }) {
   );
 }
 
-export default function ContactsPanel({ onClose }) {
+export default function ContactsPanel({ onClose, embedded }) {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
@@ -277,9 +316,11 @@ export default function ContactsPanel({ onClose }) {
     <div className="cp-panel" role="dialog" aria-label="Contactos">
       <div className="cp-header">
         <span className="cp-title">Contactos</span>
-        <button className="cp-close-btn" onClick={onClose} aria-label="Cerrar">
-          <X size={16} />
-        </button>
+        {!embedded && (
+          <button className="cp-close-btn" onClick={onClose} aria-label="Cerrar">
+            <X size={16} />
+          </button>
+        )}
       </div>
 
       {view === 'list' && (
