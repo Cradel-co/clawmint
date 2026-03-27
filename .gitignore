@@ -2,6 +2,8 @@ node_modules/
 dist/
 .env
 *.local
+.claude/
+server/agents.json
 server/agents/*.json
 server/skills/
 server/bots.json
