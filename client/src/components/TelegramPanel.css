@@ -19,8 +19,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  background: var(--bg-card);
-  border-bottom: 1px solid var(--border-secondary);
+  background: linear-gradient(90deg, rgba(91,141,240,0.07) 0%, var(--bg-card) 50%);
+  border-bottom: 1px solid var(--border-primary);
   flex-shrink: 0;
 }
 
@@ -38,11 +38,12 @@
 .tg-header-badge {
   background: rgba(74,222,128,0.10);
   color: var(--accent-green);
-  border: 1px solid #28c84044;
+  border: 1px solid rgba(74,222,128,0.27);
   border-radius: 10px;
   font-size: 10px;
   font-weight: 600;
   padding: 1px 7px;
+  font-family: var(--font-ui);
 }
 
 .tg-close {
@@ -111,7 +112,7 @@
 }
 
 .tg-bot-card.running {
-  border-color: #28c84033;
+  border-color: rgba(74,222,128,0.20);
 }
 
 .tg-bot-header {
@@ -173,12 +174,19 @@
 
 .tg-chat-row {
   background: var(--bg-card);
-  border: 1px solid var(--bg-hover);
+  border: 1px solid var(--border-primary);
+  border-left: 3px solid var(--accent-blue);
   border-radius: 6px;
   padding: 8px 10px;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.tg-chat-row:hover {
+  background: var(--bg-hover);
+  border-color: rgba(91,141,240,0.35);
+  border-left-color: var(--accent-blue);
 }
 
 .tg-chat-top {
