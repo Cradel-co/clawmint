@@ -57,7 +57,15 @@ class MessageProcessor {
         const result   = await session.sendMessage(text, { timeout: 1080000, stableMs: 3000 });
         const response = cleanPtyOutput(result.raw || '');
         tdbg('send', `PTY response=${response?.length || 0} chars`);
-        if (response) await bot.sendText(chatId, response);
+        if (response) {
+          // Guardar respuesta PTY en historial de la UI
+          bot._tgMsgsRepo?.push(bot.key, String(chatId), 'bot', response);
+          bot._events?.emit('telegram:ui:message', {
+            botKey: bot.key, chatId, role: 'bot', text: response,
+            ts: Date.now(), tgMsgId: null, chat,
+          });
+          await bot.sendText(chatId, response);
+        }
       } catch (err) {
         console.error(`[Telegram:${bot.key}] Error PTY chat ${chatId}:`, err.message);
         tdbg('send', `PTY ERROR: ${err.stack || err.message}`);
@@ -206,6 +214,13 @@ class MessageProcessor {
       }
 
       if (result.text && !result.usedMcpTools) {
+        // Guardar respuesta del bot en historial de la UI
+        bot._tgMsgsRepo?.push(bot.key, String(chatId), 'bot', result.text);
+        bot._events?.emit('telegram:ui:message', {
+          botKey: bot.key, chatId, role: 'bot', text: result.text,
+          ts: Date.now(), tgMsgId: null, chat,
+        });
+
         // Fallback: la IA no usó MCP tools para comunicarse → enviar texto directo
         tdbg('send', `fallback: enviando texto directo (${result.text.length} chars, usedMcpTools=false)`);
         await bot._responseRenderer.sendResult(bot, chatId, result.text, sentMsg);

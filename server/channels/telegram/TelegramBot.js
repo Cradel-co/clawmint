@@ -676,28 +676,19 @@ class TelegramBot {
 
   async sendText(chatId, text, replyToMessageId) {
     const chunks = chunkText(stripAnsi(text), 4096);
-    const chat = this.chats.get(Number(chatId));
     for (const chunk of chunks) {
       if (!chunk.trim()) continue;
       const body = { chat_id: chatId, text: chunk, parse_mode: 'Markdown' };
       if (replyToMessageId) body.reply_to_message_id = replyToMessageId;
-      let result = null;
       try {
-        result = await this._apiCall('sendMessage', body);
+        await this._apiCall('sendMessage', body);
       } catch {
         try {
           delete body.parse_mode;
-          result = await this._apiCall('sendMessage', body);
+          await this._apiCall('sendMessage', body);
         } catch (e2) {
           console.error(`[Telegram:${this.key}] No se pudo enviar a ${chatId}:`, e2.message);
         }
-      }
-      if (result) {
-        this._tgMsgsRepo?.push(this.key, String(chatId), 'bot', chunk, result.message_id);
-        this._events?.emit('telegram:ui:message', {
-          botKey: this.key, chatId: Number(chatId), role: 'bot', text: chunk,
-          ts: Date.now(), tgMsgId: result.message_id, chat,
-        });
       }
     }
   }
