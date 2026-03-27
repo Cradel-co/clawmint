@@ -46,7 +46,7 @@ export default function ChatHeader({
             {authUser.name || authUser.email}
             <LogOut size={10} />
           </button>
-        ) : (
+        ) : !embedded && (
           <button className="wc-login-btn" onClick={onShowAuth} title="Iniciar sesión">
             <LogIn size={12} /> Login
           </button>

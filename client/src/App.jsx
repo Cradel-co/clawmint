@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect, lazy, Suspense } from 'react'
 import {
   Terminal, MessageCircle, Send, BookUser, Settings,
   Plug, Bot, Sun, Moon, ChevronLeft, ChevronRight,
-  PanelsLeftRight,
+  PanelsLeftRight, LogIn,
 } from 'lucide-react';
 import TabBar from './components/TabBar.jsx';
 import CommandBar from './components/CommandBar.jsx';
@@ -179,7 +179,7 @@ function ConfigSection() {
 
 function AppContent() {
   const { theme, toggleTheme } = useTheme();
-  const { user } = useAuth();
+  const { user, setShowAuthPanel } = useAuth();
 
   const [section, setSection]   = useState('terminal');
   const [mounted, setMounted]   = useState({ terminal: true });
@@ -349,11 +349,20 @@ function AppContent() {
         />
 
         <div className="header-right">
-          {user && (
+          {user ? (
             <div className="header-user" aria-label={`Usuario: ${user.name}`}>
               <span className="header-user-avatar">{(user.name || 'U')[0].toUpperCase()}</span>
               <span className="header-user-name">{user.name}</span>
             </div>
+          ) : (
+            <button
+              className="header-icon-btn header-login-btn"
+              onClick={() => setShowAuthPanel(true)}
+              aria-label="Iniciar sesión"
+            >
+              <LogIn size={14} aria-hidden="true" />
+              <span className="header-login-label">Entrar</span>
+            </button>
           )}
           <button
             className="header-icon-btn theme-toggle"
