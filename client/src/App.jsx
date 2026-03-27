@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect, lazy, Suspense } from 'react';
 import {
-  Terminal, MessageCircle, Send, Users, BookUser, Settings,
-  Plug, Bot, Sun, Moon,
+  Terminal, MessageCircle, Send, BookUser, Settings,
+  Plug, Bot, Sun, Moon, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import TabBar from './components/TabBar.jsx';
 import CommandBar from './components/CommandBar.jsx';
@@ -37,73 +37,87 @@ function createSession(command = null, type = 'pty', httpSessionId = null, provi
   return { id, title, command, type, httpSessionId, provider };
 }
 
-// ── Secciones de navegación ───────────────────────────────────────────────────
+// ── Metadatos de secciones ────────────────────────────────────────────────────
 
-const NAV_TOP = [
-  { key: 'terminal',  Icon: Terminal,        label: 'Terminal' },
-  { key: 'chat',      Icon: MessageCircle,   label: 'Chat' },
-];
-const NAV_MID = [
-  { key: 'telegram',  Icon: Send,            label: 'Telegram' },
-  { key: 'contacts',  Icon: BookUser,        label: 'Contactos' },
-];
+const SECTION_META = {
+  terminal: { Icon: Terminal,      label: 'Terminal'       },
+  chat:     { Icon: MessageCircle, label: 'Chat IA'        },
+  telegram: { Icon: Send,          label: 'Telegram'       },
+  contacts: { Icon: BookUser,      label: 'Contactos'      },
+  config:   { Icon: Settings,      label: 'Configuración'  },
+};
+
+const NAV_TOP = ['terminal', 'chat'];
+const NAV_MID = ['telegram', 'contacts'];
+
 const CONFIG_TABS = [
-  { key: 'agents',    Icon: Bot,             label: 'Agentes' },
-  { key: 'providers', Icon: Settings,        label: 'Providers' },
-  { key: 'mcps',      Icon: Plug,            label: 'MCPs' },
+  { key: 'agents',    Icon: Bot,      label: 'Agentes'  },
+  { key: 'providers', Icon: Settings, label: 'Providers' },
+  { key: 'mcps',      Icon: Plug,     label: 'MCPs'     },
 ];
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 
-function Sidebar({ section, onSection, telegramBadge }) {
+function Sidebar({ section, onSection, telegramBadge, expanded, onToggle }) {
+  const renderItem = (key) => {
+    const { Icon, label } = SECTION_META[key];
+    return (
+      <button
+        key={key}
+        className={`sidebar-item ${section === key ? 'active' : ''}`}
+        onClick={() => onSection(key)}
+        title={!expanded ? label : undefined}
+        aria-label={label}
+        aria-current={section === key ? 'page' : undefined}
+      >
+        <Icon size={18} aria-hidden="true" />
+        <span className="sidebar-label">{label}</span>
+        {key === 'telegram' && telegramBadge > 0 && (
+          <span className="sidebar-badge" aria-label={`${telegramBadge} chats`}>{telegramBadge}</span>
+        )}
+      </button>
+    );
+  };
+
   return (
-    <aside className="app-sidebar" aria-label="Navegación principal">
+    <aside className={`app-sidebar${expanded ? ' sidebar-expanded' : ''}`} aria-label="Navegación principal">
       <nav className="sidebar-nav">
-        {NAV_TOP.map(({ key, Icon, label }) => (
-          <button
-            key={key}
-            className={`sidebar-item ${section === key ? 'active' : ''}`}
-            onClick={() => onSection(key)}
-            aria-label={label}
-            aria-current={section === key ? 'page' : undefined}
-          >
-            <Icon size={18} aria-hidden="true" />
-            <span className="sidebar-label">{label}</span>
-          </button>
-        ))}
-
+        {NAV_TOP.map(renderItem)}
         <div className="sidebar-divider" aria-hidden="true" />
-
-        {NAV_MID.map(({ key, Icon, label }) => (
-          <button
-            key={key}
-            className={`sidebar-item ${section === key ? 'active' : ''}`}
-            onClick={() => onSection(key)}
-            aria-label={label}
-            aria-current={section === key ? 'page' : undefined}
-          >
-            <Icon size={18} aria-hidden="true" />
-            <span className="sidebar-label">{label}</span>
-            {key === 'telegram' && telegramBadge > 0 && (
-              <span className="sidebar-badge" aria-label={`${telegramBadge} chats`}>{telegramBadge}</span>
-            )}
-          </button>
-        ))}
+        {NAV_MID.map(renderItem)}
       </nav>
 
       <div className="sidebar-bottom">
         <div className="sidebar-divider" aria-hidden="true" />
+        {renderItem('config')}
         <button
-          className={`sidebar-item ${section === 'config' ? 'active' : ''}`}
-          onClick={() => onSection('config')}
-          aria-label="Configuración"
-          aria-current={section === 'config' ? 'page' : undefined}
+          className="sidebar-item sidebar-toggle-btn"
+          onClick={onToggle}
+          title={expanded ? 'Colapsar sidebar' : 'Expandir sidebar'}
+          aria-label={expanded ? 'Colapsar sidebar' : 'Expandir sidebar'}
         >
-          <Settings size={18} aria-hidden="true" />
-          <span className="sidebar-label">Config</span>
+          {expanded
+            ? <ChevronLeft  size={16} aria-hidden="true" />
+            : <ChevronRight size={16} aria-hidden="true" />}
         </button>
       </div>
     </aside>
+  );
+}
+
+// ── Barra de sección ──────────────────────────────────────────────────────────
+
+function SectionBar({ section, telegramBadge }) {
+  if (!['chat', 'telegram', 'contacts'].includes(section)) return null;
+  const { Icon, label } = SECTION_META[section];
+  return (
+    <div className="section-bar">
+      <Icon size={14} className="section-bar-icon" aria-hidden="true" />
+      <span className="section-bar-title">{label}</span>
+      {section === 'telegram' && telegramBadge > 0 && (
+        <span className="section-bar-badge">{telegramBadge} chats</span>
+      )}
+    </div>
   );
 }
 
@@ -145,12 +159,30 @@ function AppContent() {
   const { user } = useAuth();
 
   const [section, setSection]   = useState('terminal');
+  const [mounted, setMounted]   = useState({ terminal: true });
   const [sessions, setSessions] = useState(() => { const s = createSession(); return [s]; });
   const [activeId, setActiveId] = useState(() => nextId);
   const [telegramChatsCount, setTelegramChatsCount] = useState(0);
   const [wsConnected, setWsConnected] = useState(true);
+  const [sidebarExpanded, setSidebarExpanded] = useState(() => {
+    try { return localStorage.getItem('sidebar-expanded') === 'true'; } catch { return false; }
+  });
 
   const httpIdToTabId = useRef(new Map());
+
+  // Cambia de sección y monta la sección si es la primera vez
+  const handleSection = useCallback((key) => {
+    setMounted(prev => prev[key] ? prev : { ...prev, [key]: true });
+    setSection(key);
+  }, []);
+
+  const toggleSidebar = useCallback(() => {
+    setSidebarExpanded(v => {
+      const next = !v;
+      try { localStorage.setItem('sidebar-expanded', String(next)); } catch {}
+      return next;
+    });
+  }, []);
 
   // Listener WebSocket global (eventos de Telegram → nuevas tabs)
   useEffect(() => {
@@ -201,9 +233,9 @@ function AppContent() {
     const s = createSession(command, type, httpSessionId, provider);
     setSessions((prev) => [...prev, s]);
     setActiveId(s.id);
-    setSection('terminal');
+    handleSection('terminal');
     return s;
-  }, []);
+  }, [handleSection]);
 
   const closeSession = useCallback((id) => {
     setSessions((prev) => {
@@ -221,14 +253,14 @@ function AppContent() {
     });
   }, [activeId]);
 
-  const handleSessionId  = useCallback((frontendTabId, httpId) => { httpIdToTabId.current.set(httpId, frontendTabId); }, []);
+  const handleSessionId   = useCallback((frontendTabId, httpId) => { httpIdToTabId.current.set(httpId, frontendTabId); }, []);
   const handleOpenSession = useCallback((httpSessionId) => {
     const tabId = httpIdToTabId.current.get(httpSessionId);
     if (tabId) { setActiveId(tabId); } else { openNew(null, 'pty', httpSessionId); }
-    setSection('terminal');
-  }, [openNew]);
+    handleSection('terminal');
+  }, [openNew, handleSection]);
 
-  const toTerminal = useCallback(() => setSection('terminal'), []);
+  const toTerminal = useCallback(() => handleSection('terminal'), [handleSection]);
 
   return (
     <div className="app">
@@ -265,8 +297,10 @@ function AppContent() {
       <div className="app-layout">
         <Sidebar
           section={section}
-          onSection={setSection}
+          onSection={handleSection}
           telegramBadge={telegramChatsCount}
+          expanded={sidebarExpanded}
+          onToggle={toggleSidebar}
         />
 
         <div id="app-main" className="app-content">
@@ -301,9 +335,10 @@ function AppContent() {
             </main>
           </div>
 
-          {/* ── Chat IA ── */}
-          {section === 'chat' && (
-            <div className="section section-full section-active">
+          {/* ── Chat IA — montado en primer acceso, persiste con CSS ── */}
+          {mounted.chat && (
+            <div className={`section section-full ${section === 'chat' ? 'section-active' : ''}`} aria-hidden={section !== 'chat'}>
+              <SectionBar section="chat" telegramBadge={0} />
               <ErrorBoundary>
                 <Suspense fallback={<Skeleton lines={6} style={{ padding: '24px' }} />}>
                   <WebChatPanel onClose={toTerminal} embedded />
@@ -312,9 +347,10 @@ function AppContent() {
             </div>
           )}
 
-          {/* ── Telegram ── */}
-          {section === 'telegram' && (
-            <div className="section section-full section-active">
+          {/* ── Telegram — montado en primer acceso, persiste con CSS ── */}
+          {mounted.telegram && (
+            <div className={`section section-full ${section === 'telegram' ? 'section-active' : ''}`} aria-hidden={section !== 'telegram'}>
+              <SectionBar section="telegram" telegramBadge={telegramChatsCount} />
               <ErrorBoundary>
                 <Suspense fallback={<Skeleton lines={6} style={{ padding: '24px' }} />}>
                   <TelegramPanel onClose={toTerminal} onOpenSession={handleOpenSession} embedded />
@@ -323,9 +359,10 @@ function AppContent() {
             </div>
           )}
 
-          {/* ── Contactos ── */}
-          {section === 'contacts' && (
-            <div className="section section-full section-active">
+          {/* ── Contactos — montado en primer acceso, persiste con CSS ── */}
+          {mounted.contacts && (
+            <div className={`section section-full ${section === 'contacts' ? 'section-active' : ''}`} aria-hidden={section !== 'contacts'}>
+              <SectionBar section="contacts" telegramBadge={0} />
               <ErrorBoundary>
                 <Suspense fallback={<Skeleton lines={6} style={{ padding: '24px' }} />}>
                   <ContactsPanel onClose={toTerminal} embedded />
@@ -334,9 +371,9 @@ function AppContent() {
             </div>
           )}
 
-          {/* ── Config ── */}
-          {section === 'config' && (
-            <div className="section section-full section-active">
+          {/* ── Config — montado en primer acceso, persiste con CSS ── */}
+          {mounted.config && (
+            <div className={`section section-full ${section === 'config' ? 'section-active' : ''}`} aria-hidden={section !== 'config'}>
               <ErrorBoundary>
                 <Suspense fallback={<Skeleton lines={6} style={{ padding: '24px' }} />}>
                   <ConfigSection />
@@ -351,16 +388,16 @@ function AppContent() {
       {/* ── Mobile bottom nav ── */}
       <nav className="mobile-bottom-nav" aria-label="Navegación móvil">
         {[
-          { key: 'terminal',  Icon: Terminal,      label: 'Terminal' },
-          { key: 'chat',      Icon: MessageCircle, label: 'Chat' },
-          { key: 'telegram',  Icon: Send,          label: 'TG' },
-          { key: 'contacts',  Icon: BookUser,      label: 'Contactos' },
-          { key: 'config',    Icon: Settings,      label: 'Config' },
+          { key: 'terminal', Icon: Terminal,      label: 'Terminal' },
+          { key: 'chat',     Icon: MessageCircle, label: 'Chat'     },
+          { key: 'telegram', Icon: Send,          label: 'TG'       },
+          { key: 'contacts', Icon: BookUser,      label: 'Contactos' },
+          { key: 'config',   Icon: Settings,      label: 'Config'   },
         ].map(({ key, Icon, label }) => (
           <button
             key={key}
             className={section === key ? 'active' : ''}
-            onClick={() => setSection(key)}
+            onClick={() => handleSection(key)}
             aria-label={label}
           >
             <Icon size={20} aria-hidden="true" />

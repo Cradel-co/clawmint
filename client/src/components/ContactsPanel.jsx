@@ -264,7 +264,7 @@ function ContactRow({ contact, onSelect, onToggleFav, onDelete }) {
   );
 }
 
-export default function ContactsPanel({ onClose }) {
+export default function ContactsPanel({ onClose, embedded }) {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
@@ -316,9 +316,11 @@ export default function ContactsPanel({ onClose }) {
     <div className="cp-panel" role="dialog" aria-label="Contactos">
       <div className="cp-header">
         <span className="cp-title">Contactos</span>
-        <button className="cp-close-btn" onClick={onClose} aria-label="Cerrar">
-          <X size={16} />
-        </button>
+        {!embedded && (
+          <button className="cp-close-btn" onClick={onClose} aria-label="Cerrar">
+            <X size={16} />
+          </button>
+        )}
       </div>
 
       {view === 'list' && (

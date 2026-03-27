@@ -128,6 +128,12 @@
   flex-direction: column;
   flex-shrink: 0;
   padding: 8px 0;
+  transition: width 0.2s ease;
+  overflow: hidden;
+}
+
+.app-sidebar.sidebar-expanded {
+  width: 180px;
 }
 
 .sidebar-nav {
@@ -137,6 +143,7 @@
   gap: 2px;
   padding: 0 8px;
   flex: 1;
+  overflow: hidden;
 }
 
 .sidebar-bottom {
@@ -144,6 +151,13 @@
   flex-direction: column;
   align-items: center;
   padding: 0 8px 4px;
+  overflow: hidden;
+}
+
+/* Expanded: items stretch full width */
+.app-sidebar.sidebar-expanded .sidebar-nav,
+.app-sidebar.sidebar-expanded .sidebar-bottom {
+  align-items: stretch;
 }
 
 .sidebar-item {
@@ -162,6 +176,18 @@
   position: relative;
   transition: color 0.15s, background 0.15s, border-color 0.15s;
   padding: 6px 2px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Expanded: items are rows */
+.app-sidebar.sidebar-expanded .sidebar-item {
+  width: auto;
+  flex-direction: row;
+  justify-content: flex-start;
+  padding: 9px 12px;
+  gap: 10px;
+  border-radius: 8px;
 }
 
 .sidebar-item:hover {
@@ -187,6 +213,12 @@
   line-height: 1;
 }
 
+.app-sidebar.sidebar-expanded .sidebar-label {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
 .sidebar-badge {
   position: absolute;
   top: 4px;
@@ -205,12 +237,27 @@
   line-height: 1;
 }
 
+.app-sidebar.sidebar-expanded .sidebar-badge {
+  position: static;
+  margin-left: auto;
+}
+
 .sidebar-divider {
   width: 28px;
   height: 1px;
   background: var(--border-primary);
   margin: 6px 0;
+  flex-shrink: 0;
 }
+
+.app-sidebar.sidebar-expanded .sidebar-divider {
+  width: 100%;
+}
+
+.sidebar-toggle-btn {
+  opacity: 0.6;
+}
+.sidebar-toggle-btn:hover { opacity: 1; }
 
 /* ── Content area ─────────────────────────────────────────────────────────── */
 .app-content {
@@ -248,6 +295,38 @@
 /* Full-width sections (chat, telegram, contacts, config) */
 .section-full {
   flex-direction: column;
+}
+
+/* ── Barra de sección ─────────────────────────────────────────────────────── */
+.section-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 16px;
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+.section-bar-icon {
+  color: var(--accent-cyan);
+}
+
+.section-bar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.section-bar-badge {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 10px;
+  padding: 1px 7px;
+  margin-left: 2px;
 }
 
 /* ── Config section ───────────────────────────────────────────────────────── */
@@ -297,9 +376,13 @@
   display: flex;
 }
 
-/* Los paneles embebidos (sin el header/close propio) llenan el espacio */
+/* Paneles embebidos llenan el espacio — section-bar queda excluida */
+.section-full > .section-bar {
+  flex: none;
+}
+
 .config-tab-body > *,
-.section-full > * {
+.section-full > :not(.section-bar) {
   flex: 1;
   width: 100% !important;
   min-width: 0 !important;
