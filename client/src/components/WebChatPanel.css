@@ -148,14 +148,15 @@
 }
 
 .wc-msg-user .wc-msg-content {
-  background: var(--accent-blue);
+  background: linear-gradient(135deg, #1a6ef5 0%, #0f9fe8 100%);
   color: #fff;
-  border-radius: 12px 12px 4px 12px;
-  padding: 8px 12px;
-  font-size: 13px;
-  line-height: 1.4;
+  border-radius: 18px 18px 4px 18px;
+  padding: 10px 14px;
+  font-size: 13.5px;
+  line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-word;
+  box-shadow: 0 2px 12px rgba(79,195,247,0.20);
 }
 
 .wc-msg-assistant {
@@ -170,13 +171,15 @@
 }
 
 .wc-msg-assistant .wc-msg-content {
-  background: var(--bg-hover);
+  background: var(--bg-card);
   color: var(--text-primary);
-  border-radius: 12px 12px 12px 4px;
-  padding: 8px 12px;
-  font-size: 13px;
-  line-height: 1.5;
+  border-radius: 4px 18px 18px 18px;
+  padding: 10px 14px;
+  font-size: 13.5px;
+  line-height: 1.55;
   word-break: break-word;
+  border: 1px solid var(--border-primary);
+  border-left: 3px solid var(--accent-cyan);
 }
 
 /* Markdown dentro de mensajes del asistente */
@@ -227,20 +230,22 @@
 }
 
 .wc-msg-system .wc-msg-content {
-  background: #1e2a1e;
-  color: #8ac88a;
+  background: rgba(45,212,191,0.06);
+  color: var(--accent-teal);
   border-radius: 8px;
-  padding: 8px 14px;
+  padding: 7px 13px;
   font-size: 12px;
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: 'Cascadia Code', 'Fira Code', 'Courier New', monospace;
+  font-family: var(--font-mono);
+  border: 1px solid rgba(45,212,191,0.18);
 }
 
 .wc-msg-error .wc-msg-content {
-  background: #2a1e1e;
-  color: #ff6b6b;
+  background: rgba(248,113,113,0.07);
+  color: var(--accent-red);
+  border: 1px solid rgba(248,113,113,0.2);
 }
 
 .wc-msg-system.wc-msg-error {
@@ -278,68 +283,76 @@
 .wc-input-area {
   display: flex;
   align-items: flex-end;
-  gap: 6px;
-  padding: 8px 12px;
-  background: var(--bg-panel);
-  border-top: 1px solid var(--border-secondary);
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-primary);
   flex-shrink: 0;
 }
 
 .wc-input {
   flex: 1;
-  background: var(--bg-secondary);
+  background: var(--bg-card);
   color: var(--text-primary);
   border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 13px;
-  font-family: inherit;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 13.5px;
+  font-family: var(--font-ui);
   resize: none;
   min-height: 20px;
   max-height: 120px;
-  line-height: 1.4;
+  line-height: 1.45;
   outline: none;
+  transition: border-color 0.18s, box-shadow 0.18s;
 }
 .wc-input:focus {
-  border-color: var(--focus-ring);
+  border-color: rgba(79,195,247,0.45);
+  box-shadow: 0 0 0 3px rgba(79,195,247,0.08);
 }
 .wc-input::placeholder {
   color: var(--text-hint);
 }
 
 .wc-send {
-  background: var(--btn-primary-bg);
-  color: #fff;
+  background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-blue) 100%);
+  color: #000;
   border: none;
   border-radius: 50%;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   font-size: 16px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: background 0.15s;
+  transition: opacity 0.15s, box-shadow 0.15s;
+  box-shadow: 0 2px 8px rgba(79,195,247,0.25);
 }
 .wc-send:hover:not(:disabled) {
-  background: #0066dd;
+  opacity: 0.88;
+  box-shadow: 0 2px 14px rgba(79,195,247,0.4);
 }
 .wc-send:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: not-allowed;
+  box-shadow: none;
 }
 .wc-send-mic {
-  background: var(--bg-hover);
+  background: var(--bg-card);
   color: var(--text-muted);
   font-size: 15px;
+  border: 1px solid var(--border-primary);
+  box-shadow: none;
 }
 .wc-send-mic:hover:not(:disabled) {
-  background: var(--border-secondary);
-  color: var(--text-secondary);
+  background: var(--bg-hover);
+  color: var(--accent-cyan);
+  border-color: rgba(79,195,247,0.3);
 }
 .wc-send-mic.wc-recording {
-  background: #2a1518;
+  background: rgba(248,113,113,0.08);
   border: 1.5px solid var(--accent-red);
   color: var(--accent-red);
   animation: wc-pulse-icon 1.5s ease-in-out infinite;
@@ -379,7 +392,7 @@
   50% { opacity: 0.3; }
 }
 .wc-rec-time {
-  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   font-size: 14px;
   color: var(--text-primary);
   min-width: 36px;
@@ -396,28 +409,31 @@
   transition: background 0.15s, color 0.15s;
 }
 .wc-rec-cancel {
-  background: #2a1518;
+  background: rgba(248,113,113,0.08);
   color: var(--accent-red);
+  border: 1px solid rgba(248,113,113,0.2);
 }
 .wc-rec-cancel:hover {
-  background: #3a1a1e;
-  color: #ff8a85;
+  background: rgba(248,113,113,0.16);
+  color: #fca5a5;
 }
 .wc-rec-pause {
-  background: var(--bg-hover);
+  background: var(--bg-card);
   color: var(--text-secondary);
+  border: 1px solid var(--border-primary);
 }
 .wc-rec-pause:hover {
-  background: var(--border-secondary);
-  color: #fff;
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 .wc-rec-send {
-  background: #1a3a1a;
-  color: #4caf50;
+  background: rgba(74,222,128,0.08);
+  color: var(--accent-green);
+  border: 1px solid rgba(74,222,128,0.2);
 }
 .wc-rec-send:hover {
-  background: #1e4a1e;
-  color: #66cc66;
+  background: rgba(74,222,128,0.15);
+  color: #86efac;
 }
 
 /* ─── Scrollbar ─────────────────────────────────────────────────────────────── */
@@ -470,12 +486,13 @@
   color: #fff;
 }
 .wc-inline-code {
-  background: var(--border-secondary);
-  color: #e06c75;
+  background: rgba(167,139,250,0.10);
+  color: var(--accent-purple);
   padding: 1px 5px;
   border-radius: 3px;
-  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
+  border: 1px solid rgba(167,139,250,0.18);
 }
 
 /* ─── Code inline block (single-line fenced code without language) ────────── */
@@ -483,16 +500,16 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: var(--bg-hover);
-  border: 1px solid #3a3a3a;
+  background: rgba(167,139,250,0.07);
+  border: 1px solid rgba(167,139,250,0.18);
   border-radius: 4px;
   padding: 3px 8px;
   margin: 2px 0;
 }
 .wc-code-inline-text {
-  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
-  color: #e06c75;
+  color: var(--accent-purple);
 }
 .wc-code-inline-copy {
   background: none;

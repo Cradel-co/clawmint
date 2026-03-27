@@ -65,7 +65,7 @@ function Sidebar({ section, onSection, chatBadge, telegramBadge, expanded, onTog
     return (
       <button
         key={key}
-        className={`sidebar-item ${section === key ? 'active' : ''}`}
+        className={`sidebar-item sidebar-item-${key} ${section === key ? 'active' : ''}`}
         onClick={() => onSection(key)}
         title={!expanded ? label : undefined}
         aria-label={label}
