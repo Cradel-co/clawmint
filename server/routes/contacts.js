@@ -27,12 +27,16 @@ module.exports = function createContactsRouter({ usersRepo }) {
     const ownerId = getOwnerId(req);
     if (!ownerId) return res.status(401).json({ error: 'No autenticado' });
 
-    const { name, phone, email, notes, is_favorite, telegram_id } = req.body || {};
+    const { name, phone, email, notes, is_favorite, telegram_id, username } = req.body || {};
     if (!name) return res.status(400).json({ error: 'name requerido' });
 
     let userId = null;
     if (telegram_id) {
       const u = usersRepo.findByIdentity('telegram', String(telegram_id));
+      if (u) userId = u.id;
+    }
+    if (!userId && username) {
+      const u = usersRepo.findByTelegramUsername(username);
       if (u) userId = u.id;
     }
 
@@ -107,7 +111,7 @@ module.exports = function createContactsRouter({ usersRepo }) {
     const contact = usersRepo.getContact(req.params.id);
     if (!contact || contact.owner_id !== ownerId) return res.status(404).json({ error: 'No encontrado' });
 
-    const { telegram_id, user_id } = req.body || {};
+    const { telegram_id, user_id, username } = req.body || {};
     let userId = user_id || null;
 
     if (!userId && telegram_id) {
@@ -116,7 +120,13 @@ module.exports = function createContactsRouter({ usersRepo }) {
       userId = u.id;
     }
 
-    if (!userId) return res.status(400).json({ error: 'Se requiere telegram_id o user_id' });
+    if (!userId && username) {
+      const u = usersRepo.findByTelegramUsername(username);
+      if (!u) return res.status(404).json({ error: `No hay usuario con username ${username}` });
+      userId = u.id;
+    }
+
+    if (!userId) return res.status(400).json({ error: 'Se requiere telegram_id, username o user_id' });
 
     usersRepo.updateContact(req.params.id, { user_id: userId });
     res.json(usersRepo.getContact(req.params.id));

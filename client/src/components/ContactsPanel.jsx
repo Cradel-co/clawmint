@@ -33,7 +33,11 @@ function ContactForm({ initial, onSave, onCancel }) {
         notes: notes.trim() || null,
         is_favorite: isFavorite,
       };
-      if (!isEdit && telegramId.trim()) body.telegram_id = telegramId.trim();
+      if (!isEdit && telegramId.trim()) {
+        const tid = telegramId.trim();
+        if (tid.startsWith('@')) body.username = tid;
+        else body.telegram_id = tid;
+      }
       const res = await apiFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
@@ -42,12 +46,14 @@ function ContactForm({ initial, onSave, onCancel }) {
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || 'Error');
 
-      // En edición, vincular por Telegram ID si se proporcionó
+      // En edición, vincular por Telegram ID o username si se proporcionó
       if (isEdit && telegramId.trim()) {
+        const tid = telegramId.trim();
+        const linkBody = tid.startsWith('@') ? { username: tid } : { telegram_id: tid };
         const linkRes = await apiFetch(`${API}/${initial.id}/link`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ telegram_id: telegramId.trim() }),
+          body: JSON.stringify(linkBody),
         });
         const linkData = await linkRes.json();
         if (!linkRes.ok || linkData.error) throw new Error(linkData.error || 'Error al vincular Telegram');
@@ -95,14 +101,14 @@ function ContactForm({ initial, onSave, onCancel }) {
         aria-label="Email"
       />
 
-      <label className="cp-label" style={{ marginTop: 8 }}>Telegram ID</label>
+      <label className="cp-label" style={{ marginTop: 8 }}>Telegram (ID o @username)</label>
       <input
         className="cp-input"
         type="text"
-        placeholder="ej: 7874537448"
+        placeholder="ej: 7874537448 o @bpadilla3570"
         value={telegramId}
         onChange={e => setTelegramId(e.target.value)}
-        aria-label="Telegram ID"
+        aria-label="Telegram ID o username"
       />
 
       <label className="cp-label" style={{ marginTop: 8 }}>Notas</label>
