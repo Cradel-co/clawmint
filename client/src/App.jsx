@@ -1,5 +1,8 @@
-import { useState, useCallback, useRef, useEffect, useReducer, lazy, Suspense } from 'react';
-import { MessageCircle, Settings, Plug, Users, Bot, Sun, Moon, Terminal, BookUser } from 'lucide-react';
+import { useState, useCallback, useRef, useEffect, lazy, Suspense } from 'react';
+import {
+  Terminal, MessageCircle, Send, Users, BookUser, Settings,
+  Plug, Bot, Sun, Moon,
+} from 'lucide-react';
 import TabBar from './components/TabBar.jsx';
 import CommandBar from './components/CommandBar.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
@@ -8,95 +11,154 @@ import ReconnectBanner from './components/ReconnectBanner.jsx';
 import { AuthProvider } from './contexts/AuthContext.jsx';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext.jsx';
 import { ToastProvider } from './contexts/ToastContext.jsx';
+import { useAuth } from './contexts/AuthContext.jsx';
 import { API_BASE, WS_URL } from './config';
 import { apiFetch } from './authUtils';
 import './App.css';
-import './components/AgentsPanel.css';
-import './components/TelegramPanel.css';
-import './components/ContactsPanel.css';
-import './components/WebChatPanel.css';
-import './components/ProvidersPanel.css';
 
-// Lazy-load paneles que se abren bajo demanda
-const TerminalPanel = lazy(() => import('./components/TerminalPanel.jsx'));
-const TelegramPanel = lazy(() => import('./components/TelegramPanel.jsx'));
-const AgentsPanel = lazy(() => import('./components/AgentsPanel.jsx'));
+const TerminalPanel  = lazy(() => import('./components/TerminalPanel.jsx'));
+const TelegramPanel  = lazy(() => import('./components/TelegramPanel.jsx'));
+const AgentsPanel    = lazy(() => import('./components/AgentsPanel.jsx'));
 const ProvidersPanel = lazy(() => import('./components/ProvidersPanel.jsx'));
-const McpsPanel = lazy(() => import('./components/McpsPanel.jsx'));
-const WebChatPanel = lazy(() => import('./components/WebChatPanel.jsx'));
-const ContactsPanel = lazy(() => import('./components/ContactsPanel.jsx'));
+const McpsPanel      = lazy(() => import('./components/McpsPanel.jsx'));
+const WebChatPanel   = lazy(() => import('./components/WebChatPanel.jsx'));
+const ContactsPanel  = lazy(() => import('./components/ContactsPanel.jsx'));
 
 let nextId = 0;
 
 function createSession(command = null, type = 'pty', httpSessionId = null, provider = null) {
   const id = ++nextId;
   let title;
-  if (provider === 'gemini') {
-    title = `Gemini ${id}`;
-  } else if (provider === 'openai') {
-    title = `GPT ${id}`;
-  } else if (provider === 'anthropic' || type === 'claude') {
-    title = `Claude ${id}`;
-  } else if (command && command.startsWith('claude')) {
-    title = `CC ${id}`;
-  } else {
-    title = command ? command.split(' ')[0] : `bash ${id}`;
-  }
+  if (provider === 'gemini')          title = `Gemini ${id}`;
+  else if (provider === 'openai')     title = `GPT ${id}`;
+  else if (provider === 'anthropic' || type === 'claude') title = `Claude ${id}`;
+  else if (command && command.startsWith('claude')) title = `CC ${id}`;
+  else title = command ? command.split(' ')[0] : `bash ${id}`;
   return { id, title, command, type, httpSessionId, provider };
 }
 
-// ── Panel reducer: reemplaza 5 booleans por un estado único ──────────────────
+// ── Secciones de navegación ───────────────────────────────────────────────────
 
-function panelReducer(state, action) {
-  switch (action.type) {
-    case 'toggle':
-      return state === action.panel ? null : action.panel;
-    case 'close':
-      return null;
-    default:
-      return state;
-  }
+const NAV_TOP = [
+  { key: 'terminal',  Icon: Terminal,        label: 'Terminal' },
+  { key: 'chat',      Icon: MessageCircle,   label: 'Chat' },
+];
+const NAV_MID = [
+  { key: 'telegram',  Icon: Send,            label: 'Telegram' },
+  { key: 'contacts',  Icon: BookUser,        label: 'Contactos' },
+];
+const CONFIG_TABS = [
+  { key: 'agents',    Icon: Bot,             label: 'Agentes' },
+  { key: 'providers', Icon: Settings,        label: 'Providers' },
+  { key: 'mcps',      Icon: Plug,            label: 'MCPs' },
+];
+
+// ── Sidebar ───────────────────────────────────────────────────────────────────
+
+function Sidebar({ section, onSection, telegramBadge }) {
+  return (
+    <aside className="app-sidebar" aria-label="Navegación principal">
+      <nav className="sidebar-nav">
+        {NAV_TOP.map(({ key, Icon, label }) => (
+          <button
+            key={key}
+            className={`sidebar-item ${section === key ? 'active' : ''}`}
+            onClick={() => onSection(key)}
+            aria-label={label}
+            aria-current={section === key ? 'page' : undefined}
+          >
+            <Icon size={18} aria-hidden="true" />
+            <span className="sidebar-label">{label}</span>
+          </button>
+        ))}
+
+        <div className="sidebar-divider" aria-hidden="true" />
+
+        {NAV_MID.map(({ key, Icon, label }) => (
+          <button
+            key={key}
+            className={`sidebar-item ${section === key ? 'active' : ''}`}
+            onClick={() => onSection(key)}
+            aria-label={label}
+            aria-current={section === key ? 'page' : undefined}
+          >
+            <Icon size={18} aria-hidden="true" />
+            <span className="sidebar-label">{label}</span>
+            {key === 'telegram' && telegramBadge > 0 && (
+              <span className="sidebar-badge" aria-label={`${telegramBadge} chats`}>{telegramBadge}</span>
+            )}
+          </button>
+        ))}
+      </nav>
+
+      <div className="sidebar-bottom">
+        <div className="sidebar-divider" aria-hidden="true" />
+        <button
+          className={`sidebar-item ${section === 'config' ? 'active' : ''}`}
+          onClick={() => onSection('config')}
+          aria-label="Configuración"
+          aria-current={section === 'config' ? 'page' : undefined}
+        >
+          <Settings size={18} aria-hidden="true" />
+          <span className="sidebar-label">Config</span>
+        </button>
+      </div>
+    </aside>
+  );
 }
 
-const PANELS = [
-  { key: 'chat', icon: MessageCircle, label: 'Chat con IA' },
-  { key: 'providers', icon: Settings, label: 'Providers de IA' },
-  { key: 'mcps', icon: Plug, label: 'MCPs' },
-  { key: 'agents', icon: Users, label: 'Agentes personalizados' },
-  { key: 'telegram', icon: Bot, label: 'Panel de Telegram' },
-  { key: 'contacts', icon: BookUser, label: 'Contactos' },
-];
+// ── Config section — tabs internos ────────────────────────────────────────────
+
+function ConfigSection() {
+  const [tab, setTab] = useState('agents');
+  return (
+    <div className="section-config">
+      <div className="config-tab-bar">
+        {CONFIG_TABS.map(({ key, Icon, label }) => (
+          <button
+            key={key}
+            className={`config-tab ${tab === key ? 'active' : ''}`}
+            onClick={() => setTab(key)}
+          >
+            <Icon size={14} aria-hidden="true" />
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="config-tab-body">
+        <ErrorBoundary>
+          <Suspense fallback={<Skeleton lines={4} style={{ padding: '24px' }} />}>
+            {tab === 'agents'    && <AgentsPanel    onClose={null} embedded />}
+            {tab === 'providers' && <ProvidersPanel onClose={null} embedded />}
+            {tab === 'mcps'      && <McpsPanel      onClose={null} embedded />}
+          </Suspense>
+        </ErrorBoundary>
+      </div>
+    </div>
+  );
+}
+
+// ── App principal ─────────────────────────────────────────────────────────────
 
 function AppContent() {
   const { theme, toggleTheme } = useTheme();
+  const { user } = useAuth();
 
-  const [sessions, setSessions] = useState(() => {
-    const initial = createSession();
-    return [initial];
-  });
+  const [section, setSection]   = useState('terminal');
+  const [sessions, setSessions] = useState(() => { const s = createSession(); return [s]; });
   const [activeId, setActiveId] = useState(() => nextId);
-  const [activePanel, dispatchPanel] = useReducer(panelReducer, null);
   const [telegramChatsCount, setTelegramChatsCount] = useState(0);
   const [wsConnected, setWsConnected] = useState(true);
 
-  // Mapa: httpSessionId → frontendTabId
   const httpIdToTabId = useRef(new Map());
 
-  // WebSocket listener para eventos de Telegram (abre pestañas automáticamente)
+  // Listener WebSocket global (eventos de Telegram → nuevas tabs)
   useEffect(() => {
-    let ws;
-    let reconnectTimer;
-
+    let ws, reconnectTimer;
     function connect() {
       ws = new WebSocket(WS_URL);
-      ws.onopen = () => {
-        setWsConnected(true);
-        ws.send(JSON.stringify({ type: 'init', sessionType: 'listener' }));
-      };
-      ws.onclose = () => {
-        setWsConnected(false);
-        reconnectTimer = setTimeout(connect, 3000);
-      };
+      ws.onopen  = () => { setWsConnected(true);  ws.send(JSON.stringify({ type: 'init', sessionType: 'listener' })); };
+      ws.onclose = () => { setWsConnected(false); reconnectTimer = setTimeout(connect, 3000); };
       ws.onerror = () => {};
       ws.onmessage = (event) => {
         try {
@@ -117,35 +179,30 @@ function AppContent() {
         } catch { /* silenciar */ }
       };
     }
-
     connect();
-    return () => {
-      clearTimeout(reconnectTimer);
-      ws?.close();
-    };
+    return () => { clearTimeout(reconnectTimer); ws?.close(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Obtener cantidad de chats activos del bot para el badge
+  // Polling badge Telegram (solo cuando no está en la sección telegram)
   useEffect(() => {
-    if (activePanel === 'telegram') return;
+    if (section === 'telegram') return;
     const interval = setInterval(async () => {
       try {
         const res = await apiFetch(`${API_BASE}/api/telegram/bots`);
         const bots = await res.json();
-        const chats = Array.isArray(bots)
-          ? bots.reduce((n, b) => n + (b.chats?.length || 0), 0)
-          : 0;
-        setTelegramChatsCount(chats);
-      } catch { /* silenciar — polling en background */ }
+        const count = Array.isArray(bots) ? bots.reduce((n, b) => n + (b.chats?.length || 0), 0) : 0;
+        setTelegramChatsCount(count);
+      } catch { /* silenciar */ }
     }, 5000);
     return () => clearInterval(interval);
-  }, [activePanel]);
+  }, [section]);
 
   const openNew = useCallback((command = null, type = 'pty', httpSessionId = null, provider = null) => {
-    const session = createSession(command, type, httpSessionId, provider);
-    setSessions((prev) => [...prev, session]);
-    setActiveId(session.id);
-    return session;
+    const s = createSession(command, type, httpSessionId, provider);
+    setSessions((prev) => [...prev, s]);
+    setActiveId(s.id);
+    setSection('terminal');
+    return s;
   }, []);
 
   const closeSession = useCallback((id) => {
@@ -159,146 +216,155 @@ function AppContent() {
         setActiveId(s.id);
         return [s];
       }
-      if (activeId === id) {
-        setActiveId(next[next.length - 1].id);
-      }
+      if (activeId === id) setActiveId(next[next.length - 1].id);
       return next;
     });
   }, [activeId]);
 
-  const handleSessionId = useCallback((frontendTabId, httpId) => {
-    httpIdToTabId.current.set(httpId, frontendTabId);
-  }, []);
-
+  const handleSessionId  = useCallback((frontendTabId, httpId) => { httpIdToTabId.current.set(httpId, frontendTabId); }, []);
   const handleOpenSession = useCallback((httpSessionId) => {
     const tabId = httpIdToTabId.current.get(httpSessionId);
-    if (tabId) {
-      setActiveId(tabId);
-      dispatchPanel({ type: 'close' });
-    } else {
-      openNew(null, 'pty', httpSessionId);
-      dispatchPanel({ type: 'close' });
-    }
+    if (tabId) { setActiveId(tabId); } else { openNew(null, 'pty', httpSessionId); }
+    setSection('terminal');
   }, [openNew]);
+
+  const toTerminal = useCallback(() => setSection('terminal'), []);
 
   return (
     <div className="app">
-      <a href="#terminal-main" className="skip-link">Ir al contenido principal</a>
-
+      <a href="#app-main" className="skip-link">Ir al contenido principal</a>
       <ReconnectBanner connected={wsConnected} />
 
+      {/* ── Header ── */}
       <header className="app-header">
-        <span className="dot red" aria-hidden="true" />
+        <span className="dot red"    aria-hidden="true" />
         <span className="dot yellow" aria-hidden="true" />
-        <span className="dot green" aria-hidden="true" />
-        <h1 className="title">Terminal Live</h1>
+        <span className="dot green"  aria-hidden="true" />
+        <h1 className="title">Clawmint</h1>
 
-        <nav className="header-right" aria-label="Paneles">
+        <div className="header-right">
+          {user && (
+            <div className="header-user" aria-label={`Usuario: ${user.name}`}>
+              <span className="header-user-avatar">{(user.name || 'U')[0].toUpperCase()}</span>
+              <span className="header-user-name">{user.name}</span>
+            </div>
+          )}
           <button
-            className="telegram-btn theme-toggle"
+            className="header-icon-btn theme-toggle"
             onClick={toggleTheme}
             aria-label={theme === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
           >
-            {theme === 'dark' ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
+            {theme === 'dark'
+              ? <Sun  size={16} aria-hidden="true" />
+              : <Moon size={16} aria-hidden="true" />}
           </button>
-
-          {PANELS.map(({ key, icon: Icon, label }) => (
-            <button
-              key={key}
-              className={`telegram-btn ${activePanel === key ? 'active' : ''}`}
-              onClick={() => dispatchPanel({ type: 'toggle', panel: key })}
-              aria-label={label}
-              aria-pressed={activePanel === key}
-            >
-              <Icon size={16} aria-hidden="true" />
-              {key === 'telegram' && telegramChatsCount > 0 && activePanel !== 'telegram' && (
-                <span className="telegram-badge">{telegramChatsCount}</span>
-              )}
-            </button>
-          ))}
-        </nav>
+        </div>
       </header>
 
-      <TabBar
-        sessions={sessions}
-        activeId={activeId}
-        onSelect={setActiveId}
-        onClose={closeSession}
-        onNew={() => openNew()}
-      />
+      {/* ── Layout principal ── */}
+      <div className="app-layout">
+        <Sidebar
+          section={section}
+          onSection={setSection}
+          telegramBadge={telegramChatsCount}
+        />
 
-      <CommandBar
-        onCommand={openNew}
-        onClaude={(sys) => openNew(sys || null, 'ai', null, 'anthropic')}
-        onAI={(provider, sys) => openNew(sys || null, 'ai', null, provider)}
-      />
+        <div id="app-main" className="app-content">
 
-      <div className="app-body-wrap">
-        <main id="terminal-main" className="app-body">
-          <Suspense fallback={<Skeleton lines={5} style={{ padding: '24px' }} />}>
-            {sessions.map((session) => (
-              <TerminalPanel
-                key={session.id}
-                session={session}
-                wsUrl={WS_URL}
-                active={session.id === activeId}
-                onClose={() => closeSession(session.id)}
-                onSessionId={(httpId) => handleSessionId(session.id, httpId)}
-              />
-            ))}
-          </Suspense>
-        </main>
+          {/* ── Terminal ── */}
+          <div className={`section section-terminal ${section === 'terminal' ? 'section-active' : ''}`} aria-hidden={section !== 'terminal'}>
+            <TabBar
+              sessions={sessions}
+              activeId={activeId}
+              onSelect={setActiveId}
+              onClose={closeSession}
+              onNew={() => openNew()}
+            />
+            <CommandBar
+              onCommand={openNew}
+              onClaude={(sys) => openNew(sys || null, 'ai', null, 'anthropic')}
+              onAI={(provider, sys) => openNew(sys || null, 'ai', null, provider)}
+            />
+            <main className="terminal-body">
+              <Suspense fallback={<Skeleton lines={5} style={{ padding: '24px' }} />}>
+                {sessions.map((s) => (
+                  <TerminalPanel
+                    key={s.id}
+                    session={s}
+                    wsUrl={WS_URL}
+                    active={s.id === activeId}
+                    onClose={() => closeSession(s.id)}
+                    onSessionId={(httpId) => handleSessionId(s.id, httpId)}
+                  />
+                ))}
+              </Suspense>
+            </main>
+          </div>
 
-        <Suspense fallback={<Skeleton lines={4} style={{ width: 380, padding: '16px' }} />}>
-          <ErrorBoundary>
-            {activePanel === 'telegram' && (
-              <TelegramPanel
-                onClose={() => dispatchPanel({ type: 'close' })}
-                onOpenSession={handleOpenSession}
-              />
-            )}
+          {/* ── Chat IA ── */}
+          {section === 'chat' && (
+            <div className="section section-full section-active">
+              <ErrorBoundary>
+                <Suspense fallback={<Skeleton lines={6} style={{ padding: '24px' }} />}>
+                  <WebChatPanel onClose={toTerminal} embedded />
+                </Suspense>
+              </ErrorBoundary>
+            </div>
+          )}
 
-            {activePanel === 'agents' && (
-              <AgentsPanel onClose={() => dispatchPanel({ type: 'close' })} />
-            )}
+          {/* ── Telegram ── */}
+          {section === 'telegram' && (
+            <div className="section section-full section-active">
+              <ErrorBoundary>
+                <Suspense fallback={<Skeleton lines={6} style={{ padding: '24px' }} />}>
+                  <TelegramPanel onClose={toTerminal} onOpenSession={handleOpenSession} embedded />
+                </Suspense>
+              </ErrorBoundary>
+            </div>
+          )}
 
-            {activePanel === 'providers' && (
-              <ProvidersPanel onClose={() => dispatchPanel({ type: 'close' })} />
-            )}
+          {/* ── Contactos ── */}
+          {section === 'contacts' && (
+            <div className="section section-full section-active">
+              <ErrorBoundary>
+                <Suspense fallback={<Skeleton lines={6} style={{ padding: '24px' }} />}>
+                  <ContactsPanel onClose={toTerminal} embedded />
+                </Suspense>
+              </ErrorBoundary>
+            </div>
+          )}
 
-            {activePanel === 'mcps' && (
-              <McpsPanel onClose={() => dispatchPanel({ type: 'close' })} />
-            )}
+          {/* ── Config ── */}
+          {section === 'config' && (
+            <div className="section section-full section-active">
+              <ErrorBoundary>
+                <Suspense fallback={<Skeleton lines={6} style={{ padding: '24px' }} />}>
+                  <ConfigSection />
+                </Suspense>
+              </ErrorBoundary>
+            </div>
+          )}
 
-            {activePanel === 'chat' && (
-              <WebChatPanel onClose={() => dispatchPanel({ type: 'close' })} />
-            )}
-
-            {activePanel === 'contacts' && (
-              <ContactsPanel onClose={() => dispatchPanel({ type: 'close' })} />
-            )}
-          </ErrorBoundary>
-        </Suspense>
+        </div>
       </div>
 
-      {/* Mobile bottom nav — visible solo en <640px */}
+      {/* ── Mobile bottom nav ── */}
       <nav className="mobile-bottom-nav" aria-label="Navegación móvil">
-        <button
-          className={activePanel === null ? 'active' : ''}
-          onClick={() => dispatchPanel({ type: 'close' })}
-        >
-          <Terminal size={20} aria-hidden="true" />
-          <span>Terminal</span>
-        </button>
-        {PANELS.map(({ key, icon: Icon, label }) => (
+        {[
+          { key: 'terminal',  Icon: Terminal,      label: 'Terminal' },
+          { key: 'chat',      Icon: MessageCircle, label: 'Chat' },
+          { key: 'telegram',  Icon: Send,          label: 'TG' },
+          { key: 'contacts',  Icon: BookUser,      label: 'Contactos' },
+          { key: 'config',    Icon: Settings,      label: 'Config' },
+        ].map(({ key, Icon, label }) => (
           <button
             key={key}
-            className={activePanel === key ? 'active' : ''}
-            onClick={() => dispatchPanel({ type: 'toggle', panel: key })}
+            className={section === key ? 'active' : ''}
+            onClick={() => setSection(key)}
             aria-label={label}
           >
             <Icon size={20} aria-hidden="true" />
-            <span>{key === 'chat' ? 'Chat' : key === 'telegram' ? 'TG' : key.slice(0, 4)}</span>
+            <span>{label}</span>
           </button>
         ))}
       </nav>

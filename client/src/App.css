@@ -1,3 +1,4 @@
+/* ── Skip link ────────────────────────────────────────────────────────────── */
 .skip-link {
   position: absolute;
   top: -40px;
@@ -9,11 +10,9 @@
   font-size: 14px;
   text-decoration: none;
 }
+.skip-link:focus { top: 0; }
 
-.skip-link:focus {
-  top: 0;
-}
-
+/* ── Root ─────────────────────────────────────────────────────────────────── */
 .app {
   display: flex;
   flex-direction: column;
@@ -22,6 +21,7 @@
   overflow: hidden;
 }
 
+/* ── Header ───────────────────────────────────────────────────────────────── */
 .app-header {
   display: flex;
   align-items: center;
@@ -31,14 +31,10 @@
   border-bottom: 1px solid var(--border-primary);
   user-select: none;
   flex-shrink: 0;
+  height: 42px;
 }
 
-.dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-}
-
+.dot { width: 12px; height: 12px; border-radius: 50%; }
 .dot.red    { background: #ff5f57; }
 .dot.yellow { background: #febc2e; }
 .dot.green  { background: #28c840; }
@@ -46,12 +42,12 @@
 .title {
   margin: 0 0 0 8px;
   font-size: 12px;
-  font-weight: normal;
+  font-weight: 600;
   color: var(--text-muted);
-  letter-spacing: 0.05em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-/* Empuja los botones a la derecha */
 .header-right {
   margin-left: auto;
   display: flex;
@@ -59,152 +55,301 @@
   gap: 8px;
 }
 
-/* ─── Header buttons ──────────────────────────────────────────────────────── */
+.header-user {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 20px;
+  padding: 3px 10px 3px 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
 
-.telegram-btn {
-  position: relative;
+.header-user-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-green), #16a34a);
+  color: #000;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.header-user-name {
+  font-size: 12px;
+  color: var(--text-muted);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-icon-btn {
   background: none;
   border: 1px solid transparent;
   border-radius: 6px;
   color: var(--text-muted);
-  font-size: 16px;
   cursor: pointer;
-  padding: 6px 10px;
+  padding: 5px 8px;
   line-height: 1;
+  display: flex;
+  align-items: center;
   transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
-
-.telegram-btn:hover {
-  color: var(--accent-cyan);
-  border-color: #29b6f633;
-  background: #29b6f611;
-}
-
-.telegram-btn:focus-visible {
-  outline: 2px solid var(--accent-cyan);
-  outline-offset: 2px;
-}
-
-.telegram-btn.active {
-  color: var(--accent-cyan);
-  border-color: #29b6f644;
-  background: #29b6f618;
-}
-
-/* Theme toggle — warm colors */
-.theme-toggle:hover {
+.header-icon-btn:hover {
   color: var(--accent-yellow);
   border-color: rgba(254, 188, 46, 0.2);
   background: rgba(254, 188, 46, 0.07);
 }
+.header-icon-btn:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+}
 
-/* Badge con conteo de chats */
-.telegram-badge {
+/* ── Layout principal ─────────────────────────────────────────────────────── */
+.app-layout {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* ── Sidebar ──────────────────────────────────────────────────────────────── */
+.app-sidebar {
+  width: 60px;
+  background: var(--bg-header);
+  border-right: 1px solid var(--border-primary);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  padding: 8px 0;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px;
+  flex: 1;
+}
+
+.sidebar-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 8px 4px;
+}
+
+.sidebar-item {
+  width: 44px;
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  cursor: pointer;
+  color: var(--text-muted);
+  position: relative;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  padding: 6px 2px;
+}
+
+.sidebar-item:hover {
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+}
+
+.sidebar-item.active {
+  color: var(--accent-cyan);
+  background: color-mix(in srgb, var(--accent-cyan) 10%, transparent);
+  border-color: color-mix(in srgb, var(--accent-cyan) 25%, transparent);
+}
+
+.sidebar-item:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+}
+
+.sidebar-label {
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  line-height: 1;
+}
+
+.sidebar-badge {
   position: absolute;
-  top: -4px;
-  right: -5px;
+  top: 4px;
+  right: 4px;
   background: var(--accent-green);
   color: #000;
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 700;
-  border-radius: 50%;
-  width: 14px;
+  border-radius: 8px;
+  min-width: 14px;
   height: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 0 3px;
   line-height: 1;
 }
 
-/* ─── Layout con panel lateral ────────────────────────────────────────────── */
-
-.app-body-wrap {
-  flex: 1;
-  display: flex;
-  overflow: hidden;
+.sidebar-divider {
+  width: 28px;
+  height: 1px;
+  background: var(--border-primary);
+  margin: 6px 0;
 }
 
-.app-body {
+/* ── Content area ─────────────────────────────────────────────────────────── */
+.app-content {
   flex: 1;
   min-width: 0;
+  display: flex;
   overflow: hidden;
   position: relative;
 }
 
-/* ─── Responsive: móvil (<640px) ──────────────────────────────────────────── */
-@media (max-width: 640px) {
-  .app-header {
-    padding: 6px 10px;
-    gap: 6px;
-  }
-  .title {
-    display: none;
-  }
-  .dot {
-    display: none;
-  }
-
-  /* Hide desktop header nav on mobile — bottom nav replaces it */
-  .header-right .telegram-btn:not(.theme-toggle) {
-    display: none;
-  }
-
-  .app-body-wrap {
-    position: relative;
-    /* Leave space for bottom nav */
-    margin-bottom: 56px;
-  }
-
-  /* Side panels become fullscreen overlay on mobile */
-  .app-body-wrap > *:not(.app-body) {
-    position: absolute;
-    inset: 0;
-    width: 100% !important;
-    min-width: 0 !important;
-    max-width: 100% !important;
-    border-left: none !important;
-    z-index: 20;
-  }
+/* ── Secciones ────────────────────────────────────────────────────────────── */
+.section {
+  display: none;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 
-/* ─── Responsive: tablet (641px-768px) ────────────────────────────────────── */
-@media (max-width: 768px) and (min-width: 641px) {
-  .app-header {
-    padding: 6px 10px;
-    gap: 6px;
-  }
-  .title {
-    display: none;
-  }
-  .dot {
-    display: none;
-  }
-  .app-body-wrap {
-    position: relative;
-  }
-  .app-body-wrap > *:not(.app-body) {
-    position: absolute;
-    inset: 0;
-    width: 100% !important;
-    min-width: 0 !important;
-    max-width: 100% !important;
-    border-left: none !important;
-    z-index: 20;
-  }
+.section.section-active {
+  display: flex;
+  flex-direction: column;
 }
 
-/* ─── Responsive: tablet (769px-1000px) ───────────────────────────────────── */
-@media (max-width: 1000px) and (min-width: 769px) {
-  .app-body-wrap > *:not(.app-body) {
-    position: absolute;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    min-width: 0 !important;
-    z-index: 20;
-    box-shadow: -4px 0 16px rgba(0, 0, 0, 0.4);
-  }
-  .app-body-wrap {
-    position: relative;
-  }
+/* Terminal section */
+.section-terminal {
+  flex-direction: column;
+}
+
+.terminal-body {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Full-width sections (chat, telegram, contacts, config) */
+.section-full {
+  flex-direction: column;
+}
+
+/* ── Config section ───────────────────────────────────────────────────────── */
+.section-config {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.config-tab-bar {
+  display: flex;
+  gap: 0;
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border-primary);
+  padding: 0 20px;
+  flex-shrink: 0;
+}
+
+.config-tab {
+  height: 44px;
+  padding: 0 18px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.config-tab:hover { color: var(--text-primary); }
+.config-tab.active {
+  color: var(--accent-yellow);
+  border-bottom-color: var(--accent-yellow);
+}
+.config-tab:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: -2px;
+}
+
+.config-tab-body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+}
+
+/* Los paneles embebidos (sin el header/close propio) llenan el espacio */
+.config-tab-body > *,
+.section-full > * {
+  flex: 1;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  border-left: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+/* ── Mobile bottom nav ────────────────────────────────────────────────────── */
+.mobile-bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  background: var(--bg-header);
+  border-top: 1px solid var(--border-primary);
+  z-index: 50;
+}
+
+.mobile-bottom-nav button {
+  flex: 1;
+  height: 100%;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  font-size: 9px;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.mobile-bottom-nav button.active { color: var(--accent-cyan); }
+.mobile-bottom-nav button:hover  { color: var(--text-primary); }
+
+/* ── Responsive ───────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .app-sidebar { display: none; }
+  .mobile-bottom-nav { display: flex; }
+  .app-layout { margin-bottom: 56px; }
+  .dot, .title { display: none; }
+  .app-header { padding: 6px 10px; }
+}
+
+@media (max-width: 480px) {
+  .header-user-name { display: none; }
+  .header-user { padding: 3px 6px; }
 }
