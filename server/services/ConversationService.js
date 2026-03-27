@@ -536,7 +536,8 @@ class ConversationService {
       isNewSession = true;
       csdbg('claude', `nueva ClaudePrintSession mode=${claudeMode} mcpPrompt=${!!mcpPrompt} botKey=${botKey}`);
     } else {
-      if (fullSystemPrompt && !session.appendSystemPrompt) {
+      // Siempre actualizar el system prompt (puede haber cambiado entre reinicios)
+      if (fullSystemPrompt) {
         session.appendSystemPrompt = fullSystemPrompt;
       }
       csdbg('claude', `reutilizando session msgCount=${session.messageCount}`);

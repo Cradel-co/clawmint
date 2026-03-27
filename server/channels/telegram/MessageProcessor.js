@@ -208,17 +208,13 @@ class MessageProcessor {
       }
       if (result.text) {
         const suppressed = result.text.trim();
-        tdbg('send', `texto suprimido (${suppressed.length} chars) — guardando en memoria`);
-        if (suppressed.length > 10 && this._memory && agentKey) {
-          try {
-            const ts = new Date().toISOString().replace(/[:.]/g, '-');
-            const filename = `_leaked-text-${ts}.md`;
-            this._memory.write(agentKey, filename,
-              `---\ntype: leaked-response\nts: ${new Date().toISOString()}\nchatId: ${chatId}\n---\n${suppressed}`
-            );
-            tdbg('send', `texto suprimido guardado en memoria → ${filename}`);
-          } catch (e) {
-            tdbg('send', `error guardando texto suprimido: ${e.message}`);
+        if (suppressed.length > 0) {
+          // Enviar al usuario si no usó tools de comunicación (leaked text)
+          if (!result.usedMcpTools) {
+            tdbg('send', `leaked text (${suppressed.length} chars) — reenviando al usuario`);
+            try { await bot.sendText(chatId, suppressed); } catch {}
+          } else {
+            tdbg('send', `texto suprimido (${suppressed.length} chars) — ya comunicó vía tools`);
           }
         }
       }
