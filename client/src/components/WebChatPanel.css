@@ -533,18 +533,19 @@
   margin-top: 6px;
 }
 .wc-inline-btn {
-  background: var(--bg-hover);
-  color: #58a6ff;
-  border: 1px solid #3a3a3a;
-  border-radius: 6px;
-  padding: 4px 12px;
+  background: rgba(167,139,250,0.08);
+  color: var(--accent-purple);
+  border: 1px solid rgba(167,139,250,0.25);
+  border-radius: 8px;
+  padding: 5px 14px;
   font-size: 12px;
+  font-family: var(--font-ui);
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
 }
 .wc-inline-btn:hover {
-  background: var(--border-secondary);
-  border-color: #58a6ff;
+  background: rgba(167,139,250,0.16);
+  border-color: rgba(167,139,250,0.45);
 }
 
 /* ─── TTS audio message ────────────────────────────────────────────────────── */
@@ -594,7 +595,7 @@
 
 /* Status text en barra */
 .wc-status-text {
-  color: #58a6ff;
+  color: var(--accent-cyan);
   font-style: italic;
 }
 
@@ -616,7 +617,8 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #888;
+  background: var(--accent-cyan);
+  opacity: 0.6;
   animation: wc-typing-bounce 1.4s infinite ease-in-out both;
 }
 .wc-typing-dot:nth-child(1) { animation-delay: 0s; }
@@ -669,13 +671,13 @@
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  color: #58a6ff;
+  color: var(--accent-blue);
   text-decoration: none;
   border-radius: 8px;
   transition: background 0.15s;
 }
 .wc-media-doc:hover {
-  background: var(--border-secondary);
+  background: var(--bg-hover);
 }
 .wc-media-doc-name {
   flex: 1;

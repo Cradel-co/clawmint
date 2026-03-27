@@ -346,15 +346,19 @@
 .tg-btn-add {
   background: var(--bg-card);
   color: var(--text-muted);
-  border: 1px dashed #3a3a3a;
+  border: 1px dashed var(--border-primary);
   width: 100%;
   text-align: center;
   padding: 9px;
   border-radius: 7px;
   font-size: 12px;
+  font-family: var(--font-ui);
   transition: color 0.15s, border-color 0.15s;
 }
-.tg-btn-add:hover { color: #29b6f6; border-color: #29b6f655; }
+.tg-btn-add:hover {
+  color: var(--accent-blue);
+  border-color: rgba(91,141,240,0.4);
+}
 
 /* ─── Status dot ──────────────────────────────────────────────────────────── */
 

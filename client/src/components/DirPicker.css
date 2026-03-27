@@ -11,12 +11,12 @@
 .dirpicker {
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
-  border-radius: 8px;
+  border-radius: 12px;
   width: 480px;
   max-height: 70vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(79,195,247,0.08);
 }
 
 .dirpicker-header {
@@ -77,14 +77,15 @@
   border: 1px solid var(--border-primary);
   border-radius: 4px;
   color: var(--text-primary);
-  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   padding: 5px 8px;
   outline: none;
 }
 
 .dirpicker-input:focus {
-  border-color: var(--focus-ring);
+  border-color: rgba(45,212,191,0.5);
+  box-shadow: 0 0 0 3px rgba(45,212,191,0.08);
 }
 
 .dirpicker-bookmarks {
@@ -96,18 +97,21 @@
 }
 
 .dirpicker-bookmark {
-  background: var(--bg-header);
-  border: 1px solid #3a3a3a;
+  background: var(--bg-card);
+  border: 1px solid var(--border-primary);
   color: var(--text-muted);
   font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 3px;
+  font-family: var(--font-ui);
+  padding: 3px 9px;
+  border-radius: 6px;
   cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
 
 .dirpicker-bookmark:hover {
-  background: var(--bg-active);
-  color: var(--text-primary);
+  background: var(--bg-hover);
+  color: var(--accent-teal);
+  border-color: rgba(45,212,191,0.3);
 }
 
 .dirpicker-list {
@@ -130,12 +134,12 @@
   color: var(--text-secondary);
   font-size: 13px;
   cursor: pointer;
-  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .dirpicker-item:hover {
-  background: var(--border-subtle);
-  color: #fff;
+  background: var(--bg-hover);
+  color: var(--accent-teal);
 }
 
 .dirpicker-folder-icon {
@@ -163,15 +167,20 @@
 }
 
 .dirpicker-select {
-  background: var(--btn-primary-bg);
+  background: linear-gradient(135deg, var(--accent-teal) 0%, var(--accent-cyan) 100%);
   border: none;
-  color: #fff;
+  color: #000;
   font-size: 13px;
-  padding: 6px 16px;
-  border-radius: 4px;
+  font-weight: 600;
+  font-family: var(--font-ui);
+  padding: 7px 18px;
+  border-radius: 8px;
   cursor: pointer;
+  transition: opacity 0.15s, box-shadow 0.15s;
+  box-shadow: 0 2px 8px rgba(45,212,191,0.25);
 }
 
 .dirpicker-select:hover {
-  background: var(--btn-primary-hover);
+  opacity: 0.88;
+  box-shadow: 0 2px 14px rgba(45,212,191,0.4);
 }
