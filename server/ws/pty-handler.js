@@ -12,7 +12,7 @@
  * @param {Object} deps.events
  * @param {Object} [deps.telegramUIHandler]
  */
-function setupPtyHandler({ wss, sessionManager, webChannel, allWebClients, startAISession, events, telegramUIHandler }) {
+function setupPtyHandler({ wss, sessionManager, webChannel, allWebClients, startAISession, events, telegramUIHandler, authService }) {
 
   wss.on('connection', (ws) => {
     console.log('Cliente WS conectado');
@@ -45,7 +45,7 @@ function setupPtyHandler({ wss, sessionManager, webChannel, allWebClients, start
 
           if (msg.sessionType === 'telegram-ui') {
             if (telegramUIHandler) {
-              telegramUIHandler.handleConnection(ws);
+              telegramUIHandler.handleConnection(ws, msg);
             } else {
               ws.send(JSON.stringify({ type: 'error', error: 'TelegramUIHandler no disponible' }));
             }

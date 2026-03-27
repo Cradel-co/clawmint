@@ -17,21 +17,36 @@
 
 class TelegramUIHandler {
   /**
-   * @param {{ telegram: object, logger?: object }} opts
+   * @param {{ telegram: object, authService?: object, logger?: object }} opts
    */
-  constructor({ telegram, logger = console }) {
-    this._telegram = telegram;
-    this._logger   = logger;
+  constructor({ telegram, authService = null, logger = console }) {
+    this._telegram    = telegram;
+    this._authService = authService;
+    this._logger      = logger;
     /** @type {Set<import('ws').WebSocket>} */
-    this._clients  = new Set();
+    this._clients     = new Set();
+    /** @type {Map<import('ws').WebSocket, string>} ws → userId */
+    this._clientUsers = new Map();
   }
 
   /**
    * Llamado desde pty-handler.js cuando sessionType === 'telegram-ui'.
    * @param {import('ws').WebSocket} ws
+   * @param {object} [opts]  — contiene opts.jwt si el cliente lo envió
    */
-  handleConnection(ws) {
+  handleConnection(ws, opts = {}) {
+    let userId = null;
+    if (this._authService) {
+      const payload = this._authService.verifyAccessToken(opts.jwt);
+      if (!payload) {
+        this._sendJson(ws, { type: 'auth_error', error: 'Token inválido o expirado', code: 'TOKEN_EXPIRED' });
+        ws.close(4001, 'Unauthorized');
+        return;
+      }
+      userId = payload.sub;
+    }
     this._clients.add(ws);
+    if (userId) this._clientUsers.set(ws, userId);
 
     // Enviar snapshot inicial de todos los bots/chats
     this._sendSnapshot(ws);
@@ -47,6 +62,7 @@ class TelegramUIHandler {
 
     ws.on('close', () => {
       this._clients.delete(ws);
+      this._clientUsers.delete(ws);
     });
   }
 
@@ -55,34 +71,41 @@ class TelegramUIHandler {
    * @param {{ botKey: string, chatId: number, role: string, text: string, ts: number, tgMsgId?: number, chat: object }} data
    */
   notifyNewMessage({ botKey, chatId, role, text, ts, tgMsgId, chat }) {
+    const ownerId = this._telegram?.getBot?.(botKey)?.ownerId || null;
     const message = { role, text, ts, tgMsgId: tgMsgId || null };
-    this.broadcast({ type: 'tg:message', botKey, chatId, message });
-
-    // También broadcast del estado actualizado de chats del bot
+    this.broadcast({ type: 'tg:message', botKey, chatId, message }, ownerId);
     this._broadcastChatsUpdate(botKey);
   }
 
   /**
-   * Envía un evento a todos los clientes WS conectados.
+   * Envía un evento a los clientes WS conectados.
    * @param {object} event
+   * @param {string|null} [ownerId]  — si se indica, solo envía al cliente dueño del bot
    */
-  broadcast(event) {
+  broadcast(event, ownerId = null) {
     const json = JSON.stringify(event);
     for (const ws of this._clients) {
-      if (ws.readyState === ws.OPEN) {
-        try { ws.send(json); } catch {}
+      if (ws.readyState !== ws.OPEN) continue;
+      // Si el evento tiene dueño, solo enviarlo al cliente que corresponde
+      if (ownerId) {
+        const clientUser = this._clientUsers.get(ws);
+        if (clientUser && clientUser !== ownerId) continue;
       }
+      try { ws.send(json); } catch {}
     }
   }
 
   // ── Privado ────────────────────────────────────────────────────────────────
 
-  /** Envía snapshot de todos los bots al conectar. */
+  /** Envía snapshot de los bots del usuario conectado. */
   _sendSnapshot(ws) {
     if (!this._telegram) return;
     try {
+      const userId = this._clientUsers.get(ws);
       const bots = this._telegram.listBots ? this._telegram.listBots() : [];
       for (const bot of bots) {
+        // Bots sin ownerId son legado — visibles a todos; con ownerId solo al dueño
+        if (bot.ownerId && userId && bot.ownerId !== userId) continue;
         const chats = this._extractChats(bot);
         this._sendJson(ws, { type: 'tg:chats_update', botKey: bot.key, chats });
       }
@@ -110,7 +133,7 @@ class TelegramUIHandler {
       const bot = this._telegram.getBot?.(botKey);
       if (!bot) return;
       const chats = this._extractChats(bot.toJSON ? bot.toJSON() : bot);
-      this.broadcast({ type: 'tg:chats_update', botKey, chats });
+      this.broadcast({ type: 'tg:chats_update', botKey, chats }, bot.ownerId || null);
     } catch {}
   }
 

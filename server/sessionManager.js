@@ -45,6 +45,12 @@ class PtySession {
     delete env.CLAUDECODE;
     delete env.CLAUDE_CODE_ENTRYPOINT;
 
+    // Hostname personalizado para el prompt del terminal
+    if (!isWin && !command) {
+      const termHost = process.env.TERMINAL_HOSTNAME || 'clawmint';
+      env.PROMPT_COMMAND = `PS1="\\[\\033[01;32m\\]\\u@${termHost}\\[\\033[00m\\]:\\[\\033[01;34m\\]\\w\\[\\033[00m\\]\\$ "`;
+    }
+
     this._pty = pty.spawn(DEFAULT_SHELL, args, {
       name: 'xterm-color',
       cols,

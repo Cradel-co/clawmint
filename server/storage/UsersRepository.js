@@ -298,6 +298,21 @@ class UsersRepository {
       'SELECT * FROM contacts WHERE owner_id = ? AND user_id = ?'
     ).get(ownerId, userId) || null;
   }
+
+  /** Contactos del usuario que tienen identidad Telegram vinculada. */
+  listContactsWithTelegramId(ownerId) {
+    if (!this._db) return [];
+    return this._db.prepare(`
+      SELECT c.id AS contactId, c.name, c.is_favorite AS isFavorite,
+             CAST(ui.identifier AS INTEGER) AS chatId,
+             json_extract(ui.metadata, '$.username') AS username,
+             ui.bot_key AS botKey
+      FROM contacts c
+      JOIN user_identities ui ON ui.user_id = c.user_id AND ui.channel = 'telegram'
+      WHERE c.owner_id = ?
+      ORDER BY c.name
+    `).all(String(ownerId));
+  }
 }
 
 module.exports = UsersRepository;

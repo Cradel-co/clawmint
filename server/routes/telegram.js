@@ -1,7 +1,7 @@
 'use strict';
 const express = require('express');
 
-module.exports = function createTelegramRouter({ telegram, sessionManager, convSvc = null, telegramMessagesRepo = null }) {
+module.exports = function createTelegramRouter({ telegram, sessionManager, convSvc = null, telegramMessagesRepo = null, usersRepo = null }) {
   const router = express.Router();
 
   // GET /telegram/mode — modo actual (polling|webhook) y URL de webhook
@@ -12,27 +12,33 @@ module.exports = function createTelegramRouter({ telegram, sessionManager, convS
     });
   });
 
-  // GET /telegram/bots — lista todos los bots con su estado
-  router.get('/bots', (_req, res) => {
-    res.json(telegram.listBots());
+  // GET /telegram/bots — lista bots del usuario autenticado
+  router.get('/bots', (req, res) => {
+    const userId = req.user?.id;
+    const all = telegram.listBots();
+    // Bots sin ownerId son visibles para todos (legado); con ownerId solo para su dueño
+    res.json(all.filter(b => !b.ownerId || b.ownerId === userId));
   });
 
-  // POST /telegram/bots — agregar/actualizar bot
+  // POST /telegram/bots — agregar/actualizar bot (se asocia al usuario autenticado)
   // Body: { key, token }
   router.post('/bots', async (req, res) => {
     const { key, token } = req.body || {};
     if (!key || !token) return res.status(400).json({ error: 'key y token requeridos' });
     if (!/^[a-zA-Z0-9_-]+$/.test(key)) return res.status(400).json({ error: 'key inválida (solo letras, números, _ y -)' });
     try {
-      const result = await telegram.addBot(key, token);
+      const result = await telegram.addBot(key, token, req.user?.id || null);
       res.json({ ok: true, username: result.username });
     } catch (err) {
       res.status(400).json({ error: err.message });
     }
   });
 
-  // DELETE /telegram/bots/:key — eliminar bot
+  // DELETE /telegram/bots/:key — eliminar bot (solo el dueño)
   router.delete('/bots/:key', async (req, res) => {
+    const bot = telegram.getBot(req.params.key);
+    if (!bot) return res.status(404).json({ error: 'Bot no encontrado' });
+    if (bot.ownerId && bot.ownerId !== req.user?.id) return res.status(403).json({ error: 'Sin permiso' });
     const ok = await telegram.removeBot(req.params.key);
     if (!ok) return res.status(404).json({ error: 'Bot no encontrado' });
     res.json({ ok: true });
@@ -123,6 +129,16 @@ module.exports = function createTelegramRouter({ telegram, sessionManager, convS
       if (parse_mode) body.parse_mode = parse_mode;
       if (reply_markup) body.reply_markup = typeof reply_markup === 'string' ? reply_markup : JSON.stringify(reply_markup);
       const result = await bot._apiCall('sendMessage', body);
+
+      // Capturar en historial UI (MCP tools pasan por aquí)
+      if (result?.message_id) {
+        telegramMessagesRepo?.push(req.params.key, String(chatId), 'bot', text, result.message_id);
+        bot._events?.emit('telegram:ui:message', {
+          botKey: req.params.key, chatId, role: 'bot', text,
+          ts: Date.now(), tgMsgId: result.message_id, chat: bot.chats?.get(chatId),
+        });
+      }
+
       res.json({ ok: true, message_id: result.message_id });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -310,6 +326,14 @@ module.exports = function createTelegramRouter({ telegram, sessionManager, convS
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
+  });
+
+  // GET /telegram/bots/:key/contacts — contactos del usuario con Telegram vinculado
+  router.get('/bots/:key/contacts', (req, res) => {
+    if (!usersRepo) return res.json([]);
+    const ownerId = req.user?.id;
+    if (!ownerId) return res.status(401).json({ error: 'No autenticado' });
+    res.json(usersRepo.listContactsWithTelegramId(ownerId));
   });
 
   return router;

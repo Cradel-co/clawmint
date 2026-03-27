@@ -421,6 +421,8 @@ export default function TelegramPanel({ onClose, onOpenSession, embedded, onBadg
   const [showBotManager, setShowBotManager] = useState(false);
   // chatsState: Map de estado de chats recibido por WS (para unread/preview en tiempo real)
   const [wsChats, setWsChats]         = useState({}); // botKey → chats[]
+  // Contactos con Telegram vinculado
+  const [tgContacts, setTgContacts]   = useState([]);
 
   // ── WS ─────────────────────────────────────────────────────────────────────
 
@@ -450,6 +452,17 @@ export default function TelegramPanel({ onClose, onOpenSession, embedded, onBadg
 
   const { send: wsSend } = useTelegramSocket({ onMessage: handleWsMessage });
 
+  // ── Fetch contactos con Telegram ────────────────────────────────────────────
+
+  const fetchContacts = useCallback(async (botKey) => {
+    if (!botKey) return;
+    try {
+      const res  = await apiFetch(`${API}/bots/${botKey}/contacts`);
+      const data = await res.json();
+      setTgContacts(Array.isArray(data) ? data : []);
+    } catch {}
+  }, []);
+
   // ── Fetch bots ──────────────────────────────────────────────────────────────
 
   const fetchBots = useCallback(async () => {
@@ -471,6 +484,11 @@ export default function TelegramPanel({ onClose, onOpenSession, embedded, onBadg
       .then(d => setAllAgents(Array.isArray(d) ? d : []))
       .catch(() => {});
   }, []);
+
+  // Recargar contactos al cambiar de bot activo
+  useEffect(() => {
+    if (activeBotKey) fetchContacts(activeBotKey);
+  }, [activeBotKey, fetchContacts]);
 
   // ── Seleccionar chat ────────────────────────────────────────────────────────
 
@@ -517,11 +535,19 @@ export default function TelegramPanel({ onClose, onOpenSession, embedded, onBadg
     });
   })();
 
-  const filteredChats = search.trim()
-    ? mergedChats.filter(c => chatDisplayName(c).toLowerCase().includes(search.toLowerCase()))
-    : mergedChats;
+  // Enriquecer chats con nombre de agenda si hay contacto vinculado por chatId
+  const contactByChatId = new Map(tgContacts.map(c => [c.chatId, c]));
+  const enrichedChats = mergedChats.map(c => {
+    const contact = contactByChatId.get(c.chatId);
+    return contact ? { ...c, firstName: contact.name } : c;
+  });
 
-  const selectedChat = mergedChats.find(c => c.chatId === selectedChatId);
+  const q = search.trim().toLowerCase();
+  const filteredChats = q
+    ? enrichedChats.filter(c => chatDisplayName(c).toLowerCase().includes(q))
+    : enrichedChats;
+
+  const selectedChat = enrichedChats.find(c => c.chatId === selectedChatId) || null;
   const msgKey = activeBotKey && selectedChatId ? `${activeBotKey}:${selectedChatId}` : null;
   const currentMessages = msgKey ? (chatMessages[msgKey] || []) : [];
 
@@ -563,15 +589,11 @@ export default function TelegramPanel({ onClose, onOpenSession, embedded, onBadg
           />
         </div>
 
-        {/* Lista de chats */}
+        {/* Lista de chats — nombre de agenda si hay contacto vinculado */}
         <div className="tg-chat-list">
-          {!activeBotData && (
-            <div className="tg-sidebar-empty">Sin bots configurados</div>
-          )}
+          {!activeBotData && <div className="tg-sidebar-empty">Sin bots configurados</div>}
           {activeBotData && filteredChats.length === 0 && (
-            <div className="tg-sidebar-empty">
-              {search ? 'Sin resultados' : 'Sin chats activos'}
-            </div>
+            <div className="tg-sidebar-empty">{search ? 'Sin resultados' : 'Sin chats activos'}</div>
           )}
           {filteredChats.map(chat => (
             <ChatItem

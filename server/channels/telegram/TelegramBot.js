@@ -35,10 +35,12 @@ class TelegramBot {
     tts                 = null,
     usersRepo           = null,
     tgMsgsRepo          = null,
+    ownerId             = null,
     logger              = console,
   } = {}) {
-    this.key   = key;
-    this.token = token;
+    this.key     = key;
+    this.token   = token;
+    this.ownerId = ownerId || null;
     this._usersRepo = usersRepo;
     this.running = false;
     this._webhookMode = false;
@@ -744,6 +746,7 @@ class TelegramBot {
   toJSON() {
     return {
       key:              this.key,
+      ownerId:          this.ownerId,
       running:          this.running,
       botInfo:          this.botInfo,
       defaultAgent:     this.defaultAgent,

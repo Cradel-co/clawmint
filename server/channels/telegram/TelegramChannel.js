@@ -69,7 +69,7 @@ class TelegramChannel extends BaseChannel {
     this.bots = new Map();
   }
 
-  _buildBot(key, token, { initialOffset = 0, onOffsetSave = null } = {}) {
+  _buildBot(key, token, { initialOffset = 0, onOffsetSave = null, ownerId = null } = {}) {
     const commandHandler = new CommandHandler({
       agents:        this._agents,
       skills:        this._skills,
@@ -144,6 +144,7 @@ class TelegramChannel extends BaseChannel {
       tts:            this._tts,
       usersRepo:      this._usersRepo,
       tgMsgsRepo:     this._tgMsgsRepo,
+      ownerId,
       logger:         this._logger,
     });
   }
@@ -173,8 +174,8 @@ class TelegramChannel extends BaseChannel {
   async loadAndStart() {
     const saved = this._readFile();
     for (const entry of saved) {
-      const { key, token, defaultAgent, whitelist, groupWhitelist, rateLimit, rateLimitKeyword, offset, startGreeting, lastGreetingAt } = entry;
-      const bot = this._buildBot(key, token, { initialOffset: offset || 0 });
+      const { key, token, defaultAgent, whitelist, groupWhitelist, rateLimit, rateLimitKeyword, offset, startGreeting, lastGreetingAt, ownerId } = entry;
+      const bot = this._buildBot(key, token, { initialOffset: offset || 0, ownerId: ownerId || null });
       if (defaultAgent) bot.defaultAgent = defaultAgent;
 
       const envWhitelist = (process.env.BOT_WHITELIST || '')
@@ -205,9 +206,9 @@ class TelegramChannel extends BaseChannel {
     // Nota: recordatorios ahora gestionados por Scheduler (server/scheduler.js)
   }
 
-  async addBot(key, token) {
+  async addBot(key, token, ownerId = null) {
     if (this.bots.has(key)) await this.bots.get(key).stop();
-    const bot  = this._buildBot(key, token);
+    const bot  = this._buildBot(key, token, { ownerId });
     const info = this._telegramMode === 'webhook'
       ? await bot.startWebhook(this._webhookBaseUrl)
       : await bot.start();
@@ -318,6 +319,7 @@ class TelegramChannel extends BaseChannel {
   _saveFile() {
     const data = [...this.bots.entries()].map(([key, bot]) => ({
       key,
+      ownerId:          bot.ownerId || null,
       token:            bot.token,
       defaultAgent:     bot.defaultAgent,
       whitelist:        bot.whitelist,
