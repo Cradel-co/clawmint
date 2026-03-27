@@ -213,11 +213,11 @@
   text-align: left;
 }
 .wc-msg-assistant .wc-msg-content th {
-  background: var(--border-secondary);
-  color: #ddd;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
 }
 .wc-msg-assistant .wc-msg-content a {
-  color: #58a6ff;
+  color: var(--accent-blue);
   text-decoration: none;
 }
 .wc-msg-assistant .wc-msg-content a:hover {

@@ -216,7 +216,7 @@
 }
 .cp-icon-btn:hover { color: var(--text-primary); background: var(--bg-input); }
 
-.cp-icon-btn-danger:hover { color: #e05252; }
+.cp-icon-btn-danger:hover { color: var(--accent-red); }
 
 .cp-fav-active { color: var(--accent-yellow); }
 .cp-fav-active:hover { color: var(--accent-yellow); }
@@ -274,7 +274,7 @@
 }
 
 .cp-error {
-  color: #e05252;
+  color: var(--accent-red);
   font-size: 11px;
   margin: 6px 0 0;
 }
