@@ -326,22 +326,22 @@
 .tg-btn-sm { padding: 4px 9px; font-size: 11px; }
 
 .tg-btn-primary { background: var(--accent-cyan); color: #000; flex: 1; }
-.tg-btn-primary:hover:not(:disabled) { background: #4fc3f7; }
+.tg-btn-primary:hover:not(:disabled) { opacity: 0.88; }
 
 .tg-btn-ghost { background: var(--bg-hover); color: var(--text-secondary); border: 1px solid var(--border-primary); }
 .tg-btn-ghost:hover:not(:disabled) { background: var(--border-secondary); color: var(--text-primary); }
 
-.tg-btn-start { background: rgba(74,222,128,0.10); color: #28c840; border: 1px solid #28c84044; }
-.tg-btn-start:hover:not(:disabled) { background: rgba(74,222,128,0.16); }
+.tg-btn-start { background: rgba(74,222,128,0.10); color: var(--accent-green); border: 1px solid rgba(74,222,128,0.27); }
+.tg-btn-start:hover:not(:disabled) { background: rgba(74,222,128,0.18); }
 
-.tg-btn-stop { background: #febc2e22; color: #febc2e; border: 1px solid #febc2e44; }
-.tg-btn-stop:hover:not(:disabled) { background: #febc2e33; }
+.tg-btn-stop { background: rgba(251,191,36,0.10); color: var(--accent-yellow); border: 1px solid rgba(251,191,36,0.27); }
+.tg-btn-stop:hover:not(:disabled) { background: rgba(251,191,36,0.18); }
 
-.tg-btn-delete { background: transparent; color: #ff6b6b; border: 1px solid #4a2020; }
-.tg-btn-delete:hover:not(:disabled) { background: rgba(248,113,113,0.10); }
+.tg-btn-delete { background: transparent; color: var(--accent-red); border: 1px solid rgba(248,113,113,0.20); }
+.tg-btn-delete:hover:not(:disabled) { background: rgba(248,113,113,0.08); }
 
-.tg-btn-danger-ghost { background: transparent; color: #ff6b6b; border: 1px solid #4a2020; font-size: 10px; }
-.tg-btn-danger-ghost:hover:not(:disabled) { background: rgba(248,113,113,0.10); }
+.tg-btn-danger-ghost { background: transparent; color: var(--accent-red); border: 1px solid rgba(248,113,113,0.20); font-size: 10px; }
+.tg-btn-danger-ghost:hover:not(:disabled) { background: rgba(248,113,113,0.08); }
 
 .tg-btn-add {
   background: var(--bg-card);
@@ -368,7 +368,7 @@
   border-radius: 50%;
   flex-shrink: 0;
 }
-.tg-status-dot.active { background: #28c840; box-shadow: 0 0 5px #28c840aa; }
+.tg-status-dot.active { background: var(--accent-green); box-shadow: 0 0 5px rgba(74,222,128,0.67); }
 .tg-status-dot.inactive { background: var(--border-primary); }
 
 /* ─── Icon button ─────────────────────────────────────────────────────────── */
@@ -395,7 +395,7 @@
   font-size: 11px;
   padding: 2px 6px;
   cursor: pointer;
-  font-family: monospace;
+  font-family: var(--font-ui);
   outline: none;
   max-width: 110px;
 }
@@ -418,11 +418,11 @@
   transition: background 0.15s, color 0.15s, border-color 0.15s;
   white-space: nowrap;
 }
-.tg-agent-chip:hover { background: var(--border-secondary); color: var(--text-secondary); border-color: #555; }
+.tg-agent-chip:hover { background: var(--border-secondary); color: var(--text-secondary); border-color: var(--border-primary); }
 .tg-agent-chip.cc {
   background: rgba(79,195,247,0.10);
   color: var(--accent-cyan);
-  border-color: #29b6f644;
+  border-color: rgba(79,195,247,0.27);
 }
 .tg-agent-chip.cc:hover { background: rgba(79,195,247,0.16); }
 
@@ -456,7 +456,7 @@
   transition: background 0.1s, border-color 0.1s;
   gap: 8px;
 }
-.tg-session-option:hover { background: var(--bg-header); border-color: #29b6f655; }
+.tg-session-option:hover { background: var(--bg-hover); border-color: rgba(79,195,247,0.33); }
 
 .tg-session-title {
   font-size: 11px;
@@ -481,7 +481,7 @@
 .tg-btn-link-active {
   background: rgba(79,195,247,0.10);
   color: var(--accent-cyan);
-  border: 1px solid #29b6f644;
+  border: 1px solid rgba(79,195,247,0.27);
 }
 .tg-btn-link-active:hover:not(:disabled) { background: rgba(79,195,247,0.16); }
 
@@ -525,12 +525,13 @@
 
 .access-config button {
   float: right;
-  background: rgba(74,222,128,0.12);
-  border: 1px solid #3a6a3a;
+  background: rgba(74,222,128,0.10);
+  border: 1px solid rgba(74,222,128,0.25);
   border-radius: 4px;
-  color: #8fc88f;
+  color: var(--accent-green);
   padding: 5px 14px;
   font-size: 0.8rem;
+  font-family: var(--font-ui);
   cursor: pointer;
 }
 
