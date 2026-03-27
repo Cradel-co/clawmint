@@ -60,6 +60,9 @@ const _modulesReady = (async function loadModules() {
     authService  = _c.authService;
     usersRepo    = _c.usersRepo;
     tgMsgsRepo   = _c.tgMsgsRepo;
+    // El eventBus del bootstrap es el que usan TelegramBot y otros módulos
+    // para emitir eventos internos. El legacy require('./events') es distinto.
+    if (_c.eventBus) events = _c.eventBus;
     try {
       const { createMcpRouter } = require('./mcp');
       mcpRouter = createMcpRouter({ sessionManager: _c.sessionManager, memory: _c.memory, scheduler: _c.scheduler, usersRepo: _c.usersRepo });
