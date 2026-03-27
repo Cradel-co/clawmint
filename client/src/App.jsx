@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useReducer, lazy, Suspense } from 'react';
-import { MessageCircle, Settings, Plug, Users, Bot, Sun, Moon, Terminal } from 'lucide-react';
+import { MessageCircle, Settings, Plug, Users, Bot, Sun, Moon, Terminal, BookUser } from 'lucide-react';
 import TabBar from './components/TabBar.jsx';
 import CommandBar from './components/CommandBar.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
@@ -13,6 +13,7 @@ import { apiFetch } from './authUtils';
 import './App.css';
 import './components/AgentsPanel.css';
 import './components/TelegramPanel.css';
+import './components/ContactsPanel.css';
 import './components/WebChatPanel.css';
 import './components/ProvidersPanel.css';
 
@@ -23,6 +24,7 @@ const AgentsPanel = lazy(() => import('./components/AgentsPanel.jsx'));
 const ProvidersPanel = lazy(() => import('./components/ProvidersPanel.jsx'));
 const McpsPanel = lazy(() => import('./components/McpsPanel.jsx'));
 const WebChatPanel = lazy(() => import('./components/WebChatPanel.jsx'));
+const ContactsPanel = lazy(() => import('./components/ContactsPanel.jsx'));
 
 let nextId = 0;
 
@@ -62,6 +64,7 @@ const PANELS = [
   { key: 'mcps', icon: Plug, label: 'MCPs' },
   { key: 'agents', icon: Users, label: 'Agentes personalizados' },
   { key: 'telegram', icon: Bot, label: 'Panel de Telegram' },
+  { key: 'contacts', icon: BookUser, label: 'Contactos' },
 ];
 
 function AppContent() {
@@ -269,6 +272,10 @@ function AppContent() {
 
             {activePanel === 'chat' && (
               <WebChatPanel onClose={() => dispatchPanel({ type: 'close' })} />
+            )}
+
+            {activePanel === 'contacts' && (
+              <ContactsPanel onClose={() => dispatchPanel({ type: 'close' })} />
             )}
           </ErrorBoundary>
         </Suspense>
