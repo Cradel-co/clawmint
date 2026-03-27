@@ -124,7 +124,7 @@ function SkillsSection() {
   const [error, setError] = useState('');
 
   const loadSkills = useCallback(() => {
-    apiFetch(SKILLS_API).then(r => r.json()).then(setSkillsList).catch(() => setError('Error cargando skills'));
+    apiFetch(SKILLS_API).then(r => r.json()).then(data => setSkillsList(Array.isArray(data) ? data : [])).catch(() => setError('Error cargando skills'));
   }, []);
 
   useEffect(() => { loadSkills(); }, [loadSkills]);
