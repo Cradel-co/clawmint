@@ -416,6 +416,12 @@ class TelegramBot {
       }
       return;
     }
+    if (msg.document) {
+      if (this._mediaHandler) {
+        await this._mediaHandler.handleDocument(this, msg);
+      }
+      return;
+    }
     if (!msg.text) return;
     await this._handleMessage(msg);
   }
