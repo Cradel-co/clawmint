@@ -3,9 +3,49 @@
 /**
  * mcp/tools/contacts.js — Tools MCP para agenda de contactos.
  *
- * Expone: contact_add, contact_list, contact_info, contact_update, contact_delete, contact_link
+ * Expone: contact_add, contact_list, contact_info, contact_update, contact_delete, contact_link, contact_send_message
  * Usa ctx.usersRepo (server/storage/UsersRepository.js).
  */
+
+const http = require('http');
+
+const API_BASE = `http://localhost:${process.env.PORT || 3002}`;
+
+let _internalToken = null;
+function _getInternalToken() {
+  if (!_internalToken) {
+    _internalToken = require('../../middleware/authMiddleware').INTERNAL_TOKEN;
+  }
+  return _internalToken;
+}
+
+function _apiPost(path, body) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(`${API_BASE}${path}`);
+    const data = JSON.stringify(body);
+    const options = {
+      hostname: url.hostname,
+      port: url.port,
+      path: url.pathname + url.search,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(data),
+        'X-Internal-Token': _getInternalToken(),
+      },
+    };
+    const req = http.request(options, (res) => {
+      let raw = '';
+      res.on('data', c => { raw += c; });
+      res.on('end', () => {
+        try { resolve(JSON.parse(raw)); } catch { resolve(raw); }
+      });
+    });
+    req.on('error', reject);
+    req.write(data);
+    req.end();
+  });
+}
 
 function _requireUsers(ctx) {
   if (!ctx.usersRepo) throw new Error('Módulo de usuarios no disponible');
@@ -237,4 +277,51 @@ const CONTACT_LINK = {
   },
 };
 
-module.exports = [CONTACT_ADD, CONTACT_LIST, CONTACT_INFO, CONTACT_UPDATE, CONTACT_DELETE, CONTACT_LINK];
+const CONTACT_SEND_MESSAGE = {
+  name: 'contact_send_message',
+  description: 'Enviar un mensaje de Telegram a un contacto vinculado. El contacto debe tener un usuario del sistema con identidad de Telegram.',
+  params: {
+    id:   '?string — UUID del contacto',
+    name: '?string — buscar contacto por nombre',
+    text: 'string — texto del mensaje a enviar',
+    bot:  '?string — key del bot a usar (default: el bot del contexto actual)',
+  },
+
+  async execute(args = {}, ctx = {}) {
+    _requireUsers(ctx);
+    if (!args.text) return 'Error: parámetro text requerido.';
+
+    const ownerId = _getOwnerId(ctx);
+    if (!ownerId) return 'Error: no se pudo identificar al usuario.';
+
+    // Resolver contacto
+    let contact = null;
+    if (args.id) {
+      contact = ctx.usersRepo.getContact(args.id);
+    } else if (args.name) {
+      const results = ctx.usersRepo.searchContacts(ownerId, args.name);
+      contact = results[0] || null;
+    }
+    if (!contact || contact.owner_id !== ownerId) return 'Error: contacto no encontrado.';
+    if (!contact.user_id) return `Error: el contacto "${contact.name}" no está vinculado a un usuario del sistema. Usá contact_link primero.`;
+
+    // Obtener identidad de Telegram del usuario vinculado
+    const user = ctx.usersRepo.getById(contact.user_id);
+    if (!user) return 'Error: usuario vinculado no encontrado.';
+
+    const tgIdentity = (user.identities || []).find(i => i.channel === 'telegram');
+    if (!tgIdentity) return `Error: el usuario vinculado "${user.name}" no tiene identidad de Telegram.`;
+
+    const chatId = tgIdentity.identifier;
+    const botKey = args.bot || ctx.botKey || 'chibi2026_bot';
+
+    const result = await _apiPost(`/api/telegram/bots/${botKey}/chats/${chatId}/message`, {
+      text: args.text,
+    });
+
+    if (result.error) return `Error enviando mensaje: ${result.error}`;
+    return `✅ Mensaje enviado a ${contact.name} (message_id: ${result.message_id})`;
+  },
+};
+
+module.exports = [CONTACT_ADD, CONTACT_LIST, CONTACT_INFO, CONTACT_UPDATE, CONTACT_DELETE, CONTACT_LINK, CONTACT_SEND_MESSAGE];
