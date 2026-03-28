@@ -119,8 +119,8 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
       }
     });
 
-    const handleResize = () => {
-      if (!active || !containerRef.current?.offsetWidth) return;
+    const doFit = () => {
+      if (!containerRef.current?.offsetWidth || !containerRef.current?.offsetHeight) return;
       fitAddon.fit();
       const ws = wsRef.current;
       if (ws && ws.readyState === WebSocket.OPEN) {
@@ -128,10 +128,15 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
       }
     };
 
-    window.addEventListener('resize', handleResize);
+    // ResizeObserver para detectar cambios de tamaño del contenedor
+    // (sidebar toggle, split mode, lazy mount, window resize)
+    const ro = new ResizeObserver(() => {
+      requestAnimationFrame(doFit);
+    });
+    if (containerRef.current) ro.observe(containerRef.current);
 
     return () => {
-      window.removeEventListener('resize', handleResize);
+      ro.disconnect();
       clearTimeout(reconnectTimerRef.current);
       manualCloseRef.current = true;
       wsRef.current?.close();
@@ -143,10 +148,8 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
   // Cuando este panel se vuelve activo, abrir terminal si es necesario y re-ajustar el tamaño
   useEffect(() => {
     if (active && fitAddonRef.current && xtermRef.current) {
-      // Esperar al siguiente frame para que el DOM se actualice antes de medir
       const rafId = requestAnimationFrame(() => {
         if (!containerRef.current?.offsetWidth) return;
-        // Si el terminal no fue abierto aún (contenedor tenía display:none al montar), abrirlo ahora
         if (!xtermRef.current.element) {
           xtermRef.current.open(containerRef.current);
         }
@@ -159,6 +162,8 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
             rows: xtermRef.current.rows,
           }));
         }
+        // Segundo fit después de que el layout se estabilice
+        setTimeout(() => fitAddonRef.current?.fit(), 100);
       });
       return () => cancelAnimationFrame(rafId);
     }
