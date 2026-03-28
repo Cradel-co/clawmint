@@ -28,7 +28,7 @@ logger.info('HOME:', process.env.HOME);
 
 // ── Carga de módulos (async por sql.js WASM) ─────────────────────────────────
 
-let sessionManager, telegram, webChannel, agents, skills, events, memory, providerConfig, providersModule, consolidator, convSvc, mcps, authService, usersRepo;
+let sessionManager, telegram, webChannel, agents, skills, events, memory, providerConfig, providersModule, consolidator, convSvc, mcps, authService, usersRepo, limitsRepo;
 let mcpRouter = null;
 let nodrizaInstance = null;
 
@@ -59,6 +59,7 @@ const _modulesReady = (async function loadModules() {
     convSvc      = _c.convSvc;
     authService  = _c.authService;
     usersRepo    = _c.usersRepo;
+    limitsRepo   = _c.limitsRepo;
     try {
       const { createMcpRouter } = require('./mcp');
       mcpRouter = createMcpRouter({ sessionManager: _c.sessionManager, memory: _c.memory, scheduler: _c.scheduler, usersRepo: _c.usersRepo });
@@ -150,6 +151,7 @@ _modulesReady.then(() => {
   app.use('/api/voice-providers', requireAuth, require('./routes/voice-providers')({}));
   app.use('/api/nodriza',         requireAuth, require('./routes/nodriza')({ nodrizaInstance, getDataChannelHandler: () => startAISessionForDataChannel }));
   app.use('/api/contacts',        requireAuth, require('./routes/contacts')({ usersRepo }));
+  app.use('/api/limits',          requireAuth, require('./routes/limits')({ limitsRepo }));
 
   // Montar MCP router si está disponible
   if (mcpRouter) app.use('/mcp', mcpRouter);
