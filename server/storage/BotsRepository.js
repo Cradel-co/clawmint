@@ -148,17 +148,8 @@ class BotsRepository {
    */
   save(bots) {
     if (!this._db) return;
-
-    const keys = bots.map(b => b.key);
     for (const bot of bots) {
       this._upsertBot(bot);
-    }
-    // Eliminar bots que ya no están en memoria
-    if (keys.length) {
-      const placeholders = keys.map(() => '?').join(',');
-      this._db.prepare(`DELETE FROM bots WHERE key NOT IN (${placeholders})`).run(...keys);
-    } else {
-      this._db.exec('DELETE FROM bots');
     }
   }
 
@@ -223,6 +214,17 @@ class BotsRepository {
   updateOffset(key, offset) {
     if (!this._db) return;
     this._db.prepare('UPDATE bots SET "offset" = ? WHERE key = ?').run(offset, key);
+  }
+
+  /**
+   * Elimina un bot por key.
+   * @param {string} key
+   * @returns {boolean}
+   */
+  remove(key) {
+    if (!this._db) return false;
+    const result = this._db.prepare('DELETE FROM bots WHERE key = ?').run(key);
+    return result.changes > 0;
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────

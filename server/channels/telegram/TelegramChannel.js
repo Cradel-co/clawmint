@@ -220,7 +220,8 @@ class TelegramChannel extends BaseChannel {
     if (!bot) return false;
     await bot.stop();
     this.bots.delete(key);
-    this._saveFile();
+    if (this._botsRepo) this._botsRepo.remove(key);
+    else this._saveFile();
     return true;
   }
 
