@@ -17,31 +17,37 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
   const inputRef = useRef(null);
 
   useEffect(() => {
+    // Leer colores del tema CSS
+    const styles = getComputedStyle(document.documentElement);
+    const v = (name) => styles.getPropertyValue(name).trim();
+
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 14,
       fontFamily: '"Cascadia Code", "Fira Code", "Courier New", monospace',
       theme: {
-        background: '#1a1a1a',
-        foreground: '#f0f0f0',
-        cursor: '#f0f0f0',
-        selectionBackground: '#555',
-        black: '#1a1a1a',
-        red: '#ff5f57',
-        green: '#28c840',
-        yellow: '#febc2e',
-        blue: '#007aff',
-        magenta: '#c678dd',
-        cyan: '#56b6c2',
-        white: '#f0f0f0',
-        brightBlack: '#666',
-        brightRed: '#ff6b6b',
-        brightGreen: '#5af78e',
-        brightYellow: '#f4f99d',
-        brightBlue: '#caa9fa',
-        brightMagenta: '#ff92d0',
-        brightCyan: '#9aedfe',
-        brightWhite: '#ffffff',
+        background:          v('--bg-primary')   || '#0d1117',
+        foreground:          v('--text-primary')  || '#e8edf2',
+        cursor:              v('--accent-cyan')   || '#4fc3f7',
+        cursorAccent:        v('--bg-primary')    || '#0d1117',
+        selectionBackground: v('--bg-active')     || '#1a2d42',
+        selectionForeground: v('--text-primary')  || '#e8edf2',
+        black:               v('--bg-primary')    || '#0d1117',
+        red:                 v('--accent-red')    || '#f87171',
+        green:               v('--accent-green')  || '#4ade80',
+        yellow:              v('--accent-yellow') || '#fbbf24',
+        blue:                v('--accent-blue')   || '#5b8df0',
+        magenta:             v('--accent-purple') || '#a78bfa',
+        cyan:                v('--accent-cyan')   || '#4fc3f7',
+        white:               v('--text-primary')  || '#e8edf2',
+        brightBlack:         v('--text-muted')    || '#637282',
+        brightRed:           '#ff6b6b',
+        brightGreen:         '#5af78e',
+        brightYellow:        '#f4f99d',
+        brightBlue:          '#93c5fd',
+        brightMagenta:       '#c4b5fd',
+        brightCyan:          '#67e8f9',
+        brightWhite:         '#ffffff',
       },
       scrollback: 1000,
     });
@@ -198,8 +204,8 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
           display: 'flex',
           gap: '6px',
           padding: '6px 8px',
-          background: '#111',
-          borderTop: '1px solid #333',
+          background: 'var(--bg-secondary)',
+          borderTop: '1px solid var(--border-primary)',
           flexShrink: 0,
         }}
       >
@@ -219,24 +225,24 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
           spellCheck={false}
           style={{
             flex: 1,
-            background: '#1e1e1e',
-            color: '#f0f0f0',
-            border: '1px solid #444',
+            background: 'var(--bg-input)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--border-primary)',
             borderRadius: '4px',
             padding: '6px 10px',
             fontFamily: '"Cascadia Code", "Fira Code", "Courier New", monospace',
             fontSize: '13px',
             outline: 'none',
           }}
-          onFocus={(e) => (e.target.style.borderColor = '#007aff')}
-          onBlur={(e) => (e.target.style.borderColor = '#444')}
+          onFocus={(e) => (e.target.style.borderColor = 'var(--accent-cyan)')}
+          onBlur={(e) => (e.target.style.borderColor = 'var(--border-primary)')}
         />
         <button
           onClick={sendText}
           style={{
             padding: '6px 14px',
-            background: '#007aff',
-            color: '#fff',
+            background: 'var(--btn-primary-bg)',
+            color: 'var(--btn-primary-text)',
             border: 'none',
             borderRadius: '4px',
             cursor: 'pointer',

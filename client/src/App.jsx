@@ -413,7 +413,7 @@ function AppContent() {
             <div className={splitMode ? 'split-layout' : 'terminal-body'} ref={splitContainerRef}>
 
               {/* Panel izquierdo: Terminal */}
-              <main className={splitMode ? 'split-panel' : undefined} style={splitMode ? { width: `${splitRatio}%` } : undefined}>
+              <main className={splitMode ? 'split-panel' : 'terminal-main'} style={splitMode ? { width: `${splitRatio}%` } : undefined}>
                 <Suspense fallback={<Skeleton lines={5} style={{ padding: '24px' }} />}>
                   {sessions.map((s) => (
                     <TerminalPanel
