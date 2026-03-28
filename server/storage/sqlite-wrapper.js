@@ -102,6 +102,7 @@ class StatementWrapper {
 // ── Database wrapper ─────────────────────────────────────────────────────────
 
 const SAVE_DELAY_MS = 500; // debounce de auto-save
+const _instances = new Set(); // registro global para flush en shutdown
 
 class DatabaseWrapper {
   /**
@@ -122,6 +123,8 @@ class DatabaseWrapper {
     } else {
       this._db = new _SQL.Database();
     }
+
+    if (!this._inMemory) _instances.add(this);
   }
 
   /**
@@ -175,12 +178,13 @@ class DatabaseWrapper {
    */
   close() {
     if (this._closed) return;
-    this._closed = true;
+    _instances.delete(this);
     if (this._saveTimer) {
       clearTimeout(this._saveTimer);
       this._saveTimer = null;
     }
     this._saveToDisk();
+    this._closed = true;
     this._db.close();
   }
 
@@ -236,6 +240,17 @@ async function initialize() {
 function isInitialized() {
   return _SQL !== null;
 }
+
+// ── Flush en shutdown ────────────────────────────────────────────────────────
+
+function _flushAll() {
+  for (const db of _instances) {
+    try { db._saveToDisk(); } catch {}
+  }
+}
+
+process.once('SIGTERM', _flushAll);
+process.once('SIGINT', _flushAll);
 
 // Re-exportar la clase como default (drop-in de better-sqlite3)
 // Uso: const Database = require('./sqlite-wrapper');
