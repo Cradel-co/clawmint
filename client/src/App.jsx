@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect, lazy, Suspense } from 'react';
 import {
   Terminal, MessageCircle, Send, BookUser, Settings,
-  Plug, Bot, Sun, Moon, ChevronLeft, ChevronRight,
+  Plug, Bot, Gauge, Sun, Moon, ChevronLeft, ChevronRight,
   PanelsLeftRight, LogIn,
 } from 'lucide-react';
 import TabBar from './components/TabBar.jsx';
@@ -23,6 +23,7 @@ const ProvidersPanel = lazy(() => import('./components/ProvidersPanel.jsx'));
 const McpsPanel      = lazy(() => import('./components/McpsPanel.jsx'));
 const WebChatPanel   = lazy(() => import('./components/WebChatPanel.jsx'));
 const ContactsPanel  = lazy(() => import('./components/ContactsPanel.jsx'));
+const LimitsPanel    = lazy(() => import('./components/LimitsPanel.jsx'));
 
 let nextId = 0;
 
@@ -54,6 +55,7 @@ const CONFIG_TABS = [
   { key: 'agents',    Icon: Bot,      label: 'Agentes'  },
   { key: 'providers', Icon: Settings, label: 'Providers' },
   { key: 'mcps',      Icon: Plug,     label: 'MCPs'     },
+  { key: 'limits',    Icon: Gauge,    label: 'Límites'  },
 ];
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
@@ -168,6 +170,7 @@ function ConfigSection() {
             {tab === 'agents'    && <AgentsPanel    onClose={null} embedded />}
             {tab === 'providers' && <ProvidersPanel onClose={null} embedded />}
             {tab === 'mcps'      && <McpsPanel      onClose={null} embedded />}
+            {tab === 'limits'    && <LimitsPanel    onClose={null} embedded />}
           </Suspense>
         </ErrorBoundary>
       </div>
