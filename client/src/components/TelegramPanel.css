@@ -19,8 +19,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  background: #252525;
-  border-bottom: 1px solid var(--border-secondary);
+  background: linear-gradient(90deg, rgba(91,141,240,0.07) 0%, var(--bg-card) 50%);
+  border-bottom: 1px solid var(--border-primary);
   flex-shrink: 0;
 }
 
@@ -36,13 +36,14 @@
 .tg-icon { font-size: 15px; }
 
 .tg-header-badge {
-  background: #28c84022;
+  background: rgba(74,222,128,0.10);
   color: var(--accent-green);
-  border: 1px solid #28c84044;
+  border: 1px solid rgba(74,222,128,0.27);
   border-radius: 10px;
   font-size: 10px;
   font-weight: 600;
   padding: 1px 7px;
+  font-family: var(--font-ui);
 }
 
 .tg-close {
@@ -111,7 +112,7 @@
 }
 
 .tg-bot-card.running {
-  border-color: #28c84033;
+  border-color: rgba(74,222,128,0.20);
 }
 
 .tg-bot-header {
@@ -119,7 +120,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 9px 12px;
-  background: #252525;
+  background: var(--bg-card);
   cursor: pointer;
   user-select: none;
   transition: background 0.1s;
@@ -172,13 +173,20 @@
 /* ─── Chat row ────────────────────────────────────────────────────────────── */
 
 .tg-chat-row {
-  background: #252525;
-  border: 1px solid var(--bg-hover);
+  background: var(--bg-card);
+  border: 1px solid var(--border-primary);
+  border-left: 3px solid var(--accent-blue);
   border-radius: 6px;
   padding: 8px 10px;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.tg-chat-row:hover {
+  background: var(--bg-hover);
+  border-color: rgba(91,141,240,0.35);
+  border-left-color: var(--accent-blue);
 }
 
 .tg-chat-top {
@@ -230,7 +238,7 @@
 /* ─── Formulario agregar ──────────────────────────────────────────────────── */
 
 .tg-add-form {
-  background: #252525;
+  background: var(--bg-card);
   border: 1px solid var(--border-secondary);
   border-radius: 8px;
   padding: 12px;
@@ -318,35 +326,39 @@
 .tg-btn-sm { padding: 4px 9px; font-size: 11px; }
 
 .tg-btn-primary { background: var(--accent-cyan); color: #000; flex: 1; }
-.tg-btn-primary:hover:not(:disabled) { background: #4fc3f7; }
+.tg-btn-primary:hover:not(:disabled) { opacity: 0.88; }
 
 .tg-btn-ghost { background: var(--bg-hover); color: var(--text-secondary); border: 1px solid var(--border-primary); }
 .tg-btn-ghost:hover:not(:disabled) { background: var(--border-secondary); color: var(--text-primary); }
 
-.tg-btn-start { background: #28c84022; color: #28c840; border: 1px solid #28c84044; }
-.tg-btn-start:hover:not(:disabled) { background: #28c84033; }
+.tg-btn-start { background: rgba(74,222,128,0.10); color: var(--accent-green); border: 1px solid rgba(74,222,128,0.27); }
+.tg-btn-start:hover:not(:disabled) { background: rgba(74,222,128,0.18); }
 
-.tg-btn-stop { background: #febc2e22; color: #febc2e; border: 1px solid #febc2e44; }
-.tg-btn-stop:hover:not(:disabled) { background: #febc2e33; }
+.tg-btn-stop { background: rgba(251,191,36,0.10); color: var(--accent-yellow); border: 1px solid rgba(251,191,36,0.27); }
+.tg-btn-stop:hover:not(:disabled) { background: rgba(251,191,36,0.18); }
 
-.tg-btn-delete { background: transparent; color: #ff6b6b; border: 1px solid #4a2020; }
-.tg-btn-delete:hover:not(:disabled) { background: #3a1a1a; }
+.tg-btn-delete { background: transparent; color: var(--accent-red); border: 1px solid rgba(248,113,113,0.20); }
+.tg-btn-delete:hover:not(:disabled) { background: rgba(248,113,113,0.08); }
 
-.tg-btn-danger-ghost { background: transparent; color: #ff6b6b; border: 1px solid #4a2020; font-size: 10px; }
-.tg-btn-danger-ghost:hover:not(:disabled) { background: #3a1a1a; }
+.tg-btn-danger-ghost { background: transparent; color: var(--accent-red); border: 1px solid rgba(248,113,113,0.20); font-size: 10px; }
+.tg-btn-danger-ghost:hover:not(:disabled) { background: rgba(248,113,113,0.08); }
 
 .tg-btn-add {
-  background: #252525;
+  background: var(--bg-card);
   color: var(--text-muted);
-  border: 1px dashed #3a3a3a;
+  border: 1px dashed var(--border-primary);
   width: 100%;
   text-align: center;
   padding: 9px;
   border-radius: 7px;
   font-size: 12px;
+  font-family: var(--font-ui);
   transition: color 0.15s, border-color 0.15s;
 }
-.tg-btn-add:hover { color: #29b6f6; border-color: #29b6f655; }
+.tg-btn-add:hover {
+  color: var(--accent-blue);
+  border-color: rgba(91,141,240,0.4);
+}
 
 /* ─── Status dot ──────────────────────────────────────────────────────────── */
 
@@ -356,7 +368,7 @@
   border-radius: 50%;
   flex-shrink: 0;
 }
-.tg-status-dot.active { background: #28c840; box-shadow: 0 0 5px #28c840aa; }
+.tg-status-dot.active { background: var(--accent-green); box-shadow: 0 0 5px rgba(74,222,128,0.67); }
 .tg-status-dot.inactive { background: var(--border-primary); }
 
 /* ─── Icon button ─────────────────────────────────────────────────────────── */
@@ -383,7 +395,7 @@
   font-size: 11px;
   padding: 2px 6px;
   cursor: pointer;
-  font-family: monospace;
+  font-family: var(--font-ui);
   outline: none;
   max-width: 110px;
 }
@@ -406,13 +418,13 @@
   transition: background 0.15s, color 0.15s, border-color 0.15s;
   white-space: nowrap;
 }
-.tg-agent-chip:hover { background: var(--border-secondary); color: var(--text-secondary); border-color: #555; }
+.tg-agent-chip:hover { background: var(--border-secondary); color: var(--text-secondary); border-color: var(--border-primary); }
 .tg-agent-chip.cc {
-  background: #29b6f622;
+  background: rgba(79,195,247,0.10);
   color: var(--accent-cyan);
-  border-color: #29b6f644;
+  border-color: rgba(79,195,247,0.27);
 }
-.tg-agent-chip.cc:hover { background: #29b6f633; }
+.tg-agent-chip.cc:hover { background: rgba(79,195,247,0.16); }
 
 /* ─── Session picker ──────────────────────────────────────────────────────── */
 
@@ -436,7 +448,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #252525;
+  background: var(--bg-card);
   border: 1px solid var(--bg-hover);
   border-radius: 4px;
   padding: 5px 8px;
@@ -444,7 +456,7 @@
   transition: background 0.1s, border-color 0.1s;
   gap: 8px;
 }
-.tg-session-option:hover { background: var(--bg-header); border-color: #29b6f655; }
+.tg-session-option:hover { background: var(--bg-hover); border-color: rgba(79,195,247,0.33); }
 
 .tg-session-title {
   font-size: 11px;
@@ -467,11 +479,11 @@
 /* ─── Link active button ──────────────────────────────────────────────────── */
 
 .tg-btn-link-active {
-  background: #29b6f622;
+  background: rgba(79,195,247,0.10);
   color: var(--accent-cyan);
-  border: 1px solid #29b6f644;
+  border: 1px solid rgba(79,195,247,0.27);
 }
-.tg-btn-link-active:hover:not(:disabled) { background: #29b6f633; }
+.tg-btn-link-active:hover:not(:disabled) { background: rgba(79,195,247,0.16); }
 
 /* ─── Access config ───────────────────────────────────────────────────────── */
 
@@ -513,12 +525,13 @@
 
 .access-config button {
   float: right;
-  background: #2a4a2a;
-  border: 1px solid #3a6a3a;
+  background: rgba(74,222,128,0.10);
+  border: 1px solid rgba(74,222,128,0.25);
   border-radius: 4px;
-  color: #8fc88f;
+  color: var(--accent-green);
   padding: 5px 14px;
   font-size: 0.8rem;
+  font-family: var(--font-ui);
   cursor: pointer;
 }
 

@@ -119,6 +119,32 @@ class UsersRepository {
   }
 
   /**
+   * Busca un usuario de Telegram por su username (@handle).
+   * El username está guardado en el campo metadata JSON de user_identities.
+   */
+  findByTelegramUsername(username) {
+    if (!this._db || !username) return null;
+    const clean = username.replace(/^@/, '').toLowerCase();
+    const rows = this._db.prepare(`
+      SELECT u.*, ui.metadata
+      FROM user_identities ui
+      JOIN users u ON u.id = ui.user_id
+      WHERE ui.channel = 'telegram' AND ui.metadata IS NOT NULL
+    `).all();
+    for (const row of rows) {
+      try {
+        const meta = JSON.parse(row.metadata);
+        if (meta.username && meta.username.toLowerCase() === clean) {
+          const user = { id: row.id, name: row.name, role: row.role, created_at: row.created_at, updated_at: row.updated_at };
+          user.identities = this.getIdentities(user.id);
+          return user;
+        }
+      } catch { /* metadata no es JSON válido */ }
+    }
+    return null;
+  }
+
+  /**
    * Busca un usuario por identidad; si no existe, crea usuario + identidad.
    * Idempotente: si ya existe la identidad, retorna el usuario sin modificar.
    */

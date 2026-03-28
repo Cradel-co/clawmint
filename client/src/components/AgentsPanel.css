@@ -25,8 +25,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--border-secondary);
-  background: var(--bg-input);
+  border-bottom: 1px solid var(--border-primary);
+  background: linear-gradient(90deg, rgba(79,195,247,0.07) 0%, var(--bg-secondary) 50%);
 }
 
 .ap-header-title {
@@ -66,10 +66,17 @@
 /* ─── Agent rows ─── */
 
 .ap-agent-row {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-secondary);
+  background: var(--bg-card);
+  border: 1px solid var(--border-primary);
+  border-left: 3px solid var(--accent-cyan);
   border-radius: 6px;
   padding: 10px 12px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.ap-agent-row:hover {
+  background: var(--bg-hover);
+  border-color: rgba(79,195,247,0.30);
+  border-left-color: var(--accent-cyan);
 }
 
 .ap-agent-top {
@@ -82,8 +89,8 @@
 .ap-agent-key {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-secondary);
-  font-family: monospace;
+  color: var(--accent-cyan);
+  font-family: var(--font-mono);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -101,7 +108,7 @@
 
 .ap-agent-prompt {
   font-size: 11px;
-  color: #6a9fb5;
+  color: var(--text-muted);
   font-style: italic;
   margin: 4px 0 0;
   line-height: 1.4;
@@ -125,7 +132,7 @@
 
 .ap-icon-btn:hover { opacity: 1; background: var(--border-secondary); }
 
-.ap-icon-btn-danger:hover { background: #3a1515; }
+.ap-icon-btn-danger:hover { background: rgba(248,113,113,0.10); }
 
 /* ─── Form ─── */
 
@@ -192,7 +199,7 @@
 
 .ap-error {
   font-size: 11px;
-  color: #f87171;
+  color: var(--accent-red);
   margin: 6px 0 0;
 }
 
@@ -241,7 +248,7 @@
   transition: all 0.15s;
   margin-top: 4px;
 }
-.ap-btn-add:hover { background: #1a2235; border-color: var(--accent-blue); }
+.ap-btn-add:hover { background: rgba(79,195,247,0.10); border-color: var(--accent-blue); }
 
 /* ─── Empty state ─── */
 

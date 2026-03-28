@@ -13,7 +13,7 @@ import ChatInput from './chat/ChatInput.jsx';
 import AuthPanel from './AuthPanel.jsx';
 import './WebChatPanel.css';
 
-export default function WebChatPanel({ onClose }) {
+export default function WebChatPanel({ onClose, embedded, onNewMessage, onStateChange }) {
   const [providers, setProviders] = useState([]);
   const [agentsList, setAgentsList] = useState([]);
 
@@ -33,7 +33,7 @@ export default function WebChatPanel({ onClose }) {
     addUserMessage,
     clearMessages,
     setError,
-  } = useChat({ onAuthMessage: handleWsAuthMessage });
+  } = useChat({ onAuthMessage: handleWsAuthMessage, onNewMessage });
 
   const { connected, send, getSessionId, reconnect, wsRef } = useChatSocket({
     onMessage: handleWsMessage,
@@ -42,6 +42,9 @@ export default function WebChatPanel({ onClose }) {
 
   // Pasar wsRef al AuthContext para refresh proactivo
   useEffect(() => { setWsRef(wsRef.current); }, [connected, setWsRef, wsRef]);
+
+  // Reportar cwd + provider al padre (para context bar en split mode)
+  useEffect(() => { onStateChange?.({ cwd, provider }); }, [cwd, provider]); // eslint-disable-line
 
   // ── Cargar providers y agentes ─────────────────────────────────────────────
 
@@ -168,6 +171,7 @@ export default function WebChatPanel({ onClose }) {
         onClear={clearChat}
         onClose={onClose}
         onSettingsChange={handleSettingsChange}
+        embedded={embedded}
       />
 
       <StatusBar

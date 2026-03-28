@@ -6,7 +6,7 @@
   display: flex;
   width: 100vw;
   height: 100vh;
-  background: #0d0d0d;
+  background: var(--bg-primary);
 }
 
 /* Panel izquierdo — branding */
@@ -17,8 +17,8 @@
   justify-content: center;
   align-items: flex-start;
   padding: 3rem 4rem;
-  background: linear-gradient(135deg, #0f1923 0%, #141e2e 60%, #0d1520 100%);
-  border-right: 1px solid #1e2d3d;
+  background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-header) 60%, var(--bg-primary) 100%);
+  border-right: 1px solid var(--border-primary);
   position: relative;
   overflow: hidden;
 }
@@ -37,28 +37,31 @@
 .auth-brand-logo {
   font-size: 2rem;
   font-weight: 800;
-  color: #4fc3f7;
+  color: var(--accent-cyan);
   letter-spacing: -1px;
   margin-bottom: 0.5rem;
+  font-family: var(--font-ui);
 }
 
 .auth-brand-logo span {
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .auth-brand-tagline {
   font-size: 1.25rem;
-  color: #e0e0e0;
+  color: var(--text-primary);
   font-weight: 600;
   margin-bottom: 0.75rem;
   line-height: 1.4;
+  font-family: var(--font-ui);
 }
 
 .auth-brand-desc {
   font-size: 0.9rem;
-  color: #7a8a9a;
+  color: var(--text-muted);
   line-height: 1.7;
   max-width: 380px;
+  font-family: var(--font-ui);
 }
 
 .auth-brand-features {
@@ -72,8 +75,9 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  color: #8fa8be;
+  color: var(--text-secondary);
   font-size: 0.85rem;
+  font-family: var(--font-ui);
 }
 
 .auth-brand-feature-icon {
@@ -81,11 +85,11 @@
   height: 28px;
   border-radius: 6px;
   background: rgba(79,195,247,0.12);
-  border: 1px solid rgba(79,195,247,0.2);
+  border: 1px solid var(--border-accent);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #4fc3f7;
+  color: var(--accent-cyan);
   font-size: 0.85rem;
   flex-shrink: 0;
 }
@@ -99,21 +103,23 @@
   justify-content: center;
   align-items: stretch;
   padding: 2.5rem 3rem;
-  background: #111519;
+  background: var(--bg-card);
   overflow-y: auto;
 }
 
 .auth-panel-title {
   font-size: 1.35rem;
   font-weight: 700;
-  color: #e8eaed;
+  color: var(--text-primary);
   margin-bottom: 0.25rem;
+  font-family: var(--font-ui);
 }
 
 .auth-panel-subtitle {
   font-size: 0.82rem;
-  color: #657080;
+  color: var(--text-muted);
   margin-bottom: 2rem;
+  font-family: var(--font-ui);
 }
 
 /* Tabs */
@@ -121,7 +127,7 @@
   display: flex;
   gap: 0;
   margin-bottom: 1.5rem;
-  border-bottom: 1px solid #1e2730;
+  border-bottom: 1px solid var(--border-primary);
 }
 
 .auth-tab {
@@ -133,20 +139,21 @@
   padding: 0.6rem;
   background: none;
   border: none;
-  color: #556070;
+  color: var(--text-muted);
   font-size: 0.82rem;
+  font-family: var(--font-ui);
   cursor: pointer;
   border-bottom: 2px solid transparent;
   transition: color 0.2s, border-color 0.2s;
 }
 
 .auth-tab:hover {
-  color: #c0ccd8;
+  color: var(--text-primary);
 }
 
 .auth-tab.active {
-  color: #4fc3f7;
-  border-bottom-color: #4fc3f7;
+  color: var(--accent-cyan);
+  border-bottom-color: var(--accent-cyan);
 }
 
 /* Formulario */
@@ -165,29 +172,30 @@
 .auth-field-icon {
   position: absolute;
   left: 12px;
-  color: #4a5568;
+  color: var(--text-hint);
   pointer-events: none;
 }
 
 .auth-field input {
   width: 100%;
   padding: 0.7rem 0.75rem 0.7rem 2.2rem;
-  background: #0d1218;
-  border: 1px solid #1e2a38;
+  background: var(--bg-input);
+  border: 1px solid var(--border-primary);
   border-radius: 8px;
-  color: #c8d6e0;
+  color: var(--text-primary);
   font-size: 0.88rem;
+  font-family: var(--font-ui);
   outline: none;
-  transition: border-color 0.2s, background 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .auth-field input:focus {
-  border-color: #4fc3f7;
-  background: #0f161e;
+  border-color: rgba(79,195,247,0.5);
+  box-shadow: 0 0 0 3px rgba(79,195,247,0.08);
 }
 
 .auth-field input::placeholder {
-  color: #3a4858;
+  color: var(--text-hint);
 }
 
 .auth-toggle-pass {
@@ -195,7 +203,7 @@
   right: 10px;
   background: none;
   border: none;
-  color: #4a5568;
+  color: var(--text-hint);
   cursor: pointer;
   padding: 4px;
   display: flex;
@@ -203,11 +211,11 @@
 }
 
 .auth-toggle-pass:hover {
-  color: #8a9ab8;
+  color: var(--text-secondary);
 }
 
 .auth-error {
-  color: #f87171;
+  color: var(--accent-red);
   font-size: 0.8rem;
   padding: 0.5rem 0.75rem;
   background: rgba(248, 113, 113, 0.08);
@@ -217,8 +225,9 @@
 
 .auth-submit {
   padding: 0.75rem;
-  background: #4fc3f7;
+  background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-blue) 100%);
   color: #000;
+  font-family: var(--font-ui);
   border: none;
   border-radius: 8px;
   font-size: 0.88rem;
@@ -263,33 +272,36 @@
 }
 
 .auth-oauth-google {
-  background: #0d1218;
-  border: 1px solid #1e2a38;
-  color: #c8d6e0;
+  background: var(--bg-input);
+  border: 1px solid var(--border-primary);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
 }
 
 .auth-oauth-google:hover {
-  background: #111e2c;
+  background: var(--bg-hover);
   border-color: #4285F4;
 }
 
 .auth-oauth-github {
-  background: #161b22;
-  border: 1px solid #30363d;
-  color: #f0f6fc;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
 }
 
 .auth-oauth-github:hover {
-  background: #1c2128;
-  border-color: #6e7681;
+  background: var(--bg-hover);
+  border-color: var(--text-muted);
 }
 
 .auth-divider {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  color: #3a4858;
+  color: var(--text-hint);
   font-size: 0.75rem;
+  font-family: var(--font-ui);
   margin: 0.25rem 0;
 }
 
@@ -297,7 +309,7 @@
 .auth-divider::after {
   content: '';
   flex: 1;
-  border-top: 1px solid #1a2330;
+  border-top: 1px solid var(--border-secondary);
 }
 
 .auth-skip {
@@ -307,15 +319,16 @@
   padding: 0.5rem;
   background: none;
   border: none;
-  color: #455060;
+  color: var(--text-hint);
   font-size: 0.8rem;
+  font-family: var(--font-ui);
   cursor: pointer;
   text-align: center;
   transition: color 0.2s;
 }
 
 .auth-skip:hover {
-  color: #7a8a9a;
+  color: var(--text-muted);
   text-decoration: underline;
 }
 
