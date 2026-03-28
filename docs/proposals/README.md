@@ -15,6 +15,7 @@ Análisis y decisiones de diseño antes de implementar cambios significativos.
 | [001-refactoring-arquitectural.md](./001-refactoring-arquitectural.md) | `implementada` | 2026-03 | Desacoplamiento completo de telegram.js monolito |
 | [002-ia-local.md](./002-ia-local.md) | `propuesta` | 2026-03 | Pool de IA local con Ollama (Llama 8B, DeepSeek) |
 | [003-mcp-shell-persistente.md](./003-mcp-shell-persistente.md) | `implementada` | 2026-03 | MCP Server embebido con ShellSession — estado de shell por conversación |
+| [004-rate-limiting-configurable.md](./004-rate-limiting-configurable.md) | `propuesta` | 2026-03 | Límites configurables: rate limiting + duración de sesión CLI por scope |
 
 ---
 

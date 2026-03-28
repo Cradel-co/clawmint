@@ -24,6 +24,7 @@ const BotsRepository                = require('./storage/BotsRepository');
 const UsersRepository               = require('./storage/UsersRepository');
 const ScheduledActionsRepository    = require('./storage/ScheduledActionsRepository');
 const PendingDeliveriesRepository   = require('./storage/PendingDeliveriesRepository');
+const LimitsRepository              = require('./storage/LimitsRepository');
 const ConversationService      = require('./services/ConversationService');
 const AuthService              = require('./services/AuthService');
 const { TelegramChannel }      = require('./channels/telegram/TelegramChannel');
@@ -76,6 +77,9 @@ function createContainer() {
 
   const pendingRepo = new PendingDeliveriesRepository(db);
   pendingRepo.init();
+
+  const limitsRepo = new LimitsRepository(db);
+  limitsRepo.init();
 
   // ── Singletons de dominio ─────────────────────────────────────────────────
 
@@ -149,6 +153,7 @@ function createContainer() {
     skills,
     ClaudePrintSession,
     consolidator,
+    limitsRepo,
     logger,
   });
 
@@ -247,6 +252,7 @@ function createContainer() {
     ttsConfig,
     usersRepo,
     authService,
+    limitsRepo,
     scheduler,
   };
 
