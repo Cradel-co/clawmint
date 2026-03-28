@@ -423,6 +423,13 @@
   position: relative;
 }
 
+.terminal-main {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
 /* ── Context bar ──────────────────────────────────────────────────────────── */
 .context-bar {
   display: flex;
