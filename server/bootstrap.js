@@ -62,7 +62,8 @@ function createContainer() {
   const messagesRepo = new WebchatMessagesRepository(db);
   messagesRepo.init();
 
-  const botsRepo = new BotsRepository(path.join(__dirname, 'bots.json'));
+  const botsRepo = new BotsRepository(db, path.join(__dirname, 'bots.json'));
+  botsRepo.init();
 
   const usersRepo = new UsersRepository(db);
   usersRepo.init();

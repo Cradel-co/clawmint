@@ -356,8 +356,10 @@ class TelegramBot {
         const updates = await this._getUpdates();
 
         if (updates.length > 0) {
-          // Actualizar offset al último update recibido
+          // Actualizar offset al último update recibido (guardar ANTES de procesar
+          // para evitar re-procesar updates si el proceso muere durante el handling)
           this.offset = updates[updates.length - 1].update_id + 1;
+          if (this._onOffsetSave) this._onOffsetSave();
 
           // Agrupar updates por chatId: paralelo entre chats, serial dentro del mismo chat
           const byChat = new Map();
@@ -413,6 +415,12 @@ class TelegramBot {
     if (msg.photo) {
       if (this._mediaHandler) {
         await this._mediaHandler.handlePhoto(this, msg);
+      }
+      return;
+    }
+    if (msg.document) {
+      if (this._mediaHandler) {
+        await this._mediaHandler.handleDocument(this, msg);
       }
       return;
     }
@@ -732,6 +740,7 @@ class TelegramBot {
   toJSON() {
     return {
       key:              this.key,
+      ownerId:          this.ownerId || null,
       running:          this.running,
       botInfo:          this.botInfo,
       defaultAgent:     this.defaultAgent,
