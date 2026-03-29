@@ -76,7 +76,7 @@ function Sidebar({ section, onSection, chatBadge, telegramBadge, expanded, onTog
         <Icon size={18} aria-hidden="true" />
         <span className="sidebar-label">{label}</span>
         {badge > 0 && (
-          <span className="sidebar-badge" aria-label={`${badge} nuevos`}>{badge > 99 ? '99+' : badge}</span>
+          <span className="sidebar-badge" aria-label={`${badge} mensajes sin leer en ${label}`}>{badge > 99 ? '99+' : badge}</span>
         )}
       </button>
     );
