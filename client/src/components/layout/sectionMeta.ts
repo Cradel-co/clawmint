@@ -1,4 +1,4 @@
-import { Terminal, MessageCircle, Send, BookUser, Settings, Plug, Bot, Volume2, Network, FileText, Mic, Bell, UserCircle, Brain } from 'lucide-react';
+import { Terminal, MessageCircle, Send, BookUser, Settings, Plug, Bot, Volume2, Network, FileText, Mic, Bell, UserCircle, Brain, Gauge } from 'lucide-react';
 
 export const SECTION_META: Record<string, { Icon: typeof Terminal; label: string }> = {
   terminal: { Icon: Terminal,      label: 'Terminal'       },
@@ -15,6 +15,7 @@ export const CONFIG_TABS = [
   { key: 'agents',    Icon: Bot,      label: 'Agentes'  },
   { key: 'providers', Icon: Settings, label: 'Providers' },
   { key: 'mcps',      Icon: Plug,     label: 'MCPs'     },
+  { key: 'limits',     Icon: Gauge,    label: 'Límites'  },
   { key: 'voice',       Icon: Volume2,    label: 'TTS'      },
   { key: 'transcriber', Icon: Mic,        label: 'STT'      },
   { key: 'nodriza',     Icon: Network,    label: 'P2P'      },

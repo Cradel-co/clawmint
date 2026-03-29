@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -13,6 +13,8 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimerRef = useRef(null);
   const manualCloseRef = useRef(false);
+  const [inputValue, setInputValue] = useState('');
+  const inputRef = useRef(null);
 
   useEffect(() => {
     // Leer colores del tema CSS
@@ -177,6 +179,16 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
       return () => cancelAnimationFrame(rafId);
     }
   }, [active]);
+
+  const sendText = () => {
+    const text = inputValue.trim();
+    if (!text) return;
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'input', data: text + '\r' }));
+      setInputValue('');
+    }
+  };
 
   return (
     <div

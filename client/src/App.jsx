@@ -28,7 +28,6 @@ const TerminalPanel  = lazy(() => import('./components/TerminalPanel.jsx'));
 const TelegramPanel  = lazy(() => import('./components/TelegramPanel.jsx'));
 const WebChatPanel   = lazy(() => import('./components/WebChatPanel.jsx'));
 const ContactsPanel  = lazy(() => import('./components/ContactsPanel.jsx'));
-const LimitsPanel    = lazy(() => import('./components/LimitsPanel.jsx'));
 
 // ── App principal ─────────────────────────────────────────────────────────────
 
@@ -36,9 +35,6 @@ function AppContent() {
   const { user, handleAuth } = useAuth();
   const { section, setSection, mounted, splitMode, setSplitMode, splitRatio, setSplitRatio, wsConnected, incrementChatBadge, setSplitChatState } = useUIStore();
   const { sessions, activeId, setActiveId, openNew, closeSession, handleSessionId, handleOpenSession } = useSessionStore();
-
-  // Gate: requiere autenticación
-  if (!user) return <AuthPanel onAuth={handleAuth} onSkip={null} />;
 
   const splitRatioRef     = useRef(splitRatio);
   const splitContainerRef = useRef(null);
@@ -96,6 +92,9 @@ function AppContent() {
   }, [handleOpenSession, setSection]);
 
   const toTerminal = useCallback(() => setSection('terminal'), [setSection]);
+
+  // Gate: requiere autenticación
+  if (!user) return <AuthPanel onAuth={handleAuth} onSkip={null} />;
 
   return (
     <div className={styles.app}>

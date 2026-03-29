@@ -8,6 +8,7 @@ import styles from '../App.module.css';
 const AgentsPanel    = lazy(() => import('./AgentsPanel.jsx'));
 const ProvidersPanel = lazy(() => import('./ProvidersPanel.jsx'));
 const McpsPanel      = lazy(() => import('./McpsPanel.jsx'));
+const LimitsPanel    = lazy(() => import('./LimitsPanel.jsx'));
 const VoicePanel       = lazy(() => import('./VoicePanel.jsx'));
 const TranscriberPanel = lazy(() => import('./TranscriberPanel.jsx'));
 const NodrizaPanel     = lazy(() => import('./NodrizaPanel.jsx'));
@@ -43,6 +44,7 @@ export default function ConfigSection({ onBack }: { onBack?: () => void }) {
             {tab === 'agents'    && <AgentsPanel    onClose={null} embedded />}
             {tab === 'providers' && <ProvidersPanel onClose={null} embedded />}
             {tab === 'mcps'      && <McpsPanel      onClose={null} embedded />}
+            {tab === 'limits'    && <LimitsPanel    onClose={null} embedded />}
             {tab === 'voice'       && <VoicePanel       onClose={null} embedded />}
             {tab === 'transcriber' && <TranscriberPanel onClose={null} embedded />}
             {tab === 'nodriza'     && <NodrizaPanel     onClose={null} embedded />}
