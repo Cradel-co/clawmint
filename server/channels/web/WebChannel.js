@@ -7,6 +7,25 @@ const os     = require('os');
 const BaseChannel    = require('../BaseChannel');
 const parseButtons   = require('../parseButtons');
 
+// Patrones de texto meta/interno que la IA genera pero no deben enviarse al usuario
+const NOISE_PATTERNS = [
+  /^no\s+response\s+(requested|needed|required)/i,
+  /^continue\s+from\s+where\s+you\s+left/i,
+  /^waiting\s+for\s+(the\s+)?user/i,
+  /^no\s+action\s+(needed|required|necessary)/i,
+  /^nothing\s+(else\s+)?to\s+(do|say|add|respond)/i,
+  /^the\s+(user\s+)?(was|has\s+been)\s+(notified|informed)/i,
+  /^message\s+sent\s+(successfully|to\s+the\s+user)/i,
+  /^already\s+(sent|responded|replied)/i,
+  /^(i('ve| have)|the\s+)?\s*(response|message|answer)\s+(was\s+)?(already\s+)?sent/i,
+];
+function isNoiseText(text) {
+  const t = (text || '').trim();
+  if (!t) return true;
+  if (t.length > 300) return false;
+  return NOISE_PATTERNS.some(rx => rx.test(t));
+}
+
 /** Tiempo que una sesión desconectada se mantiene en memoria (30 min) */
 const PARK_TTL_MS = 30 * 60 * 1000;
 
@@ -751,6 +770,13 @@ class WebChannel extends BaseChannel {
         this.messagesRepo?.pushPair(sessionId, text, result.text);
       } catch (err) {
         this.logger.error('[WebChannel] Error persistiendo mensajes:', err.message);
+      }
+
+      // Filtrar texto meta/noise de la IA
+      if (isNoiseText(result.text)) {
+        this._sendJson(ws, { type: 'chat_done', text: '' });
+        this._saveSettings(sessionId, state);
+        return;
       }
 
       // Parsear botones inline del AI response

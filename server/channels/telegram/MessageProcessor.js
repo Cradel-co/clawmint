@@ -4,6 +4,31 @@ const { cleanPtyOutput, tdbg } = require('./utils');
 const dynamicRegistry = require('./DynamicCallbackRegistry');
 
 /**
+ * Detecta si el texto es meta-commentary residual de Claude que no debería
+ * enviarse al usuario (ej: "No response requested", "Continue from where...").
+ * Solo aplica a textos cortos (<300 chars) que coincidan con patrones conocidos.
+ */
+const LEAKED_META_PATTERNS = [
+  /^no\s+response\s+(requested|needed|required)/i,
+  /^continue\s+from\s+where\s+you\s+left/i,
+  /^waiting\s+for\s+(the\s+)?user/i,
+  /^no\s+action\s+(needed|required|necessary)/i,
+  /^nothing\s+(else\s+)?to\s+(do|say|add|respond)/i,
+  /^the\s+(user\s+)?(was|has\s+been)\s+(notified|informed)/i,
+  /^message\s+sent\s+(successfully|to\s+the\s+user)/i,
+  /^already\s+(sent|responded|replied)/i,
+  /^(i('ve| have)|the\s+)?\s*(response|message|answer)\s+(was\s+)?(already\s+)?sent/i,
+];
+
+function _isLeakedMetaText(text) {
+  if (!text) return true;
+  const trimmed = text.replace(/[.*_`~\-\s]+$/g, '').trim();
+  if (!trimmed) return true;
+  if (trimmed.length > 300) return false;
+  return LEAKED_META_PATTERNS.some(p => p.test(trimmed));
+}
+
+/**
  * MessageProcessor — lógica de envío a sesión PTY o ConversationService.
  *
  * Extraído de TelegramBot._sendToSession.
@@ -205,7 +230,12 @@ class MessageProcessor {
         }
       }
 
-      if (result.text && !result.usedMcpTools) {
+      const isLeakedMeta = _isLeakedMetaText(result.text);
+      if (isLeakedMeta) {
+        tdbg('send', `FILTERED leaked meta-text: "${(result.text || '').slice(0, 80)}"`);
+      }
+
+      if (result.text && !result.usedMcpTools && !isLeakedMeta) {
         // Fallback: la IA no usó MCP tools para comunicarse → enviar texto directo
         tdbg('send', `fallback: enviando texto directo (${result.text.length} chars, usedMcpTools=false)`);
         await bot._responseRenderer.sendResult(bot, chatId, result.text, sentMsg);
@@ -213,7 +243,7 @@ class MessageProcessor {
         try { await bot._apiCall('deleteMessage', { chat_id: chatId, message_id: sentMsg.message_id }); } catch (e) { tdbg('send', `deleteStatusMsg FAIL: ${e.message}`); }
       }
 
-      if (this._tts && this._tts.isEnabled() && result.text) {
+      if (this._tts && this._tts.isEnabled() && result.text && !isLeakedMeta) {
         try {
           const audioBuffer = await this._tts.synthesize(result.text);
           if (audioBuffer) await bot.sendVoice(chatId, audioBuffer);

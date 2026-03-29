@@ -5,6 +5,25 @@ const fs   = require('fs');
 
 const API_BASE = `http://localhost:${process.env.PORT || 3002}`;
 
+// Patrones de texto meta/interno que la IA genera pero no deben enviarse al usuario
+const NOISE_PATTERNS = [
+  /^no\s+response\s+(requested|needed|required)/i,
+  /^continue\s+from\s+where\s+you\s+left/i,
+  /^waiting\s+for\s+(the\s+)?user/i,
+  /^no\s+action\s+(needed|required|necessary)/i,
+  /^nothing\s+(else\s+)?to\s+(do|say|add|respond)/i,
+  /^the\s+(user\s+)?(was|has\s+been)\s+(notified|informed)/i,
+  /^message\s+sent\s+(successfully|to\s+the\s+user)/i,
+  /^already\s+(sent|responded|replied)/i,
+  /^(i('ve| have)|the\s+)?\s*(response|message|answer)\s+(was\s+)?(already\s+)?sent/i,
+];
+function _isNoiseText(text) {
+  const t = (text || '').trim();
+  if (!t) return true;
+  if (t.length > 300) return false;
+  return NOISE_PATTERNS.some(rx => rx.test(t));
+}
+
 // Token interno para bypass de auth en requests localhost
 let _internalToken = null;
 function getInternalToken() {
@@ -100,6 +119,7 @@ const webchatSendMessage = {
 
   async execute({ session_id, text, buttons, callbacks }) {
     if (!session_id || !text) return 'Error: session_id y text son requeridos.';
+    if (_isNoiseText(text)) return 'Mensaje filtrado (meta-text interno).';
 
     const parseIfString = (v) => {
       if (typeof v === 'string') { try { return JSON.parse(v); } catch { return v; } }
