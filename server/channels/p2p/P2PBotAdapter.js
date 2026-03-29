@@ -1,6 +1,9 @@
 'use strict';
 
+const path = require('path');
 const ClaudePrintSession = require('../../core/ClaudePrintSession');
+
+const MCP_CONFIG_PATH = path.join(__dirname, '..', '..', 'mcp-config.json');
 
 /**
  * P2PBotAdapter — adaptador que implementa la interfaz de "bot" que
@@ -40,6 +43,7 @@ class P2PBotAdapter {
       cwd: chat.monitorCwd || process.env.HOME || process.cwd(),
       claudeSessionId: chat.claudeSession?.claudeSessionId || null,
       messageCount: chat.claudeSession?.messageCount || 0,
+      mcpConfig: MCP_CONFIG_PATH,
     };
   }
 

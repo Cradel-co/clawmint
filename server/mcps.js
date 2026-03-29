@@ -126,8 +126,9 @@ async function sync(name) {
     if (mcp.headers && Object.keys(mcp.headers).length > 0) mcpConfig.headers = mcp.headers;
   }
 
-  // Registrar en Claude CLI (para Claude Code)
+  // Registrar en Claude CLI (para Claude Code) — remove + add para idempotencia
   try {
+    try { execFileSync(CLAUDE_BIN, ['mcp', 'remove', name], { env: _claudeEnv(), stdio: 'pipe', timeout: 10000 }); } catch {}
     execFileSync(CLAUDE_BIN, ['mcp', 'add-json', name, JSON.stringify(mcpConfig)], {
       env: _claudeEnv(),
       stdio: 'pipe',
@@ -148,6 +149,7 @@ async function sync(name) {
   mcp.enabled = true;
   mcp.syncedAt = new Date().toISOString();
   _write(mcp);
+  try { generateConfigFile(); } catch {}
   return mcp;
 }
 
@@ -175,6 +177,7 @@ async function unsync(name) {
   mcp.enabled = false;
   mcp.syncedAt = new Date().toISOString();
   _write(mcp);
+  try { generateConfigFile(); } catch {}
   return mcp;
 }
 
@@ -301,4 +304,32 @@ async function installFromRegistry(qualifiedName, nameSafe = null) {
   return { mcp, envVarsRequired };
 }
 
-module.exports = { list, get, add, update, remove, sync, unsync, syncAll, MCPS_DIR, searchSmithery, installFromRegistry };
+/**
+ * Genera mcp-config.json desde los MCPs habilitados.
+ * Retorna la ruta al archivo generado.
+ */
+function generateConfigFile() {
+  const enabled = list().filter(m => m.enabled);
+  const config = { mcpServers: {} };
+  for (const mcp of enabled) {
+    const entry = { type: mcp.type };
+    if (mcp.type === 'stdio') {
+      entry.command = mcp.command;
+      entry.args = mcp.args || [];
+      if (mcp.env && Object.keys(mcp.env).length > 0) entry.env = mcp.env;
+    } else {
+      entry.url = mcp.url;
+      if (mcp.headers && Object.keys(mcp.headers).length > 0) entry.headers = mcp.headers;
+    }
+    config.mcpServers[mcp.name] = entry;
+  }
+  // Siempre incluir clawmint (MCP interno)
+  const port = process.env.PORT || 3001;
+  config.mcpServers.clawmint = { type: 'http', url: `http://localhost:${port}/mcp` };
+
+  const configPath = path.join(__dirname, 'mcp-config.json');
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
+  return configPath;
+}
+
+module.exports = { list, get, add, update, remove, sync, unsync, syncAll, generateConfigFile, MCPS_DIR, searchSmithery, installFromRegistry };
