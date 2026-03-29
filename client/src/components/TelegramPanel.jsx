@@ -300,8 +300,9 @@ const AddBotForm = memo(function AddBotForm({ onAdd, onCancel }) {
     <div className="tg-add-form">
       <p className="tg-form-title">Agregar bot</p>
 
-      <label className="tg-label">Clave (identificador)</label>
+      <label className="tg-label" htmlFor="tg-bot-key">Clave (identificador)</label>
       <input
+        id="tg-bot-key"
         className="tg-input"
         type="text"
         placeholder="mibot, iglesia, radio..."
@@ -309,9 +310,10 @@ const AddBotForm = memo(function AddBotForm({ onAdd, onCancel }) {
         onChange={e => { setKey(e.target.value); setError(''); }}
       />
 
-      <label className="tg-label" style={{ marginTop: 8 }}>Token de BotFather</label>
+      <label className="tg-label" htmlFor="tg-bot-token" style={{ marginTop: 8 }}>Token de BotFather</label>
       <div className="tg-token-input-row">
         <input
+          id="tg-bot-token"
           className="tg-input"
           type={showToken ? 'text' : 'password'}
           placeholder="123456:ABC-DEF..."
