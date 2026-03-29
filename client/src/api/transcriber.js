@@ -17,7 +17,7 @@ export function useTranscriberConfig() {
 export function useUpdateTranscriber() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (cfg: { model?: string; language?: string }) => {
+    mutationFn: async (cfg) => {
       const res = await apiFetch(`${BASE}/config`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

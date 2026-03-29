@@ -1,25 +1,14 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 
-interface RecordingResult {
-  blob: Blob;
-  audioUrl: string;
-  audioDuration: number;
-  mimeType: string;
-}
-
-interface UseAudioRecorderOptions {
-  onRecordingComplete?: (result: RecordingResult) => void;
-}
-
-export default function useAudioRecorder({ onRecordingComplete }: UseAudioRecorderOptions) {
+export default function useAudioRecorder({ onRecordingComplete }) {
   const [recording, setRecording] = useState(false);
   const [recPaused, setRecPaused] = useState(false);
   const [recTime, setRecTime] = useState(0);
 
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const streamRef = useRef<MediaStream | null>(null);
-  const recTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const streamRef = useRef(null);
+  const recTimerRef = useRef | null>(null);
   const recCancelledRef = useRef(false);
   const recTimeRef = useRef(0);
 
@@ -52,7 +41,7 @@ export default function useAudioRecorder({ onRecordingComplete }: UseAudioRecord
     setRecTime(0);
   }, []);
 
-  const start = useCallback(async (): Promise<{ error: string | null }> => {
+  const start = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
       const hint = !window.isSecureContext
         ? 'Necesitás acceder via HTTPS o localhost para usar el micrófono'
@@ -93,7 +82,7 @@ export default function useAudioRecorder({ onRecordingComplete }: UseAudioRecord
       setRecPaused(false);
       setRecTime(0);
       return { error: null };
-    } catch (err: any) {
+    } catch (err) {
       let errorMsg = 'Micrófono no disponible';
       if (err.name === 'NotAllowedError') errorMsg = 'Permiso de micrófono denegado. Revisá los permisos del navegador';
       else if (err.name === 'NotFoundError') errorMsg = 'No se encontró ningún micrófono';

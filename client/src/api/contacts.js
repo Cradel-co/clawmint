@@ -1,12 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { API_BASE } from '../config';
 import { apiFetch } from '../authUtils';
-import type { Contact } from '../types/api';
 
 const BASE = `${API_BASE}/api/contacts`;
 
-export function useContacts(query?: string, favOnly?: boolean) {
-  return useQuery<Contact[]>({
+export function useContacts(query?, favOnly?) {
+  return useQuery({
     queryKey: ['contacts', query, favOnly],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -19,7 +18,7 @@ export function useContacts(query?: string, favOnly?: boolean) {
   });
 }
 
-export function useContact(id: number | null) {
+export function useContact(id | null) {
   return useQuery({
     queryKey: ['contact', id],
     queryFn: async () => {
@@ -33,7 +32,7 @@ export function useContact(id: number | null) {
 export function useCreateContact() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (body: Record<string, unknown>) => {
+    mutationFn: async (body: ) => {
       const res = await apiFetch(BASE, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -50,7 +49,7 @@ export function useCreateContact() {
 export function useUpdateContact() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, ...body }: { id: number } & Record<string, unknown>) => {
+    mutationFn: async ({ id, ...body } & ) => {
       const res = await apiFetch(`${BASE}/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -70,7 +69,7 @@ export function useUpdateContact() {
 export function useDeleteContact() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (id: number) => {
+    mutationFn: async (id) => {
       await apiFetch(`${BASE}/${id}`, { method: 'DELETE' });
     },
     onSuccess: () => {
@@ -83,7 +82,7 @@ export function useDeleteContact() {
 export function useLinkContact() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, ...body }: { id: number } & Record<string, unknown>) => {
+    mutationFn: async ({ id, ...body } & ) => {
       const res = await apiFetch(`${BASE}/${id}/link`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

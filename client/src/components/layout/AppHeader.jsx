@@ -11,13 +11,13 @@ export default function AppHeader() {
   const wsConnected = useUIStore((s) => s.wsConnected);
   const setSection = useUIStore((s) => s.setSection);
   const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef(null);
 
   // Cerrar al hacer click fuera
   useEffect(() => {
     if (!menuOpen) return;
-    const onClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    const onClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
     };
     document.addEventListener('pointerdown', onClickOutside);
     return () => document.removeEventListener('pointerdown', onClickOutside);

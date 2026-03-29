@@ -7,9 +7,9 @@ import { WS_URL } from '../config';
 import { useSessionStore } from '../stores/sessionStore';
 import { useUIStore } from '../stores/uiStore';
 
-let manager: WsManager | null = null;
+let manager = null;
 
-export function initListenerWs(): () => void {
+export function initListenerWs() {
   if (manager) return () => {};
 
   manager = new WsManager({

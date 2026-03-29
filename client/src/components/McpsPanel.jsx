@@ -162,7 +162,7 @@ function McpForm({ initial, onSave, onCancel }) {
             onChange={e => setUrl(e.target.value)}
           />
 
-          <label className={styles.label} style={{ marginTop: 8 }}>Headers (Key: Value por línea)</label>
+          <label className={styles.label} style={{ marginTop: 8 }}>Headers (Key)</label>
           <textarea
             className={styles.textarea}
             rows={3}

@@ -1,47 +1,11 @@
 import { create } from 'zustand';
 import { WsManager } from '../lib/wsManager';
 import { WS_URL } from '../config';
-import { getStoredTokens, clearStoredTokens, isTokenExpired, refreshTokens as refreshAuthTokens } from '../authUtils';
-import type { ChatMessage } from '../types/chat';
+import { getStoredTokens, clearStoredTokens, isTokenExpired, refreshTokens } from '../authUtils';
 
 const MAX_MESSAGES = 500;
 
-interface ChatState {
-  messages: ChatMessage[];
-  input: string;
-  sending: boolean;
-  provider: string;
-  agent: string | null;
-  cwd: string;
-  statusText: string | null;
-  connected: boolean;
-
-  // Acciones
-  setInput: (v: string) => void;
-  setProvider: (v: string) => void;
-  setAgent: (v: string | null) => void;
-  setSending: (v: boolean) => void;
-  setStatusText: (v: string | null) => void;
-  addUserMessage: (content: string, extra?: Partial<ChatMessage>) => void;
-  clearMessages: () => void;
-  send: (data: Record<string, unknown>) => void;
-  getSessionId: () => string | null;
-  reconnect: () => void;
-
-  // Callbacks para auth (se setean desde fuera)
-  _onAuthMessage: ((msg: any) => void) | null;
-  setOnAuthMessage: (fn: (msg: any) => void) => void;
-  _onNewMessage: (() => void) | null;
-  setOnNewMessage: (fn: () => void) => void;
-
-  // Internals
-  _wsManager: WsManager | null;
-  _sessionId: string | null;
-  _sendingTimer: ReturnType<typeof setTimeout> | null;
-  _init: () => void;
-}
-
-export const useChatStore = create<ChatState>()((set, get) => ({
+export const useChatStore = create((set, get) => ({
   messages: [],
   input: '',
   sending: false,
@@ -95,7 +59,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
   addUserMessage: (content, extra = {}) => {
     set((s) => ({
-      messages: [...s.messages.slice(-MAX_MESSAGES + 1), { role: 'user' as const, content, ...extra }],
+      messages: [...s.messages.slice(-MAX_MESSAGES + 1), { role: 'user', content, ...extra }],
     }));
   },
 
@@ -116,7 +80,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
   _init: () => {
     const manager = new WsManager({
-      url: WS_URL,
+      url,
       buildInitPayload: () => {
         const savedSessionId = localStorage.getItem('wc-session-id');
         const authToken = localStorage.getItem('wc-auth-token') || undefined;
@@ -159,7 +123,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       get()._onAuthMessage?.(msg);
       set((s) => ({
         messages: [...s.messages.slice(-MAX_MESSAGES + 1), {
-          role: 'system' as const, content: msg.message || 'Sesión abierta desde otro dispositivo', error: true,
+          role: 'system', content: msg.message || 'Sesión abierta desde otro dispositivo', error: true,
         }],
       }));
     });
@@ -170,18 +134,18 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         if (last && last.role === 'assistant' && last.streaming) {
           return { messages: [...s.messages.slice(0, -1), { ...last, content: msg.text }] };
         }
-        return { messages: [...s.messages.slice(-MAX_MESSAGES + 1), { role: 'assistant' as const, content: msg.text, streaming: true }] };
+        return { messages: [...s.messages.slice(-MAX_MESSAGES + 1), { role: 'assistant', content: msg.text, streaming: true }] };
       });
     });
 
-    const handleChatDone = (msg: any) => {
+    const handleChatDone = (msg) => {
       set((s) => {
         const last = s.messages[s.messages.length - 1];
-        const entry: Partial<ChatMessage> = { content: msg.text, streaming: false, ...(msg.buttons ? { buttons: msg.buttons } : {}) };
+        const entry = { content: msg.text, streaming: false, ...(msg.buttons ? { buttons: msg.buttons } : {}) };
         if (last && last.role === 'assistant' && last.streaming) {
           return { messages: [...s.messages.slice(0, -1), { ...last, ...entry }], sending: false, statusText: null };
         }
-        return { messages: [...s.messages.slice(-MAX_MESSAGES + 1), { role: 'assistant' as const, ...entry }], sending: false, statusText: null };
+        return { messages: [...s.messages.slice(-MAX_MESSAGES + 1), { role: 'assistant', ...entry }], sending: false, statusText: null };
       });
       // Clear safety timer
       const timer = get()._sendingTimer;
@@ -193,7 +157,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
     manager.subscribe('chat_error', (msg) => {
       set((s) => ({
-        messages: [...s.messages.slice(-MAX_MESSAGES + 1), { role: 'system' as const, content: `Error: ${msg.error}`, error: true }],
+        messages: [...s.messages.slice(-MAX_MESSAGES + 1), { role: 'system', content: `Error: ${msg.error}`, error: true }],
         sending: false, statusText: null,
       }));
       const timer = get()._sendingTimer;
@@ -202,7 +166,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
     manager.subscribe('command_result', (msg) => {
       set((s) => ({
-        messages: [...s.messages.slice(-MAX_MESSAGES + 1), { role: 'system' as const, content: msg.text }],
+        messages: [...s.messages.slice(-MAX_MESSAGES + 1), { role: 'system', content: msg.text }],
         sending: false,
         ...(msg.provider ? { provider: msg.provider } : {}),
         ...(msg.agent !== undefined ? { agent: msg.agent } : {}),
@@ -212,7 +176,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
     manager.subscribe('history_restore', (msg) => {
       if (Array.isArray(msg.messages) && msg.messages.length > 0) {
-        set({ messages: msg.messages.map((m: any) => ({ role: m.role, content: m.content, streaming: false })) });
+        set({ messages: msg.messages.map((m) => ({ role: m.role, content: m.content, streaming: false })) });
       }
     });
 
@@ -224,11 +188,11 @@ export const useChatStore = create<ChatState>()((set, get) => ({
           updated[idx] = { ...updated[idx], transcription: msg.text };
           return { messages: updated };
         }
-        return { messages: [...s.messages.slice(-MAX_MESSAGES + 1), { role: 'user' as const, content: msg.text }] };
+        return { messages: [...s.messages.slice(-MAX_MESSAGES + 1), { role: 'user', content: msg.text }] };
       });
     });
 
-    const handleStatus = (msg: any) => {
+    const handleStatus = (msg) => {
       if (msg.status === 'thinking') set({ statusText: msg.detail ? `🤔 ${msg.detail}...` : '🤔 Pensando...' });
       else if (msg.status === 'tool_use') set({ statusText: `⚡ ${msg.detail || 'Ejecutando tool'}...` });
       else if (msg.status === 'transcribing') set({ statusText: 'Transcribiendo...' });
@@ -241,7 +205,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     manager.subscribe('chat_ask_permission', (msg) => {
       set((s) => ({
         messages: [...s.messages.slice(-MAX_MESSAGES + 1), {
-          role: 'system' as const,
+          role: 'system',
           content: `🔐 Permiso requerido — herramienta: ${msg.tool}\n${msg.args}`,
           askPermission: true,
           buttons: [
@@ -255,7 +219,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     manager.subscribe('chat:tts_audio', (msg) => {
       const audioUrl = `data:${msg.mimeType || 'audio/wav'};base64,${msg.data}`;
       set((s) => ({
-        messages: [...s.messages.slice(-MAX_MESSAGES + 1), { role: 'tts' as const, audioUrl }],
+        messages: [...s.messages.slice(-MAX_MESSAGES + 1), { role: 'tts', audioUrl }],
         statusText: null,
       }));
     });
@@ -263,24 +227,24 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     manager.subscribe('chat:tts_error', (msg) => {
       set((s) => ({
         statusText: null,
-        messages: [...s.messages.slice(-MAX_MESSAGES + 1), { role: 'system' as const, content: `TTS: ${msg.error || 'No disponible'}`, error: true }],
+        messages: [...s.messages.slice(-MAX_MESSAGES + 1), { role: 'system', content: `TTS: ${msg.error || 'No disponible'}`, error: true }],
       }));
     });
 
-    const handleMedia = (msg: any) => {
-      const mimeMap: Record<string, string> = {
+    const handleMedia = (msg) => {
+      const mimeMap = {
         'chat:photo': 'image/png', 'chat:document': 'application/octet-stream',
         'chat:voice': 'audio/ogg', 'chat:video': 'video/mp4',
       };
-      const mediaTypeMap: Record<string, string> = {
+      const mediaTypeMap = {
         'chat:photo': 'photo', 'chat:document': 'document',
         'chat:voice': 'voice', 'chat:video': 'video',
       };
       const src = `data:${msg.mimeType || mimeMap[msg.type] || 'application/octet-stream'};base64,${msg.data}`;
       set((s) => ({
         messages: [...s.messages.slice(-MAX_MESSAGES + 1), {
-          role: 'assistant' as const, msgId: msg.msgId,
-          mediaType: mediaTypeMap[msg.type] as any,
+          role: 'assistant', msgId: msg.msgId,
+          mediaType: mediaTypeMap[msg.type],
           mediaSrc: src, caption: msg.caption, filename: msg.filename,
           ...(msg.type === 'chat:document' || msg.type === 'chat:video' ? { mimeType: msg.mimeType } : {}),
         }],

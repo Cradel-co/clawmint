@@ -28,7 +28,7 @@ export function useNodrizaStatus() {
 export function useUpdateNodriza() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (cfg: { url?: string; serverId?: string; apiKey?: string; enabled?: boolean }) => {
+    mutationFn: async (cfg) => {
       const res = await apiFetch(`${BASE}/config`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

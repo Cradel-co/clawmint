@@ -3,7 +3,7 @@ import { useUIStore } from '../../stores/uiStore';
 import { SECTION_META, NAV_TOP, NAV_MID } from './sectionMeta';
 import styles from '../../App.module.css';
 
-const ITEM_CLASS: Record<string, string> = {
+const ITEM_CLASS = {
   terminal: styles.sidebarItemTerminal,
   chat: styles.sidebarItemChat,
   telegram: styles.sidebarItemTelegram,
@@ -14,14 +14,14 @@ const ITEM_CLASS: Record<string, string> = {
 export default function Sidebar() {
   const { section, setSection, chatBadge, telegramBadge, sidebarExpanded, toggleSidebar } = useUIStore();
 
-  const renderItem = (key: string) => {
+  const renderItem = (key) => {
     const { Icon, label } = SECTION_META[key];
     const badge = key === 'telegram' ? telegramBadge : key === 'chat' ? chatBadge : 0;
     return (
       <button
         key={key}
         className={`${styles.sidebarItem} ${ITEM_CLASS[key] || ''} ${section === key ? styles.active : ''}`}
-        onClick={() => setSection(key as any)}
+        onClick={() => setSection(key)}
         title={!sidebarExpanded ? label : undefined}
         aria-label={label}
         aria-current={section === key ? 'page' : undefined}

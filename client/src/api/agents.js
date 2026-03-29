@@ -1,12 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { API_BASE } from '../config';
 import { apiFetch } from '../authUtils';
-import type { Agent } from '../types/api';
 
 const BASE = `${API_BASE}/api/agents`;
 
 export function useAgents() {
-  return useQuery<Agent[]>({
+  return useQuery({
     queryKey: ['agents'],
     queryFn: async () => {
       const res = await apiFetch(BASE);
@@ -19,7 +18,7 @@ export function useAgents() {
 export function useCreateAgent() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (agent: { key: string; description: string; prompt: string }) => {
+    mutationFn: async (agent) => {
       const res = await apiFetch(BASE, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -36,7 +35,7 @@ export function useCreateAgent() {
 export function useUpdateAgent() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ key, ...body }: { key: string; description?: string; prompt?: string }) => {
+    mutationFn: async ({ key, ...body }) => {
       const res = await apiFetch(`${BASE}/${key}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -53,7 +52,7 @@ export function useUpdateAgent() {
 export function useDeleteAgent() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (key: string) => {
+    mutationFn: async (key) => {
       await apiFetch(`${BASE}/${key}`, { method: 'DELETE' });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['agents'] }),

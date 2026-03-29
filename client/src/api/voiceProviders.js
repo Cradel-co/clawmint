@@ -17,7 +17,7 @@ export function useVoiceProviders() {
 export function useUpdateVoiceProvider() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ name, apiKey, voice, model }: { name: string; apiKey?: string; voice?: string; model?: string }) => {
+    mutationFn: async ({ name, apiKey, voice, model }) => {
       const res = await apiFetch(`${BASE}/${name}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -34,7 +34,7 @@ export function useUpdateVoiceProvider() {
 export function useSetDefaultVoice() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (provider: string) => {
+    mutationFn: async (provider) => {
       const res = await apiFetch(`${BASE}/default`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

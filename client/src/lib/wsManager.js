@@ -5,55 +5,37 @@
  * Usado por chatStore y listenerWs.
  */
 
-export interface WsManagerOptions {
-  url: string;
-  /** Genera el payload de init que se envía al conectar/reconectar */
-  buildInitPayload: () => Record<string, unknown>;
-  /** Máx intentos de reconexión antes de rendirse (default: 5) */
-  maxReconnectAttempts?: number;
-  /** Callback cuando cambia el estado de conexión */
-  onStatusChange?: (connected: boolean) => void;
-}
-
-type MessageHandler = (msg: any) => void;
-
 export class WsManager {
-  private ws: WebSocket | null = null;
-  private url: string;
-  private buildInitPayload: () => Record<string, unknown>;
-  private maxReconnectAttempts: number;
-  private onStatusChange?: (connected: boolean) => void;
+  ws = null;
+  url;
+  buildInitPayload;
+  maxReconnectAttempts;
+  onStatusChange;
+  reconnectAttempts = 0;
+  reconnectTimer = null;
+  manualClose = false;
+  _connected = false;
+  queue = [];
+  listeners = new Map();
+  globalListeners = new Set();
 
-  private reconnectAttempts = 0;
-  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private manualClose = false;
-  private _connected = false;
-
-  /** Mensajes encolados mientras está desconectado */
-  private queue: string[] = [];
-
-  /** Pub/sub: type → Set<handler> */
-  private listeners = new Map<string, Set<MessageHandler>>();
-  /** Handlers globales (reciben todos los mensajes) */
-  private globalListeners = new Set<MessageHandler>();
-
-  constructor(options: WsManagerOptions) {
+  constructor(options) {
     this.url = options.url;
     this.buildInitPayload = options.buildInitPayload;
     this.maxReconnectAttempts = options.maxReconnectAttempts ?? 5;
     this.onStatusChange = options.onStatusChange;
   }
 
-  get connected(): boolean {
+  get connected() {
     return this._connected;
   }
 
-  connect(): void {
+  connect() {
     this.manualClose = false;
     this._createWs();
   }
 
-  disconnect(): void {
+  disconnect() {
     this.manualClose = true;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
@@ -66,8 +48,7 @@ export class WsManager {
     this._setConnected(false);
   }
 
-  /** Forzar reconexión (cierra y vuelve a conectar) */
-  reconnect(): void {
+  reconnect() {
     this.reconnectAttempts = 0;
     if (this.ws) {
       try { this.ws.close(); } catch {}
@@ -77,8 +58,7 @@ export class WsManager {
     this._createWs();
   }
 
-  /** Enviar mensaje. Si está desconectado, encola para enviar al reconectar. */
-  send(data: Record<string, unknown>): void {
+  send(data) {
     const raw = JSON.stringify(data);
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(raw);
@@ -87,26 +67,22 @@ export class WsManager {
     }
   }
 
-  /** Suscribir a un tipo de mensaje específico */
-  subscribe(type: string, handler: MessageHandler): () => void {
+  subscribe(type, handler) {
     let set = this.listeners.get(type);
     if (!set) {
       set = new Set();
       this.listeners.set(type, set);
     }
     set.add(handler);
-    return () => { set!.delete(handler); };
+    return () => { set.delete(handler); };
   }
 
-  /** Suscribir a todos los mensajes */
-  subscribeAll(handler: MessageHandler): () => void {
+  subscribeAll(handler) {
     this.globalListeners.add(handler);
     return () => { this.globalListeners.delete(handler); };
   }
 
-  // ── Internals ──────────────────────────────────────────────────────────────
-
-  private _createWs(): void {
+  _createWs() {
     const ws = new WebSocket(this.url);
     this.ws = ws;
 
@@ -114,13 +90,11 @@ export class WsManager {
       this.reconnectAttempts = 0;
       this._setConnected(true);
 
-      // Enviar init payload
       const payload = this.buildInitPayload();
       ws.send(JSON.stringify(payload));
 
-      // Vaciar cola de mensajes pendientes
       while (this.queue.length > 0) {
-        const msg = this.queue.shift()!;
+        const msg = this.queue.shift();
         if (ws.readyState === WebSocket.OPEN) ws.send(msg);
       }
     };
@@ -128,22 +102,17 @@ export class WsManager {
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
-
-        // Dispatch a listeners por tipo
         const typeListeners = this.listeners.get(msg.type);
         if (typeListeners) {
           for (const handler of typeListeners) handler(msg);
         }
-
-        // Dispatch a listeners globales
         for (const handler of this.globalListeners) handler(msg);
-      } catch { /* JSON inválido, silenciar */ }
+      } catch { /* JSON inválido */ }
     };
 
     ws.onclose = () => {
       this._setConnected(false);
       if (this.manualClose) return;
-
       if (this.reconnectAttempts >= this.maxReconnectAttempts) return;
 
       const delay = Math.pow(2, this.reconnectAttempts) * 1000 + Math.random() * 500;
@@ -151,12 +120,10 @@ export class WsManager {
       this.reconnectTimer = setTimeout(() => this._createWs(), delay);
     };
 
-    ws.onerror = () => {
-      // onclose se dispara automáticamente después de onerror
-    };
+    ws.onerror = () => {};
   }
 
-  private _setConnected(v: boolean): void {
+  _setConnected(v) {
     if (this._connected !== v) {
       this._connected = v;
       this.onStatusChange?.(v);

@@ -1,40 +1,21 @@
 import { create } from 'zustand';
-import type { Session } from '../types/session';
 
 let nextId = 0;
 
-function createSession(
-  command: string | null = null,
-  type: 'pty' | 'ai' = 'pty',
-  httpSessionId: string | null = null,
-  provider: string | null = null,
-): Session {
+function createSession(command = null, type = 'pty', httpSessionId = null, provider = null) {
   const id = ++nextId;
-  let title: string;
+  let title;
   if (provider === 'gemini')                              title = `Gemini ${id}`;
   else if (provider === 'openai')                         title = `GPT ${id}`;
-  else if (provider === 'anthropic' || type === ('claude' as any)) title = `Claude ${id}`;
+  else if (provider === 'anthropic' || type === 'claude') title = `Claude ${id}`;
   else if (command && command.startsWith('claude'))        title = `CC ${id}`;
   else title = command ? command.split(' ')[0] : `bash ${id}`;
   return { id, title, command, type, httpSessionId, provider };
 }
 
-interface SessionState {
-  sessions: Session[];
-  activeId: number;
-  httpIdToTabId: Map<string, number>;
-
-  openNew: (command?: string | null, type?: 'pty' | 'ai', httpSessionId?: string | null, provider?: string | null) => Session;
-  closeSession: (id: number) => void;
-  setActiveId: (id: number) => void;
-  handleSessionId: (frontendTabId: number, httpId: string) => void;
-  handleOpenSession: (httpSessionId: string) => number | null;
-  addTelegramSession: (sessionId: string, from: string) => void;
-}
-
 const initialSession = createSession();
 
-export const useSessionStore = create<SessionState>()((set, get) => ({
+export const useSessionStore = create((set, get) => ({
   sessions: [initialSession],
   activeId: initialSession.id,
   httpIdToTabId: new Map(),
@@ -84,7 +65,7 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
   addTelegramSession: (sessionId, from) => {
     const { httpIdToTabId } = get();
     if (httpIdToTabId.has(sessionId)) {
-      set({ activeId: httpIdToTabId.get(sessionId)! });
+      set({ activeId: httpIdToTabId.get(sessionId) });
       return;
     }
     const s = createSession(null, 'pty', sessionId);

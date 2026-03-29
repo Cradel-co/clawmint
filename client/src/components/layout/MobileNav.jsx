@@ -3,11 +3,11 @@ import { useUIStore } from '../../stores/uiStore';
 import styles from '../../App.module.css';
 
 const NAV_ITEMS = [
-  { key: 'terminal', Icon: Terminal,      label: 'Terminal' },
-  { key: 'chat',     Icon: MessageCircle, label: 'Chat'     },
-  { key: 'telegram', Icon: Send,          label: 'TG'       },
-  { key: 'contacts', Icon: BookUser,      label: 'Contactos' },
-] as const;
+  { key: 'terminal', Icon,      label: 'Terminal' },
+  { key: 'chat',     Icon, label: 'Chat'     },
+  { key: 'telegram', Icon,          label: 'TG'       },
+  { key: 'contacts', Icon,      label: 'Contactos' },
+];
 
 export default function MobileNav() {
   const { section, setSection, chatBadge, telegramBadge } = useUIStore();
@@ -20,7 +20,7 @@ export default function MobileNav() {
           <button
             key={key}
             className={section === key ? styles.active : ''}
-            onClick={() => setSection(key as any)}
+            onClick={() => setSection(key)}
             aria-label={label}
           >
             <span className={styles.mobileNavIcon}>

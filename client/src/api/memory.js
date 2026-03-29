@@ -4,7 +4,7 @@ import { apiFetch } from '../authUtils';
 
 const BASE = `${API_BASE}/api/memory`;
 
-export function useMemoryDebug(agentKey: string) {
+export function useMemoryDebug(agentKey) {
   return useQuery({
     queryKey: ['memory-debug', agentKey],
     queryFn: async () => {
@@ -15,7 +15,7 @@ export function useMemoryDebug(agentKey: string) {
   });
 }
 
-export function useMemoryFiles(agentKey: string) {
+export function useMemoryFiles(agentKey) {
   return useQuery({
     queryKey: ['memory-files', agentKey],
     queryFn: async () => {
@@ -26,7 +26,7 @@ export function useMemoryFiles(agentKey: string) {
   });
 }
 
-export function useMemorySearch(agentKey: string, q: string, tags: string) {
+export function useMemorySearch(agentKey, q, tags) {
   return useQuery({
     queryKey: ['memory-search', agentKey, q, tags],
     queryFn: async () => {
@@ -40,7 +40,7 @@ export function useMemorySearch(agentKey: string, q: string, tags: string) {
   });
 }
 
-export function useMemoryFile(agentKey: string, filename: string) {
+export function useMemoryFile(agentKey, filename) {
   return useQuery({
     queryKey: ['memory-file', agentKey, filename],
     queryFn: async () => {
@@ -54,7 +54,7 @@ export function useMemoryFile(agentKey: string, filename: string) {
 export function useSaveMemoryFile() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ agentKey, filename, content }: { agentKey: string; filename: string; content: string }) => {
+    mutationFn: async ({ agentKey, filename, content }) => {
       const res = await apiFetch(`${BASE}/${encodeURIComponent(agentKey)}/${encodeURIComponent(filename)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -74,7 +74,7 @@ export function useSaveMemoryFile() {
 export function useDeleteMemoryFile() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ agentKey, filename }: { agentKey: string; filename: string }) => {
+    mutationFn: async ({ agentKey, filename }) => {
       const res = await apiFetch(`${BASE}/${encodeURIComponent(agentKey)}/${encodeURIComponent(filename)}`, {
         method: 'DELETE',
       });

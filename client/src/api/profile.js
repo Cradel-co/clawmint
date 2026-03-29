@@ -16,7 +16,7 @@ export function useProfile() {
 
 export function useChangePassword() {
   return useMutation({
-    mutationFn: async ({ currentPassword, newPassword }: { currentPassword: string; newPassword: string }) => {
+    mutationFn: async ({ currentPassword, newPassword }) => {
       const res = await apiFetch(`${BASE}/change-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

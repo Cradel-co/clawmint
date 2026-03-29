@@ -17,7 +17,7 @@ const MemoryPanel      = lazy(() => import('./MemoryPanel.jsx'));
 const LogsPanel        = lazy(() => import('./LogsPanel.jsx'));
 const ProfilePanel     = lazy(() => import('./ProfilePanel.jsx'));
 
-export default function ConfigSection({ onBack }: { onBack?: () => void }) {
+export default function ConfigSection({ onBack }) {
   const [tab, setTab] = useState('agents');
   return (
     <div className={styles.configBody}>

@@ -1,33 +1,20 @@
-import { createContext, useContext, useState, useCallback, useRef, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useRef,  } from 'react';
 
-interface Toast {
-  id: number;
-  message: string;
-  type: 'info' | 'success' | 'error' | 'warning';
-}
-
-interface ToastAPI {
-  info: (msg: string, dur?: number) => number;
-  success: (msg: string, dur?: number) => number;
-  error: (msg: string, dur?: number) => number;
-  warning: (msg: string, dur?: number) => number;
-}
-
-const ToastContext = createContext<ToastAPI | null>(null);
+const ToastContext = createContext(null);
 
 let toastId = 0;
 
-export function ToastProvider({ children }: { children: ReactNode }) {
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const timers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+export function ToastProvider({ children }) {
+  const [toasts, setToasts] = useState([]);
+  const timers = useRef(new Map());
 
-  const removeToast = useCallback((id: number) => {
+  const removeToast = useCallback((id) => {
     clearTimeout(timers.current.get(id));
     timers.current.delete(id);
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
-  const addToast = useCallback((message: string, type: Toast['type'] = 'info', duration = 4000): number => {
+  const addToast = useCallback((message, type = 'info', duration = 4000) => {
     const id = ++toastId;
     setToasts(prev => [...prev, { id, message, type }]);
     if (duration > 0) {
@@ -37,7 +24,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     return id;
   }, [removeToast]);
 
-  const toast: ToastAPI = {
+  const toast = {
     info: (msg, dur) => addToast(msg, 'info', dur),
     success: (msg, dur) => addToast(msg, 'success', dur),
     error: (msg, dur) => addToast(msg, 'error', dur ?? 6000),
@@ -65,7 +52,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useToast(): ToastAPI {
+export function useToast() {
   const ctx = useContext(ToastContext);
   if (!ctx) throw new Error('useToast must be used within ToastProvider');
   return ctx;

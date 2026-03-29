@@ -1,46 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-type SectionKey = 'terminal' | 'chat' | 'telegram' | 'contacts' | 'config';
-
-interface SplitChatState {
-  cwd: string;
-  provider: string;
-}
-
-interface UIState {
-  // Sección activa y montaje lazy
-  section: SectionKey;
-  mounted: Record<string, boolean>;
-  setSection: (key: SectionKey) => void;
-
-  // Sidebar
-  sidebarExpanded: boolean;
-  toggleSidebar: () => void;
-
-  // Split mode
-  splitMode: boolean;
-  splitRatio: number;
-  splitChatState: SplitChatState;
-  toggleSplit: () => void;
-  setSplitMode: (v: boolean) => void;
-  setSplitRatio: (ratio: number) => void;
-  setSplitChatState: (update: Partial<SplitChatState>) => void;
-
-  // Badges
-  chatBadge: number;
-  telegramBadge: number;
-  incrementChatBadge: () => void;
-  resetChatBadge: () => void;
-  incrementTelegramBadge: () => void;
-  resetTelegramBadge: () => void;
-
-  // Conexión WS global
-  wsConnected: boolean;
-  setWsConnected: (v: boolean) => void;
-}
-
-export const useUIStore = create<UIState>()(
+export const useUIStore = create(
   persist(
     (set, get) => ({
       // Sección

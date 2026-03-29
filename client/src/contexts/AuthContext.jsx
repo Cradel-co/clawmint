@@ -1,28 +1,17 @@
-import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useRef,  } from 'react';
 import {
   getStoredUser, setStoredUser, getStoredTokens, setStoredTokens,
-  clearStoredTokens, refreshTokens as refreshAuthTokens, linkSession,
+  clearStoredTokens, refreshTokens, linkSession,
 } from '../authUtils';
-import type { User } from '../authUtils';
 
-interface AuthContextValue {
-  user: User | null;
-  showAuthPanel: boolean;
-  setShowAuthPanel: (v: boolean) => void;
-  handleAuth: (result: { user: User }, sessionId?: string | null) => Promise<void>;
-  handleLogout: () => void;
-  handleWsAuthMessage: (msg: any) => void;
-  setWsRef: (ref: WebSocket | null) => void;
-}
+const AuthContext = createContext(null);
 
-const AuthContext = createContext<AuthContextValue | null>(null);
-
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(() => getStoredUser());
+export function AuthProvider({ children }) {
+  const [user, setUser] = useState(() => getStoredUser());
   const [showAuthPanel, setShowAuthPanel] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
+  const wsRef = useRef(null);
 
-  const setWsRef = useCallback((ref: WebSocket | null) => { wsRef.current = ref; }, []);
+  const setWsRef = useCallback((ref) => { wsRef.current = ref; }, []);
 
   // Refresh proactivo del JWT antes de que expire
   useEffect(() => {
@@ -56,7 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(timer);
   }, [user]);
 
-  const handleAuth = useCallback(async (result: { user: User }, sessionId?: string | null) => {
+  const handleAuth = useCallback(async (result, sessionId = null) => {
     setUser(result.user);
     setShowAuthPanel(false);
 
@@ -70,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
-  const handleWsAuthMessage = useCallback((msg: any) => {
+  const handleWsAuthMessage = useCallback((msg) => {
     switch (msg.type) {
       case 'session_id':
         if (msg.user) {
@@ -105,7 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useAuth(): AuthContextValue {
+export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth must be used within AuthProvider');
   return ctx;

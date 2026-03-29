@@ -359,7 +359,7 @@
 }
 @keyframes pulseIcon {
   0%, 100% { color: var(--accent-red); border-color: var(--accent-red); }
-  50% { color: #ff8a85; border-color: #ff8a85; }
+  50% { color: var(--accent-red); border-color: var(--accent-red); }
 }
 
 /* ─── Recording bar ────────────────────────────────────────────────────────── */
@@ -384,7 +384,7 @@
   animation: recBlink 1s ease-in-out infinite;
 }
 .recDotPaused {
-  background: #888;
+  background: var(--text-muted);
   animation: none;
 }
 @keyframes recBlink {
@@ -415,7 +415,7 @@
 }
 .recCancel:hover {
   background: rgba(248,113,113,0.16);
-  color: #fca5a5;
+  color: var(--accent-red);
 }
 .recPause {
   background: var(--bg-card);
@@ -433,7 +433,7 @@
 }
 .recSend:hover {
   background: rgba(74,222,128,0.15);
-  color: #86efac;
+  color: var(--accent-green);
 }
 
 /* ─── Scrollbar ─────────────────────────────────────────────────────────────── */

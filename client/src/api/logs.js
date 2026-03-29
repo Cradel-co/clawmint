@@ -28,7 +28,7 @@ export function useLogsTail(lines = 100) {
 export function useUpdateLogsConfig() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (enabled: boolean) => {
+    mutationFn: async (enabled) => {
       const res = await apiFetch(`${BASE}/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

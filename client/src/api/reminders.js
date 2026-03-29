@@ -18,7 +18,7 @@ export function useReminders() {
 export function useCreateReminder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (data: { chatId?: number; botKey?: string; text: string; duration: string }) => {
+    mutationFn: async (data) => {
       const res = await apiFetch(BASE, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -35,7 +35,7 @@ export function useCreateReminder() {
 export function useDeleteReminder() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async (id) => {
       const res = await apiFetch(`${BASE}/${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || 'Error');
