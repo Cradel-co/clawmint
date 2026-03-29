@@ -3,10 +3,10 @@ import { useUIStore } from '../../stores/uiStore';
 import styles from '../../App.module.css';
 
 const NAV_ITEMS = [
-  { key: 'terminal', Icon,      label: 'Terminal' },
-  { key: 'chat',     Icon, label: 'Chat'     },
-  { key: 'telegram', Icon,          label: 'TG'       },
-  { key: 'contacts', Icon,      label: 'Contactos' },
+  { key: 'terminal', Icon: Terminal,      label: 'Terminal' },
+  { key: 'chat',     Icon: MessageCircle, label: 'Chat'     },
+  { key: 'telegram', Icon: Send,          label: 'TG'       },
+  { key: 'contacts', Icon: BookUser,      label: 'Contactos' },
 ];
 
 export default function MobileNav() {
