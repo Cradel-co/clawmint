@@ -17,10 +17,13 @@ function _requireScheduler(ctx) {
 /**
  * Resuelve el userId del creador desde el contexto.
  */
-function _getCreatorId(ctx) {
+function _getCreatorId(ctx, args = {}) {
   if (ctx.userId) return ctx.userId;
-  if (ctx.usersRepo && ctx.chatId && ctx.channel) {
-    const user = ctx.usersRepo.findByIdentity(ctx.channel || 'telegram', String(ctx.chatId));
+  // Buscar por ctx (ConversationService) o por args (MCP HTTP — el system prompt pasa chat_id/channel)
+  const chatId  = ctx.chatId  || args._creator_chat_id;
+  const channel = ctx.channel || args._creator_channel || 'telegram';
+  if (ctx.usersRepo && chatId) {
+    const user = ctx.usersRepo.findByIdentity(channel, String(chatId));
     if (user) return user.id;
   }
   return null;
@@ -29,8 +32,8 @@ function _getCreatorId(ctx) {
 /**
  * Obtiene el user completo del creador (para verificar role).
  */
-function _getCreatorUser(ctx) {
-  const id = _getCreatorId(ctx);
+function _getCreatorUser(ctx, args = {}) {
+  const id = _getCreatorId(ctx, args);
   if (!id || !ctx.usersRepo) return null;
   return ctx.usersRepo.getById(id);
 }
@@ -71,7 +74,7 @@ const SCHEDULE_ACTION = {
     _requireScheduler(ctx);
     if (!args.label) return 'Error: parámetro label requerido';
 
-    const creatorUser = _getCreatorUser(ctx);
+    const creatorUser = _getCreatorUser(ctx, args);
     if (!creatorUser) return 'Error: no se pudo identificar al usuario creador. Asegurate de estar registrado.';
     const creatorId = creatorUser.id;
 
@@ -164,11 +167,11 @@ const LIST_SCHEDULED = {
 
     if (args.all === 'true') {
       // S1: solo admin puede ver todas
-      const user = _getCreatorUser(ctx);
+      const user = _getCreatorUser(ctx, args);
       if (!user || user.role !== 'admin') return 'Error: solo administradores pueden listar todas las acciones.';
       actions = ctx.scheduler.listAll(limit);
     } else {
-      const creatorId = _getCreatorId(ctx);
+      const creatorId = _getCreatorId(ctx, args);
       if (!creatorId) return 'Error: no se pudo identificar al usuario.';
       actions = ctx.scheduler.list(creatorId);
     }
@@ -205,7 +208,7 @@ const CANCEL_SCHEDULED = {
     const action = ctx.scheduler.getById(args.id);
     if (!action) return `Error: acción no encontrada: ${args.id}`;
 
-    const creatorId = _getCreatorId(ctx);
+    const creatorId = _getCreatorId(ctx, args);
     const user = creatorId && ctx.usersRepo ? ctx.usersRepo.getById(creatorId) : null;
     if (action.creator_id !== creatorId && user?.role !== 'admin') {
       return 'Error: no tenés permisos para cancelar esta acción.';
@@ -240,7 +243,7 @@ const UPDATE_SCHEDULED = {
     const action = ctx.scheduler.getById(args.id);
     if (!action) return `Error: acción no encontrada: ${args.id}`;
 
-    const creatorId = _getCreatorId(ctx);
+    const creatorId = _getCreatorId(ctx, args);
     const user = creatorId && ctx.usersRepo ? ctx.usersRepo.getById(creatorId) : null;
     if (action.creator_id !== creatorId && user?.role !== 'admin') {
       return 'Error: no tenés permisos para modificar esta acción.';

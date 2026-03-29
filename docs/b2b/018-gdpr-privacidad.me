@@ -1,0 +1,42 @@
+# 018 — GDPR / privacidad
+
+> Estado: `pendiente` | Categoría: `compliance` | Prioridad: `alta`
+
+## Qué es
+
+Conjunto de mecanismos para cumplir con el Reglamento General de Protección de Datos (GDPR) y normativas de privacidad equivalentes. Incluye gestión de consentimiento, exportación de datos del usuario (derecho a portabilidad), eliminación de datos (derecho al olvido) y aplicación de políticas de privacidad a nivel de plataforma.
+
+## Por qué es necesario para B2B
+
+Cualquier empresa que opere en la UE o maneje datos de ciudadanos europeos debe cumplir con GDPR. Las multas por incumplimiento llegan hasta el 4% de la facturación global anual. Los clientes B2B necesitan garantizar a sus propios usuarios que sus datos están protegidos y que pueden ejercer sus derechos. Sin GDPR compliance, el producto queda excluido de todo el mercado europeo y de muchas empresas globales que adoptan GDPR como estándar interno.
+
+## Qué existe hoy
+
+El proyecto no tiene ningún mecanismo de gestión de consentimiento. No existe funcionalidad de exportación de datos de usuario. No hay proceso de eliminación completa de datos de un usuario específico. Las conversaciones se manejan con ventana deslizante (30 mensajes) y webchat con límite de 100 mensajes, pero sin control de privacidad. SQLite vía sql.js WASM almacena todo en memoria con auto-persistencia a disco (debounce 500 ms). El Logger registra en `server/core/Logger.js` sin anonimización de datos personales.
+
+## Alcance mínimo (MVP)
+
+- Modelo de consentimiento: tabla `user_consents` con tipo de consentimiento, fecha de otorgamiento, versión de la política, método de obtención
+- API de registro de consentimiento: endpoint para que el frontend/bot capture y almacene el consentimiento del usuario
+- Derecho a portabilidad: endpoint que genere un archivo JSON/ZIP con todos los datos de un usuario (conversaciones, configuraciones, datos de perfil)
+- Derecho al olvido: endpoint que elimine o anonimice todos los datos de un usuario específico de todas las tablas
+- Registro de operaciones de privacidad en audit log (015): quién solicitó qué, cuándo se ejecutó
+- Anonimización de datos personales en logs operativos (no registrar PII en archivos de log)
+- Middleware de verificación de consentimiento: bloquear procesamiento de datos si el usuario no ha dado consentimiento
+- Configuración de política de privacidad por tenant: qué datos se recopilan, para qué fines, por cuánto tiempo
+
+## Dependencias
+
+- **Depende de:** logs de auditoría (015) para registrar operaciones de privacidad, retención de datos (016) para el borrado automático, encriptación (017) para proteger datos exportados
+- **Habilita:** entrada al mercado europeo, cumplimiento de normativas latinoamericanas (LGPD Brasil, Ley de Protección de Datos Personales Argentina/México), confianza empresarial
+
+## Archivos probables
+
+- `server/core/PrivacyManager.js` — orquestador principal de operaciones de privacidad
+- `server/db/schemas/user_consents.sql` — esquema de tabla de consentimientos
+- `server/db/repositories/ConsentRepository.js` — acceso a datos de consentimiento
+- `server/routes/api/privacy.js` — endpoints de portabilidad, eliminación y consentimiento
+- `server/services/DataExportService.js` — generación de archivos de exportación de datos
+- `server/services/DataErasureService.js` — eliminación/anonimización de datos de un usuario
+- `server/middleware/consentMiddleware.js` — verificación de consentimiento antes de procesar datos
+- `server/core/Logger.js` — modificar para anonimizar PII en logs operativos

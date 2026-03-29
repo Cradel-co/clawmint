@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 
 const MCP_SYSTEM_PROMPT_PATH = path.join(__dirname, '..', 'mcp-system-prompt.txt');
+const MCP_CONFIG_PATH = path.join(__dirname, '..', 'mcp-config.json');
 let _mcpSystemPrompt = null;
 function getMcpSystemPrompt() {
   if (_mcpSystemPrompt === null) {
@@ -652,6 +653,7 @@ class ConversationService {
       session = new this._ClaudePrintSession({
         permissionMode: claudeMode || 'auto',
         appendSystemPrompt: fullSystemPrompt || undefined,
+        mcpConfig: MCP_CONFIG_PATH,
       });
       isNewSession = true;
       csdbg('claude', `nueva ClaudePrintSession mode=${claudeMode} mcpPrompt=${!!mcpPrompt} botKey=${botKey}`);

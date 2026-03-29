@@ -100,6 +100,10 @@ function createMcpRouter({ sessionManager, memory, scheduler, usersRepo } = {}) 
           }
           const shellId = req.headers['x-shell-id'] || `mcp-${id || 'global'}`;
           const ctx     = { shellId, sessionManager, memory, scheduler, usersRepo };
+          // Contexto de canal opcional (headers inyectados por system prompt)
+          if (req.headers['x-chat-id'])  ctx.chatId  = req.headers['x-chat-id'];
+          if (req.headers['x-channel'])  ctx.channel = req.headers['x-channel'];
+          if (req.headers['x-bot-key'])  ctx.botKey  = req.headers['x-bot-key'];
           const output  = await toolsIndex.execute(name, args || {}, ctx);
           result = { content: [{ type: 'text', text: output }] };
           break;

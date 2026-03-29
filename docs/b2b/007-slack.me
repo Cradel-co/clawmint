@@ -1,0 +1,42 @@
+# 007 — Slack
+
+> Estado: `pendiente` | Categoría: `integraciones` | Prioridad: `media`
+
+## Qué es
+
+Canal de comunicación con Slack que permite al agente IA enviar y recibir mensajes en canales y DMs de un workspace de Slack. Se implementa como un nuevo adaptador de canal siguiendo el patrón de `BaseChannel.js`, igual que los canales existentes de Telegram y WebChat.
+
+## Por qué es necesario para B2B
+
+Slack es la herramienta de comunicación interna dominante en empresas tech y startups. Integrar Clawmint como un bot de Slack permite a los equipos interactuar con el agente IA sin salir de su flujo de trabajo habitual: ejecutar comandos, consultar datos, programar tareas y recibir notificaciones directamente en Slack.
+
+## Qué existe hoy
+
+- Arquitectura de canales con `BaseChannel.js` en `server/channels/`.
+- Canal de Telegram completamente funcional como referencia.
+- Canal de WebChat como segunda referencia.
+- Sistema de enrutamiento de mensajes que conecta canales con agentes IA.
+
+## Alcance mínimo (MVP)
+
+- Crear app de Slack (Bot Token + Event Subscriptions).
+- Implementar `SlackChannel.js` extendiendo `BaseChannel.js`.
+- Recibir mensajes de canales y DMs mediante Slack Events API (webhooks).
+- Enviar mensajes de texto a canales y DMs usando Slack Web API (`chat.postMessage`).
+- Soporte para menciones al bot (@clawmint) como trigger.
+- Enviar archivos/imágenes usando `files.upload` de Slack.
+- Registrar el canal en el sistema de canales existente.
+
+## Dependencias
+
+- Requiere: app de Slack creada en api.slack.com con Bot Token y permisos (chat:write, channels:history, im:history, files:write).
+- Requiere: URL pública para recibir eventos (webhook), el servidor ya expone rutas HTTP.
+- Se integra con: sistema de agentes IA existente.
+- Habilita: comunicación bidireccional con equipos empresariales en Slack.
+
+## Archivos probables
+
+- `server/channels/SlackChannel.js` — adaptador de canal
+- `server/routes/slack-events.js` — endpoint para Slack Events API
+- `server/services/slack-api.js` — wrapper para Slack Web API
+- `server/config/slack.js` — configuración de tokens y permisos

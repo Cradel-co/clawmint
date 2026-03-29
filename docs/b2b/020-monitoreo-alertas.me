@@ -1,0 +1,51 @@
+# 020 — Monitoreo y alertas
+
+> Estado: `pendiente` | Categoria: `operaciones` | Prioridad: `media`
+
+## Que es
+
+Sistema de monitoreo continuo del estado de la plataforma (uptime, errores, uso de recursos, comportamiento anormal) con alertas proactivas a traves de multiples canales: email, Telegram y Slack.
+
+## Por que es necesario para B2B
+
+Los clientes empresariales esperan alta disponibilidad y tiempos de respuesta rapidos ante incidentes. Un sistema de monitoreo con alertas proactivas permite detectar problemas antes de que impacten a los usuarios, demuestra profesionalismo operativo y es fundamental para cumplir compromisos de SLA.
+
+## Que existe hoy
+
+- `server/core/systemStats.js` expone metricas basicas de CPU, RAM y uptime.
+- Endpoint `GET /api/health` devuelve estado general del servidor.
+- PM2 gestiona el proceso con auto-restart y logging con rotacion de archivos (>50 MB).
+- No hay alertas proactivas: nadie es notificado cuando algo falla.
+- No hay dashboard de monitoreo ni historico de metricas.
+- No se detectan patrones anormales (picos de errores, uso excesivo de memoria, etc.).
+
+## Alcance minimo (MVP)
+
+- Recopilar metricas periodicas: CPU, RAM, espacio en disco, conexiones activas, tasa de errores HTTP, latencia promedio.
+- Almacenar historico de metricas en SQLite para consultas y tendencias.
+- Definir umbrales configurables por metrica (ej: CPU > 80%, RAM > 90%, errores 5xx > 10/min).
+- Motor de alertas que evalua umbrales y dispara notificaciones.
+- Canal de alerta via Telegram (bot existente del proyecto).
+- Canal de alerta via email (SMTP configurable).
+- Endpoint `GET /api/admin/metrics` para consultar metricas actuales e historicas.
+- Endpoint `GET /api/admin/alerts` para ver historial de alertas disparadas.
+- Endpoint `PUT /api/admin/alerts/config` para configurar umbrales y canales.
+- Logging estructurado de cada alerta enviada.
+
+## Dependencias
+
+- Se apoya en `server/core/systemStats.js` existente como fuente base de metricas.
+- Se integra con el bot de Telegram del proyecto para envio de alertas.
+- Complementa `021-redundancia.me` al detectar caidas que activen failover.
+- Complementa `022-rate-limiting-tenant.me` al monitorear uso por tenant.
+
+## Archivos probables
+
+- `server/services/monitoringService.js` — recopilacion y almacenamiento de metricas.
+- `server/services/alertService.js` — evaluacion de umbrales y despacho de alertas.
+- `server/channels/telegramAlert.js` — envio de alertas por Telegram.
+- `server/channels/emailAlert.js` — envio de alertas por email (SMTP).
+- `server/routes/admin/metrics.js` — endpoints de metricas.
+- `server/routes/admin/alerts.js` — endpoints de configuracion y historial de alertas.
+- `server/jobs/metricsCollector.js` — tarea periodica de recoleccion.
+- `server/config/monitoring.js` — configuracion de umbrales, intervalos y canales.

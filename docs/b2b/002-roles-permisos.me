@@ -1,0 +1,43 @@
+# 002 — Sistema de roles y permisos
+
+> Estado: `pendiente` | Categoría: `infraestructura` | Prioridad: `alta`
+
+## Qué es
+
+Control de acceso basado en roles (RBAC) que define qué puede hacer cada usuario dentro de su tenant. Roles base: administrador (acceso total), empleado (operaciones limitadas), solo-lectura (únicamente puede ver). Los permisos controlan acceso a sesiones PTY, agentes IA, herramientas MCP, configuraciones y datos.
+
+## Por qué es necesario para B2B
+
+Las empresas necesitan que el dueño o CTO tenga control total, que los desarrolladores puedan usar terminales y agentes pero no cambiar configuraciones críticas, y que auditores o gerentes puedan observar sin modificar nada. Sin roles, cualquier persona con acceso al bot de Telegram o al WebChat puede ejecutar comandos arbitrarios, lo cual es inaceptable en un entorno corporativo.
+
+## Qué existe hoy
+
+- Whitelist de IDs de Telegram que permite o bloquea acceso completo al bot — sin granularidad.
+- Sesiones de WebChat sin autenticación de usuario ni distinción de permisos.
+- Rutas de API en Express sin middleware de autorización.
+- No existe modelo de usuario, rol ni permiso en la base de datos.
+
+## Alcance mínimo (MVP)
+
+- Modelo de datos: tabla `users` (id, tenant_id, nombre, email, rol, activo) y tabla `permissions` (rol, recurso, acción).
+- Tres roles predefinidos: `admin`, `employee`, `readonly`.
+- Middleware de autorización para rutas Express que verifique rol y permiso antes de ejecutar.
+- Guard en el bot de Telegram que verifique permisos del usuario antes de procesar un comando.
+- Guard en sesiones PTY que restrinja creación/escritura según rol.
+- Comando de admin para asignar/cambiar roles desde el bot o panel.
+- Seeds con permisos por defecto para cada rol.
+
+## Dependencias
+
+- **Depende de:** 001-multi-tenancy (los roles existen dentro de un tenant).
+- **Habilita:** 003-oauth2-sso (el SSO asigna un rol al usuario autenticado), 004-panel-admin-web (el panel usa permisos para mostrar/ocultar secciones).
+
+## Archivos probables
+
+- `server/storage/users.js` — nuevo módulo CRUD de usuarios.
+- `server/storage/permissions.js` — nuevo módulo de permisos y roles.
+- `server/middleware/auth.js` — nuevo middleware de autorización Express.
+- `server/bot/guards.js` — nuevo módulo de verificación de permisos en el bot.
+- `server/pty/` — agregar verificación de permisos antes de crear/escribir sesiones.
+- `server/routes/*.js` — aplicar middleware de auth a todas las rutas.
+- `server/storage/migrations/` — migración para tablas `users` y `permissions`.

@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
@@ -45,7 +46,7 @@ class ClaudePrintSession {
       claudeArgs.unshift('--permission-mode', modeMap[this.permissionMode] || 'default');
     }
     if (this.model) claudeArgs.push('--model', this.model);
-    if (this.mcpConfig) claudeArgs.push('--mcp-config', this.mcpConfig);
+    if (this.mcpConfig && fs.existsSync(this.mcpConfig)) claudeArgs.push('--mcp-config', this.mcpConfig);
     if (this.appendSystemPrompt) claudeArgs.push('--append-system-prompt', this.appendSystemPrompt);
     if (this.messageCount > 0 && this.claudeSessionId) {
       claudeArgs.push('--resume', this.claudeSessionId);
@@ -64,7 +65,7 @@ class ClaudePrintSession {
       const child = spawn('claude', claudeArgs, {
         cwd: this.cwd,
         env,
-        stdio: [isWin ? 'pipe' : 'ignore', 'pipe', 'ignore'],
+        stdio: [isWin ? 'pipe' : 'ignore', 'pipe', 'pipe'],
         shell: isWin,
         windowsHide: true,
       });
@@ -76,6 +77,11 @@ class ClaudePrintSession {
       }
 
       cpdbg('spawn', `PID=${child.pid || 'unknown'}${isWin ? ' stdin written' : ''}`);
+
+      let stderrData = '';
+      if (child.stderr) {
+        child.stderr.on('data', (chunk) => { stderrData += chunk.toString(); });
+      }
 
       let lineBuffer = '';
       let fullText = '';
@@ -89,6 +95,8 @@ class ClaudePrintSession {
         'webchat_send_message', 'webchat_send_photo', 'webchat_send_document',
         'webchat_send_voice', 'webchat_send_video', 'webchat_edit_message',
       ];
+      // MCP tools llegan prefijadas (ej: mcp__clawmint__telegram_send_message)
+      const isCommTool = (name) => COMM_TOOLS.some(t => name === t || name.endsWith('__' + t));
 
       const emitStatus = (status, detail = null) => {
         if (onStatus) onStatus(status, detail);
@@ -117,8 +125,8 @@ class ClaudePrintSession {
             // Detectar inicio de tool_use para status
             if (inner.type === 'content_block_start' && inner.content_block?.type === 'tool_use') {
               const toolName = inner.content_block.name || 'herramienta';
-              if (COMM_TOOLS.includes(toolName)) usedMcpTools = true;
-              cpdbg('event', `#${eventCount} tool_use start: ${toolName} isTelegramTool=${COMM_TOOLS.includes(toolName)}`);
+              if (isCommTool(toolName)) usedMcpTools = true;
+              cpdbg('event', `#${eventCount} tool_use start: ${toolName} isCommTool=${isCommTool(toolName)}`);
               emitStatus('tool_use', toolName);
             }
             // Detectar inicio de bloque de texto
@@ -143,7 +151,7 @@ class ClaudePrintSession {
             cpdbg('event', `#${eventCount} assistant content=${Array.isArray(content) ? content.length + ' blocks' : 'none'} fullText=${fullText.length}`);
             if (Array.isArray(content)) {
               // Detectar tool_use de telegram en bloques de assistant
-              const hasTelegramTool = content.some(b => b.type === 'tool_use' && COMM_TOOLS.includes(b.name));
+              const hasTelegramTool = content.some(b => b.type === 'tool_use' && isCommTool(b.name));
               if (hasTelegramTool) usedMcpTools = true;
 
               const textBlock = content.find(b => b.type === 'text');
@@ -198,8 +206,9 @@ class ClaudePrintSession {
         cpdbg('close', `exitCode=${exitCode} killed=${killed} fullText=${fullText.length} events=${eventCount}`);
         if (killed) return reject(new Error('Timeout: claude -p no respondió en 18 min'));
         if (exitCode !== 0 && !fullText) {
-          console.error('[ClaudePrintSession] exitCode:', exitCode);
-          return reject(new Error(`claude salió con código ${exitCode}`));
+          const stderrMsg = stderrData.trim().split('\n').pop() || '';
+          console.error(`[ClaudePrintSession] exitCode: ${exitCode}${stderrMsg ? ' stderr: ' + stderrMsg : ''}`);
+          return reject(new Error(`claude salió con código ${exitCode}${stderrMsg ? ': ' + stderrMsg : ''}`));
         }
         this.messageCount++;
         cpdbg('close', `OK msgCount=${this.messageCount} text="${fullText.slice(0, 100)}" usedMcpTools=${usedMcpTools}`);

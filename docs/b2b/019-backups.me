@@ -1,0 +1,43 @@
+# 019 — Backups automaticos
+
+> Estado: `pendiente` | Categoria: `operaciones` | Prioridad: `media`
+
+## Que es
+
+Sistema de respaldos automaticos de la base de datos SQLite, con soporte para backups individuales por tenant en entornos multi-tenant. Incluye programacion periodica, retencion configurable y restauracion bajo demanda.
+
+## Por que es necesario para B2B
+
+Las empresas requieren garantias de que sus datos estan protegidos ante fallos, corrupcion o errores humanos. Un sistema de backups por tenant permite restaurar los datos de un cliente sin afectar a los demas, cumple con expectativas de SLA y es requisito comun en auditorias y contratos empresariales.
+
+## Que existe hoy
+
+- SQLite persiste a un unico archivo en disco con debounce (auto-persist via sql.js WASM).
+- No existe estrategia de backups automaticos ni manuales.
+- No hay separacion de datos por tenant a nivel de archivos.
+- PM2 gestiona el proceso con auto-restart y logging, pero no interviene en respaldos de datos.
+
+## Alcance minimo (MVP)
+
+- Implementar tarea programada (cron job o intervalo configurable) que copie el archivo SQLite a un directorio de backups.
+- Nombrar cada backup con timestamp para facilitar identificacion y rotacion.
+- Politica de retencion configurable: conservar los ultimos N backups y eliminar los mas antiguos.
+- Si existe multi-tenancy, generar backups separados por tenant exportando sus tablas o su base de datos independiente.
+- Endpoint administrativo `POST /api/admin/backups` para disparar un backup manual.
+- Endpoint `GET /api/admin/backups` para listar backups disponibles.
+- Endpoint `POST /api/admin/backups/:id/restore` para restaurar un backup especifico (con confirmacion).
+- Registro en logs de cada backup exitoso o fallido.
+
+## Dependencias
+
+- Depende de la arquitectura multi-tenant definida (si se implementa base de datos por tenant o esquema compartido).
+- Complementa `021-redundancia.me` ya que los backups son parte de la estrategia de recuperacion ante desastres.
+- Puede beneficiarse de almacenamiento externo (S3, GCS) en fases posteriores.
+
+## Archivos probables
+
+- `server/services/backupService.js` — logica de creacion, listado, rotacion y restauracion de backups.
+- `server/routes/admin/backups.js` — endpoints REST para gestion de backups.
+- `server/jobs/backupScheduler.js` — tarea programada para backups automaticos.
+- `server/config/backup.js` — configuracion de rutas, retencion y frecuencia.
+- `data/backups/` — directorio destino de los archivos de respaldo.

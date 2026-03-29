@@ -1,0 +1,42 @@
+# 025 — Branding personalizable
+
+> Estado: `pendiente` | Categoría: `experiencia` | Prioridad: `media`
+
+## Qué es
+
+Capacidad de white-labeling que permite a cada empresa cliente personalizar la apariencia del producto con su propia identidad visual: logo, esquema de colores, nombre y avatar del bot, y opcionalmente un dominio personalizado.
+
+## Por qué es necesario para B2B
+
+Las empresas necesitan que las herramientas que usan internamente o frente a sus propios clientes reflejen su marca, no la del proveedor. El branding personalizable convierte el producto en una extensión natural del negocio del cliente, aumenta la percepción de valor, justifica precios premium y es un requisito frecuente en contratos empresariales. Sin esta capacidad, el producto se percibe como genérico.
+
+## Qué existe hoy
+
+El cliente React tiene una interfaz fija sin opciones de personalización visual. Los componentes (TerminalPanel, TabBar, AgentsPanel, ProvidersPanel, CommandBar, TelegramPanel, WebChatPanel) usan estilos hardcodeados. El bot de Telegram opera con un solo nombre y avatar definidos al momento de su creación. No hay sistema de temas ni variables de estilo por tenant. No hay documentación para usuarios finales sobre configuración visual.
+
+## Alcance mínimo (MVP)
+
+- Subida de logo de empresa (formatos PNG, SVG; tamaño máximo definido)
+- Configuración de esquema de colores: primario, secundario, fondo, texto
+- Nombre personalizado del bot de Telegram por tenant
+- Avatar personalizado del bot por tenant
+- Variables CSS dinámicas que se apliquen según el tenant activo
+- Vista previa en tiempo real de los cambios de branding antes de guardar
+- Pantalla de administración de branding dentro del panel de admin
+- Fallback a branding por defecto de Clawmint si no se configura nada
+
+## Dependencias
+
+- Depende de: multi-tenancy (001) para aislar configuración visual por empresa, panel de administración (004) para la interfaz de gestión de branding
+- Habilita: experiencia de marca completa para clientes enterprise, posibilidad de ofrecer planes con mayor nivel de personalización
+
+## Archivos probables
+
+- `src/theme/TenantThemeProvider.tsx` — proveedor de tema dinámico por tenant
+- `src/theme/defaultTheme.ts` — tema base de Clawmint (fallback)
+- `src/components/Admin/BrandingSettings.tsx` — pantalla de configuración de branding
+- `src/components/Admin/BrandingPreview.tsx` — vista previa en tiempo real
+- `server/routes/branding.js` — endpoints para guardar y servir configuración de marca
+- `server/models/tenantBranding.js` — modelo de branding por tenant
+- `server/middleware/tenantTheme.js` — middleware que inyecta variables de tema en las respuestas
+- `public/uploads/logos/` — directorio para logos subidos por tenants

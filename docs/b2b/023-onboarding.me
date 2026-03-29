@@ -1,0 +1,44 @@
+# 023 — Onboarding wizard
+
+> Estado: `pendiente` | Categoría: `experiencia` | Prioridad: `media`
+
+## Qué es
+
+Un flujo de configuración paso a paso que guía a nuevas empresas clientes desde la creación de cuenta hasta tener su entorno completamente operativo: bot configurado, canales activos y equipo invitado.
+
+## Por qué es necesario para B2B
+
+Las empresas que contratan un servicio SaaS esperan poder empezar a usarlo sin depender de soporte técnico. Sin un onboarding guiado, la tasa de abandono en los primeros días es alta. Un wizard reduce el tiempo de activación, disminuye tickets de soporte y genera una primera impresión profesional que justifica el costo del servicio.
+
+## Qué existe hoy
+
+El cliente React tiene componentes orientados a desarrolladores: TerminalPanel, TabBar, AgentsPanel, ProvidersPanel, CommandBar, TelegramPanel y WebChatPanel. No existe ningún flujo de onboarding ni pantalla de bienvenida. El bot de Telegram ofrece `/ayuda` pero no hay guía inicial para configurar el entorno. No hay documentación para usuarios finales.
+
+## Alcance mínimo (MVP)
+
+- Pantalla de bienvenida al primer inicio de sesión del tenant
+- Paso 1: Crear cuenta de empresa (nombre, sector, contacto)
+- Paso 2: Conectar bot de Telegram (token, nombre del bot)
+- Paso 3: Configurar al menos un canal de comunicación (Telegram grupo, WebChat)
+- Paso 4: Invitar al menos un miembro del equipo (email + rol)
+- Paso 5: Resumen de configuración y enlace al dashboard
+- Indicador de progreso visible en todo momento
+- Posibilidad de saltar pasos y completarlos después
+- Checklist persistente en el dashboard hasta completar todos los pasos
+
+## Dependencias
+
+- Depende de: multi-tenancy (001) para aislar la configuración por empresa, sistema de autenticación y roles
+- Habilita: adopción más rápida de documentación (024) y branding (025), ya que el wizard puede enlazar a ambos
+
+## Archivos probables
+
+- `src/components/Onboarding/OnboardingWizard.tsx` — componente principal del wizard
+- `src/components/Onboarding/steps/StepAccount.tsx` — paso de creación de cuenta
+- `src/components/Onboarding/steps/StepBot.tsx` — paso de conexión del bot
+- `src/components/Onboarding/steps/StepChannels.tsx` — paso de canales
+- `src/components/Onboarding/steps/StepTeam.tsx` — paso de invitación de equipo
+- `src/components/Onboarding/steps/StepSummary.tsx` — resumen final
+- `src/components/Onboarding/OnboardingChecklist.tsx` — checklist en dashboard
+- `server/routes/onboarding.js` — endpoints para guardar progreso del wizard
+- `server/models/onboardingProgress.js` — modelo de progreso por tenant

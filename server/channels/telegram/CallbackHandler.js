@@ -1,10 +1,13 @@
 'use strict';
 
+const path                 = require('path');
 const ClaudePrintSession   = require('../../core/ClaudePrintSession');
 const os                   = require('os');
 const { getSystemStats }   = require('../../core/systemStats');
 const dynamicRegistry      = require('./DynamicCallbackRegistry');
 const { exec }             = require('child_process');
+
+const MCP_CONFIG_PATH = path.join(__dirname, '..', '..', 'mcp-config.json');
 
 /**
  * CallbackHandler — maneja _handleCallbackQuery y el motor de menús declarativo.
@@ -545,6 +548,7 @@ class CallbackHandler {
           cwd:             saved.cwd || process.env.HOME,
           model:           saved.model || 'sonnet',
           permissionMode:  saved.claude_mode || 'auto',
+          mcpConfig:       MCP_CONFIG_PATH,
         });
       }
 

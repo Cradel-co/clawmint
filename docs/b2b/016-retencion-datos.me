@@ -1,0 +1,39 @@
+# 016 — Políticas de retención de datos
+
+> Estado: `pendiente` | Categoría: `compliance` | Prioridad: `alta`
+
+## Qué es
+
+Sistema de borrado automático y configurable que permite definir por cuánto tiempo se conservan los distintos tipos de datos en la plataforma. Cada tenant puede establecer sus propias políticas de retención según sus requisitos legales y de negocio.
+
+## Por qué es necesario para B2B
+
+Las empresas están sujetas a regulaciones que exigen tanto la conservación mínima de ciertos datos como el borrado obligatorio después de un período. Sin políticas de retención configurables, los clientes no pueden cumplir con GDPR, LGPD u otras normativas locales. Además, el almacenamiento indefinido de datos aumenta el riesgo en caso de brecha de seguridad y genera costos innecesarios.
+
+## Qué existe hoy
+
+El proyecto implementa una ventana deslizante de 30 mensajes para el historial de conversaciones y un límite de 100 mensajes para webchat, pero estas son restricciones por volumen, no por tiempo. No existe un mecanismo de borrado automático basado en antigüedad. SQLite vía sql.js WASM opera en memoria con auto-persistencia a disco (debounce 500 ms). El Logger tiene rotación por tamaño (>50 MB, máximo 2 archivos rotados) pero no por tiempo.
+
+## Alcance mínimo (MVP)
+
+- Definir modelo de configuración de retención por tenant: tipo de dato, período de retención (días), acción al expirar (borrar / anonimizar)
+- Crear tabla `retention_policies` con campos: `tenant_id`, `data_type`, `retention_days`, `action`, `enabled`
+- Implementar job periódico (cron interno) que ejecute las políticas de retención activas
+- Tipos de datos cubiertos inicialmente: conversaciones, mensajes de webchat, logs de auditoría, archivos temporales
+- Endpoint API para que cada tenant configure sus políticas de retención
+- Registro en audit log de cada ejecución de retención (qué se borró, cuántos registros, cuándo)
+- Valores por defecto razonables para tenants que no configuren políticas propias (ej. 90 días conversaciones, 365 días auditoría)
+
+## Dependencias
+
+- **Depende de:** modelo multi-tenant, logs de auditoría (015) para registrar las purgas
+- **Habilita:** cumplimiento GDPR (018), reducción de superficie de ataque para encriptación (017)
+
+## Archivos probables
+
+- `server/core/RetentionManager.js` — lógica principal de retención y scheduling del job
+- `server/db/schemas/retention_policies.sql` — esquema de tabla de políticas
+- `server/db/repositories/RetentionPolicyRepository.js` — acceso a datos de políticas
+- `server/routes/api/retention.js` — endpoints de configuración de políticas
+- `server/jobs/retentionJob.js` — job periódico de purga de datos
+- `server/db/repositories/ConversationRepository.js` — modificar para soportar borrado por antigüedad

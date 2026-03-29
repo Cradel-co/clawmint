@@ -78,6 +78,13 @@ const _modulesReady = (async function loadModules() {
     logger.info('mcp-client-pool OK');
   } catch(e) { logger.warn('mcp-client-pool init falló:', e.message); }
 
+  // Sincronizar MCPs habilitados al Claude CLI y generar mcp-config.json
+  try {
+    await mcps.syncAll();
+    mcps.generateConfigFile();
+    logger.info('MCPs sincronizados y mcp-config.json generado');
+  } catch(e) { logger.warn('mcps sync/config falló:', e.message); }
+
   logger.info('Todos los módulos cargados.');
 })();
 

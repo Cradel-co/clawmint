@@ -1,0 +1,41 @@
+# 012 — Sistema de billing
+
+> Estado: `pendiente` | Categoría: `monetización` | Prioridad: `alta`
+
+## Qué es
+
+Sistema de facturación y gestión de suscripciones que permite definir planes (free, pro, enterprise), asignar límites de uso por plan y controlar el ciclo de vida de la suscripción de cada tenant.
+
+## Por qué es necesario para B2B
+
+Las empresas necesitan un modelo de precios claro antes de adoptar una plataforma. Sin planes definidos ni facturación automatizada, no hay forma escalable de monetizar el servicio. Los clientes corporativos esperan límites predecibles, upgrades self-service y documentación fiscal de sus pagos.
+
+## Qué existe hoy
+
+El proyecto rastrea el uso de tokens y costo por proveedor a través de ConversationService (comando `/costo`). Cada proveedor emite `{ type: 'usage', promptTokens, completionTokens }`. Sin embargo, no existe concepto de plan, límite por usuario ni ciclo de facturación; todo el uso es ilimitado y sin cobro.
+
+## Alcance mínimo (MVP)
+
+- Definir tabla `plans` con campos: id, nombre, precio mensual, límites (tokens, agentes, usuarios).
+- Definir tabla `subscriptions` ligando cada tenant a un plan con fecha de inicio, renovación y estado.
+- Endpoint REST para listar planes disponibles (`GET /api/plans`).
+- Endpoint REST para consultar y cambiar la suscripción del tenant (`GET/PUT /api/tenants/:id/subscription`).
+- Middleware que inyecte el plan activo del tenant en cada request.
+- Lógica de enforcement: rechazar peticiones cuando el tenant exceda los límites de su plan.
+- Comando `/plan` en el bot de Telegram para que el admin del tenant consulte su plan actual y uso acumulado.
+- Seed de planes por defecto (free, pro, enterprise) en la migración inicial.
+
+## Dependencias
+
+- **Depende de:** multi-tenancy (001) — se requiere el concepto de tenant para asociar suscripciones.
+- **Habilita:** metering (013) — el metering necesita los límites definidos aquí para hacer enforcement; portal de pagos (014) — el portal necesita los planes para mostrar precios y procesar cobros.
+
+## Archivos probables
+
+- `src/models/Plan.js` — modelo y queries para planes.
+- `src/models/Subscription.js` — modelo y queries para suscripciones.
+- `src/routes/plans.js` — endpoints REST de planes.
+- `src/routes/subscriptions.js` — endpoints REST de suscripciones.
+- `src/middleware/planLimits.js` — middleware de enforcement de límites.
+- `src/commands/plan.js` — comando `/plan` del bot.
+- `migrations/XXX-create-plans-subscriptions.js` — migración de tablas y seed.
