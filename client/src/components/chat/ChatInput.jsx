@@ -1,6 +1,7 @@
 import { useRef, useCallback } from 'react';
 import { Paperclip, Volume2, Send, Mic } from 'lucide-react';
 import RecordingBar from './RecordingBar.jsx';
+import styles from '../WebChatPanel.module.css';
 
 export default function ChatInput({
   input, setInput, connected, sending,
@@ -22,7 +23,7 @@ export default function ChatInput({
 
   if (recording) {
     return (
-      <div className="wc-input-area">
+      <div className={styles.inputArea}>
         <RecordingBar
           recTime={recTime}
           recPaused={recPaused}
@@ -35,16 +36,16 @@ export default function ChatInput({
   }
 
   return (
-    <div className="wc-input-area">
+    <div className={styles.inputArea}>
       <input
         type="file"
         ref={fileInputRef}
-        className="wc-file-input"
+        className={styles.fileInput}
         accept="image/*,.pdf,.txt,.doc,.docx,.xls,.xlsx,.csv,.json,.xml,.zip,.rar,.7z,.mp3,.wav,.ogg,.mp4,.webm"
         onChange={(e) => onFileSelect(e, input.trim())}
       />
       <button
-        className="wc-btn-icon wc-attach-btn"
+        className={`${styles.btnIcon} ${styles.attachBtn}`}
         onClick={onOpenFilePicker}
         disabled={!connected || sending}
         title="Adjuntar archivo"
@@ -53,7 +54,7 @@ export default function ChatInput({
       </button>
       <textarea
         ref={inputRef}
-        className="wc-input"
+        className={styles.input}
         value={input}
         onChange={e => setInput(e.target.value)}
         onKeyDown={handleKeyDown}
@@ -62,7 +63,7 @@ export default function ChatInput({
         disabled={!connected}
       />
       <button
-        className="wc-btn-icon wc-tts-btn"
+        className={`${styles.btnIcon} ${styles.ttsBtn}`}
         onClick={onPlayTTS}
         disabled={!connected || !hasTTSContent}
         title="Escuchar última respuesta (TTS)"
@@ -71,7 +72,7 @@ export default function ChatInput({
       </button>
       {input.trim() ? (
         <button
-          className="wc-send"
+          className={styles.send}
           onClick={onSend}
           disabled={sending || !connected}
         >
@@ -79,7 +80,7 @@ export default function ChatInput({
         </button>
       ) : (
         <button
-          className="wc-send wc-send-mic"
+          className={`${styles.send} ${styles.sendMic}`}
           onClick={onStartRecording}
           disabled={!connected || sending}
           title="Grabar audio"

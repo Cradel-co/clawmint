@@ -1,0 +1,8 @@
+{
+  "execMap": {
+    "js": "node --stack-size=65536 --env-file-if-exists=.env"
+  },
+  "watch": ["."],
+  "ext": "js,json",
+  "ignore": ["test/*", "node_modules/*", "memory/*", "skills/*", "*.log", "mcp-config.json", "bots.json", "bots.json.migrated", "reminders.json", "whisper-config.json", "tts-config.json", "nodriza-config.json", "provider-config.json", "logs.json", "models-cache/*", "mcps/*"]
+}

@@ -1,0 +1,110 @@
+.msg {
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  background: rgba(74,222,128,0.10);
+  border-radius: 4px;
+  color: var(--accent-green);
+  font-size: 12px;
+}
+
+.sectionTitle {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-yellow);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  font-family: var(--font-ui);
+}
+
+.defaultSelect {
+  width: 100%;
+  padding: 7px 10px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+
+.defaultSelect:focus {
+  border-color: rgba(251,191,36,0.45);
+  box-shadow: 0 0 0 3px rgba(251,191,36,0.07);
+}
+
+.providerTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.statusBadge {
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+}
+
+.configured {
+  background: rgba(74,222,128,0.14);
+  color: var(--accent-green);
+}
+
+.unconfigured {
+  background: rgba(248,113,113,0.10);
+  color: var(--accent-red);
+}
+
+.fieldLabel {
+  font-size: 11px;
+  color: var(--text-hint);
+  display: block;
+  margin-bottom: 3px;
+}
+
+.input {
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 6px 10px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-family: var(--font-ui);
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+
+.input:focus {
+  border-color: rgba(251,191,36,0.45);
+  box-shadow: 0 0 0 3px rgba(251,191,36,0.07);
+}
+
+.select {
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-family: var(--font-ui);
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+
+.select:focus {
+  border-color: rgba(251,191,36,0.45);
+  box-shadow: 0 0 0 3px rgba(251,191,36,0.07);
+}

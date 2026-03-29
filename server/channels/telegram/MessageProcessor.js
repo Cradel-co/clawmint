@@ -242,6 +242,7 @@ class MessageProcessor {
       } else if (sentMsg) {
         try { await bot._apiCall('deleteMessage', { chat_id: chatId, message_id: sentMsg.message_id }); } catch (e) { tdbg('send', `deleteStatusMsg FAIL: ${e.message}`); }
       }
+      // Main ya maneja fallback en sendResult (línea 211)
 
       if (this._tts && this._tts.isEnabled() && result.text && !isLeakedMeta) {
         try {

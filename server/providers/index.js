@@ -7,6 +7,7 @@ const providers = {
   'gemini':      require('./gemini'),
   'openai':      require('./openai'),
   'grok':        require('./grok'),
+  'deepseek':    require('./deepseek'),
   'ollama':      require('./ollama'),
 };
 

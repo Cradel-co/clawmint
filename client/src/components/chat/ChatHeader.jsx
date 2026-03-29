@@ -1,15 +1,16 @@
 import { Trash2, X, LogIn, LogOut, User } from 'lucide-react';
+import styles from '../WebChatPanel.module.css';
 
 export default function ChatHeader({
   providers, provider, setProvider, agentsList, agent, setAgent,
   authUser, onLogout, onShowAuth, onClear, onClose, onSettingsChange, embedded,
 }) {
   return (
-    <div className="wc-header">
-      {!embedded && <span className="wc-header-title">Chat</span>}
-      <div className="wc-header-controls">
+    <div className={styles.header}>
+      {!embedded && <span className={styles.headerTitle}>Chat</span>}
+      <div className={styles.headerControls}>
         <select
-          className="wc-select"
+          className={styles.select}
           value={provider}
           aria-label="Proveedor"
           onChange={e => {
@@ -23,7 +24,7 @@ export default function ChatHeader({
           ))}
         </select>
         <select
-          className="wc-select"
+          className={styles.select}
           value={agent || ''}
           aria-label="Agente"
           onChange={e => {
@@ -38,21 +39,21 @@ export default function ChatHeader({
           ))}
         </select>
         {authUser ? (
-          <button className="wc-user-badge" onClick={onLogout} title="Cerrar sesión">
+          <button className={styles.userBadge} onClick={onLogout} title="Cerrar sesión">
             {authUser.avatar_url
-              ? <img src={authUser.avatar_url} alt="" className="wc-user-avatar" />
+              ? <img src={authUser.avatar_url} alt="" className={styles.userAvatar} />
               : <User size={12} />
             }
             {authUser.name || authUser.email}
             <LogOut size={10} />
           </button>
         ) : !embedded && (
-          <button className="wc-login-btn" onClick={onShowAuth} title="Iniciar sesión">
+          <button className={styles.loginBtn} onClick={onShowAuth} title="Iniciar sesión">
             <LogIn size={12} /> Login
           </button>
         )}
-        <button className="wc-btn-icon" onClick={onClear} title="Nueva conversación" aria-label="Nueva conversación"><Trash2 size={14} /></button>
-        {!embedded && <button className="wc-close" onClick={onClose} aria-label="Cerrar panel de chat"><X size={16} /></button>}
+        <button className={styles.btnIcon} onClick={onClear} title="Nueva conversación" aria-label="Nueva conversación"><Trash2 size={14} /></button>
+        {!embedded && <button className={styles.close} onClick={onClose} aria-label="Cerrar panel de chat"><X size={16} /></button>}
       </div>
     </div>
   );

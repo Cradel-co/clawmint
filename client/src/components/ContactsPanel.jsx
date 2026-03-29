@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { X, Plus, Star, StarOff, Pencil, Trash2, Check, Phone, Mail, FileText, Link, MessageSquare } from 'lucide-react';
 import { API_BASE } from '../config';
 import { apiFetch } from '../authUtils';
-import './ContactsPanel.css';
+import styles from './ContactsPanel.module.css';
 
 const API = `${API_BASE}/api/contacts`;
 
@@ -68,12 +68,12 @@ function ContactForm({ initial, onSave, onCancel }) {
   };
 
   return (
-    <div className="cp-form">
-      <p className="cp-form-title">{isEdit ? `Editar contacto` : 'Nuevo contacto'}</p>
+    <div className={styles.form}>
+      <p className={styles.formTitle}>{isEdit ? `Editar contacto` : 'Nuevo contacto'}</p>
 
-      <label className="cp-label">Nombre *</label>
+      <label className={styles.label}>Nombre *</label>
       <input
-        className="cp-input"
+        className={styles.input}
         type="text"
         placeholder="Juan García"
         value={name}
@@ -81,9 +81,9 @@ function ContactForm({ initial, onSave, onCancel }) {
         aria-label="Nombre del contacto"
       />
 
-      <label className="cp-label" style={{ marginTop: 8 }}>Teléfono</label>
+      <label className={styles.label} style={{ marginTop: 8 }}>Teléfono</label>
       <input
-        className="cp-input"
+        className={styles.input}
         type="tel"
         placeholder="+54 11 1234-5678"
         value={phone}
@@ -91,9 +91,9 @@ function ContactForm({ initial, onSave, onCancel }) {
         aria-label="Teléfono"
       />
 
-      <label className="cp-label" style={{ marginTop: 8 }}>Email</label>
+      <label className={styles.label} style={{ marginTop: 8 }}>Email</label>
       <input
-        className="cp-input"
+        className={styles.input}
         type="email"
         placeholder="juan@ejemplo.com"
         value={email}
@@ -101,9 +101,9 @@ function ContactForm({ initial, onSave, onCancel }) {
         aria-label="Email"
       />
 
-      <label className="cp-label" style={{ marginTop: 8 }}>Telegram (ID o @username)</label>
+      <label className={styles.label} style={{ marginTop: 8 }}>Telegram (ID o @username)</label>
       <input
-        className="cp-input"
+        className={styles.input}
         type="text"
         placeholder="ej: 7874537448 o @bpadilla3570"
         value={telegramId}
@@ -111,9 +111,9 @@ function ContactForm({ initial, onSave, onCancel }) {
         aria-label="Telegram ID o username"
       />
 
-      <label className="cp-label" style={{ marginTop: 8 }}>Notas</label>
+      <label className={styles.label} style={{ marginTop: 8 }}>Notas</label>
       <textarea
-        className="cp-textarea"
+        className={styles.textarea}
         rows={3}
         placeholder="Notas libres sobre este contacto..."
         value={notes}
@@ -121,7 +121,7 @@ function ContactForm({ initial, onSave, onCancel }) {
         aria-label="Notas"
       />
 
-      <label className="cp-checkbox-row">
+      <label className={styles.checkboxRow}>
         <input
           type="checkbox"
           checked={isFavorite}
@@ -130,13 +130,13 @@ function ContactForm({ initial, onSave, onCancel }) {
         <span>Marcar como favorito ⭐</span>
       </label>
 
-      {error && <p className="cp-error">{error}</p>}
+      {error && <p className={styles.error}>{error}</p>}
 
-      <div className="cp-btn-row">
-        <button className="cp-btn cp-btn-primary" onClick={handleSubmit} disabled={loading || !name.trim()}>
+      <div className={styles.btnRow}>
+        <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={handleSubmit} disabled={loading || !name.trim()}>
           {loading ? '...' : <><Check size={13} /> {isEdit ? 'Guardar' : 'Crear'}</>}
         </button>
-        <button className="cp-btn cp-btn-ghost" onClick={onCancel}>
+        <button className={`${styles.btn} ${styles.btnGhost}`} onClick={onCancel}>
           Cancelar
         </button>
       </div>
@@ -155,71 +155,71 @@ function ContactDetail({ contactId, onBack, onEdit, onDelete }) {
       .catch(() => setLoading(false));
   }, [contactId]);
 
-  if (loading) return <p className="cp-empty">Cargando...</p>;
-  if (!contact) return <p className="cp-empty">No encontrado</p>;
+  if (loading) return <p className={styles.empty}>Cargando...</p>;
+  if (!contact) return <p className={styles.empty}>No encontrado</p>;
 
   return (
-    <div className="cp-detail">
-      <div className="cp-detail-header">
-        <button className="cp-back-btn" onClick={onBack} aria-label="Volver">←</button>
-        <div className="cp-detail-name">
+    <div className={styles.detail}>
+      <div className={styles.detailHeader}>
+        <button className={styles.backBtn} onClick={onBack} aria-label="Volver">←</button>
+        <div className={styles.detailName}>
           {contact.name}
-          {contact.is_favorite ? <Star size={14} className="cp-star-icon" /> : null}
+          {contact.is_favorite ? <Star size={14} className={styles.starIcon} /> : null}
         </div>
-        <div className="cp-detail-actions">
-          <button className="cp-icon-btn" onClick={() => onEdit(contact)} aria-label="Editar">
+        <div className={styles.detailActions}>
+          <button className={styles.iconBtn} onClick={() => onEdit(contact)} aria-label="Editar">
             <Pencil size={14} />
           </button>
-          <button className="cp-icon-btn cp-icon-btn-danger" onClick={() => onDelete(contact)} aria-label="Eliminar">
+          <button className={`${styles.iconBtn} ${styles.iconBtnDanger}`} onClick={() => onDelete(contact)} aria-label="Eliminar">
             <Trash2 size={14} />
           </button>
         </div>
       </div>
 
-      <div className="cp-detail-body">
+      <div className={styles.detailBody}>
         {contact.phone && (
-          <div className="cp-detail-row">
+          <div className={styles.detailRow}>
             <Phone size={13} />
             <span>{contact.phone}</span>
           </div>
         )}
         {contact.email && (
-          <div className="cp-detail-row">
+          <div className={styles.detailRow}>
             <Mail size={13} />
             <span>{contact.email}</span>
           </div>
         )}
         {contact.notes && (
-          <div className="cp-detail-row cp-detail-notes">
+          <div className={`${styles.detailRow} ${styles.detailNotes}`}>
             <FileText size={13} />
             <span>{contact.notes}</span>
           </div>
         )}
         {contact.linkedUser?.identities?.find(i => i.channel === 'telegram') && (
-          <div className="cp-detail-row">
+          <div className={styles.detailRow}>
             <MessageSquare size={13} />
             <span>Telegram: {contact.linkedUser.identities.find(i => i.channel === 'telegram').identifier}</span>
           </div>
         )}
         {contact.linkedUser ? (
-          <div className="cp-detail-row cp-linked">
+          <div className={`${styles.detailRow} ${styles.linked}`}>
             <Link size={13} />
             <span>
               Vinculado a <strong>{contact.linkedUser.name}</strong>
               {contact.linkedUser.identities?.length > 0 && (
-                <span className="cp-linked-ids">
+                <span className={styles.linkedIds}>
                   {' '}({contact.linkedUser.identities.map(i => `${i.channel}:${i.identifier}`).join(', ')})
                 </span>
               )}
             </span>
           </div>
         ) : (
-          <div className="cp-detail-row cp-not-linked">
+          <div className={`${styles.detailRow} ${styles.notLinked}`}>
             <Link size={13} />
             <span>Sin usuario vinculado</span>
           </div>
         )}
-        <div className="cp-detail-id">ID: {contact.id}</div>
+        <div className={styles.detailId}>ID: {contact.id}</div>
       </div>
     </div>
   );
@@ -237,26 +237,26 @@ function ContactRow({ contact, onSelect, onToggleFav, onDelete }) {
   };
 
   return (
-    <div className="cp-contact-row" onClick={() => onSelect(contact.id)} role="button" tabIndex={0}
+    <div className={styles.contactRow} onClick={() => onSelect(contact.id)} role="button" tabIndex={0}
       onKeyDown={e => e.key === 'Enter' && onSelect(contact.id)}>
-      <div className="cp-contact-avatar">
+      <div className={styles.contactAvatar}>
         {contact.name.charAt(0).toUpperCase()}
       </div>
-      <div className="cp-contact-info">
-        <div className="cp-contact-name">
+      <div className={styles.contactInfo}>
+        <div className={styles.contactName}>
           {contact.name}
-          {contact.user_id && <span className="cp-badge-linked" title="Vinculado">🔗</span>}
+          {contact.user_id && <span className={styles.badgeLinked} title="Vinculado">🔗</span>}
         </div>
         {(contact.phone || contact.email) && (
-          <div className="cp-contact-sub">{contact.phone || contact.email}</div>
+          <div className={styles.contactSub}>{contact.phone || contact.email}</div>
         )}
       </div>
-      <div className="cp-contact-actions" onClick={e => e.stopPropagation()}>
-        <button className={`cp-icon-btn ${contact.is_favorite ? 'cp-fav-active' : ''}`}
+      <div className={styles.contactActions} onClick={e => e.stopPropagation()}>
+        <button className={`${styles.iconBtn} ${contact.is_favorite ? styles.favActive : ''}`}
           onClick={handleFav} aria-label={contact.is_favorite ? 'Quitar favorito' : 'Marcar favorito'}>
           {contact.is_favorite ? <Star size={14} /> : <StarOff size={14} />}
         </button>
-        <button className="cp-icon-btn cp-icon-btn-danger" onClick={handleDelete} aria-label="Eliminar">
+        <button className={`${styles.iconBtn} ${styles.iconBtnDanger}`} onClick={handleDelete} aria-label="Eliminar">
           <Trash2 size={14} />
         </button>
       </div>
@@ -321,11 +321,11 @@ export default function ContactsPanel({ onClose, embedded }) {
   };
 
   return (
-    <div className="cp-panel" role="dialog" aria-label="Contactos">
-      <div className="cp-header">
-        <span className="cp-title">Contactos</span>
+    <div className={styles.panel} role="dialog" aria-label="Contactos">
+      <div className={styles.header}>
+        <span className={styles.title}>Contactos</span>
         {!embedded && (
-          <button className="cp-close-btn" onClick={onClose} aria-label="Cerrar">
+          <button className={styles.closeBtn} onClick={onClose} aria-label="Cerrar">
             <X size={16} />
           </button>
         )}
@@ -333,9 +333,9 @@ export default function ContactsPanel({ onClose, embedded }) {
 
       {view === 'list' && (
         <>
-          <div className="cp-toolbar">
+          <div className={styles.toolbar}>
             <input
-              className="cp-search"
+              className={styles.search}
               type="search"
               placeholder="Buscar..."
               value={query}
@@ -343,7 +343,7 @@ export default function ContactsPanel({ onClose, embedded }) {
               aria-label="Buscar contactos"
             />
             <button
-              className={`cp-btn cp-btn-sm ${favOnly ? 'cp-btn-active' : 'cp-btn-ghost'}`}
+              className={`${styles.btn} ${styles.btnSm} ${favOnly ? styles.btnActive : styles.btnGhost}`}
               onClick={() => setFavOnly(f => !f)}
               aria-pressed={favOnly}
               title="Solo favoritos"
@@ -351,7 +351,7 @@ export default function ContactsPanel({ onClose, embedded }) {
               <Star size={13} />
             </button>
             <button
-              className="cp-btn cp-btn-primary cp-btn-sm"
+              className={`${styles.btn} ${styles.btnPrimary} ${styles.btnSm}`}
               onClick={() => { setSelected(null); setView('new'); }}
               aria-label="Nuevo contacto"
             >
@@ -359,10 +359,10 @@ export default function ContactsPanel({ onClose, embedded }) {
             </button>
           </div>
 
-          <div className="cp-list">
-            {loading && <p className="cp-empty">Cargando...</p>}
+          <div className={styles.list}>
+            {loading && <p className={styles.empty}>Cargando...</p>}
             {!loading && contacts.length === 0 && (
-              <p className="cp-empty">
+              <p className={styles.empty}>
                 {query ? 'Sin resultados' : favOnly ? 'No hay favoritos' : 'No hay contactos'}
               </p>
             )}

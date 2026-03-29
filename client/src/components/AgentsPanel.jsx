@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { Check, Pencil, Trash2, X, Plus, Users, Sparkles } from 'lucide-react';
 import { API_BASE } from '../config';
 import { apiFetch } from '../authUtils';
-import './AgentsPanel.css';
+import { useAgents, useDeleteAgent } from '../api/agents';
+import styles from './AgentsPanel.module.css';
 
 const API = `${API_BASE}/api/agents`;
 const SKILLS_API = `${API_BASE}/api/skills`;
@@ -38,14 +39,14 @@ function AgentForm({ initial, onSave, onCancel }) {
   };
 
   return (
-    <div className="ap-form">
-      <p className="ap-form-title">{isEdit ? `Editar agente: ${initial.key}` : 'Nuevo agente'}</p>
+    <div className={styles.form}>
+      <p className={styles.formTitle}>{isEdit ? `Editar agente: ${initial.key}` : 'Nuevo agente'}</p>
 
       {!isEdit && (
         <>
-          <label className="ap-label">Clave (key)</label>
+          <label className={styles.label}>Clave (key)</label>
           <input
-            className="ap-input"
+            className={styles.input}
             type="text"
             placeholder="psicologo, chef, abogado..."
             value={key}
@@ -55,9 +56,9 @@ function AgentForm({ initial, onSave, onCancel }) {
         </>
       )}
 
-      <label className="ap-label" style={{ marginTop: 8 }}>Descripción</label>
+      <label className={styles.label} style={{ marginTop: 8 }}>Descripción</label>
       <input
-        className="ap-input"
+        className={styles.input}
         type="text"
         placeholder="Psicólogo empático y profesional"
         value={description}
@@ -65,23 +66,23 @@ function AgentForm({ initial, onSave, onCancel }) {
         aria-label="Descripción del agente"
       />
 
-      <label className="ap-label" style={{ marginTop: 8 }}>Prompt de rol</label>
+      <label className={styles.label} style={{ marginTop: 8 }}>Prompt de rol</label>
       <textarea
-        className="ap-textarea"
+        className={styles.textarea}
         rows={6}
         placeholder={"Sos un psicólogo empático y profesional. Escuchás con atención, hacés preguntas abiertas y respondés con calidez. Nunca dás diagnósticos médicos."}
         value={prompt}
         onChange={e => setPrompt(e.target.value)}
       />
-      <p className="ap-hint">Dejá vacío si el agente no tiene rol especial (bash, claude base).</p>
+      <p className={styles.hint}>Dejá vacío si el agente no tiene rol especial (bash, claude base).</p>
 
-      {error && <p className="ap-error">{error}</p>}
+      {error && <p className={styles.error}>{error}</p>}
 
-      <div className="ap-btn-row">
-        <button className="ap-btn ap-btn-primary" onClick={handleSubmit} disabled={loading || !key.trim()}>
+      <div className={styles.btnRow}>
+        <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={handleSubmit} disabled={loading || !key.trim()}>
           {loading ? '...' : isEdit ? <><Check size={13} /> Guardar</> : <><Check size={13} /> Crear</>}
         </button>
-        <button className="ap-btn ap-btn-ghost" onClick={onCancel}>
+        <button className={`${styles.btn} ${styles.btnGhost}`} onClick={onCancel}>
           Cancelar
         </button>
       </div>
@@ -96,22 +97,22 @@ function AgentRow({ agent, onEdit, onDelete }) {
     : null;
 
   return (
-    <div className="ap-agent-row">
-      <div className="ap-agent-top">
-        <span className="ap-agent-key">
-          {hasPrompt && <span className="ap-role-badge"><Sparkles size={12} /></span>}
+    <div className={styles.agentRow}>
+      <div className={styles.agentTop}>
+        <span className={styles.agentKey}>
+          {hasPrompt && <span className={styles.roleBadge}><Sparkles size={12} /></span>}
           /{agent.key}
         </span>
-        <div className="ap-agent-actions">
-          <button className="ap-icon-btn" onClick={() => onEdit(agent)} title="Editar" aria-label={`Editar agente ${agent.key}`}><Pencil size={13} /></button>
-          <button className="ap-icon-btn ap-icon-btn-danger" onClick={() => onDelete(agent.key)} title="Eliminar" aria-label={`Eliminar agente ${agent.key}`}><Trash2 size={13} /></button>
+        <div className={styles.agentActions}>
+          <button className={styles.iconBtn} onClick={() => onEdit(agent)} title="Editar" aria-label={`Editar agente ${agent.key}`}><Pencil size={13} /></button>
+          <button className={`${styles.iconBtn} ${styles.iconBtnDanger}`} onClick={() => onDelete(agent.key)} title="Eliminar" aria-label={`Eliminar agente ${agent.key}`}><Trash2 size={13} /></button>
         </div>
       </div>
       {agent.description && (
-        <p className="ap-agent-desc">{agent.description}</p>
+        <p className={styles.agentDesc}>{agent.description}</p>
       )}
       {promptPreview && (
-        <p className="ap-agent-prompt">"{promptPreview}"</p>
+        <p className={styles.agentPrompt}>"{promptPreview}"</p>
       )}
     </div>
   );
@@ -156,34 +157,34 @@ function SkillsSection() {
   };
 
   return (
-    <div className="ap-skills-section">
-      <h3 className="ap-skills-title">Skills globales</h3>
-      <p className="ap-skills-hint">Los skills instalados se inyectan en el prompt de todos los agentes.</p>
-      <div className="ap-skills-install">
+    <div className={styles.skillsSection}>
+      <h3 className={styles.skillsTitle}>Skills globales</h3>
+      <p className={styles.skillsHint}>Los skills instalados se inyectan en el prompt de todos los agentes.</p>
+      <div className={styles.skillsInstall}>
         <input
-          className="ap-input"
+          className={styles.input}
           value={slug}
           onChange={e => { setSlug(e.target.value); setError(''); }}
           placeholder="slug del skill (ej: bible-study)"
           onKeyDown={e => e.key === 'Enter' && install()}
           aria-label="Slug del skill a instalar"
         />
-        <button className="ap-btn ap-btn-primary" onClick={install} disabled={installing || !slug.trim()}>
+        <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={install} disabled={installing || !slug.trim()}>
           {installing ? '...' : 'Instalar'}
         </button>
       </div>
-      {error && <p className="ap-error">{error}</p>}
+      {error && <p className={styles.error}>{error}</p>}
       {skillsList.length === 0 && (
-        <p className="ap-skills-empty">Sin skills instalados. Escribí un slug arriba para instalar uno.</p>
+        <p className={styles.skillsEmpty}>Sin skills instalados. Escribí un slug arriba para instalar uno.</p>
       )}
       {skillsList.map(s => (
-        <div key={s.slug} className="ap-skill-row">
-          <div className="ap-skill-info">
-            <span className="ap-skill-name">{s.name || s.slug}</span>
-            <span className="ap-skill-slug">{s.slug}</span>
-            {s.description && <span className="ap-skill-desc">{s.description}</span>}
+        <div key={s.slug} className={styles.skillRow}>
+          <div className={styles.skillInfo}>
+            <span className={styles.skillName}>{s.name || s.slug}</span>
+            <span className={styles.skillSlug}>{s.slug}</span>
+            {s.description && <span className={styles.skillDesc}>{s.description}</span>}
           </div>
-          <button className="ap-icon-btn ap-icon-btn-danger" onClick={() => uninstall(s.slug)} title="Desinstalar" aria-label={`Desinstalar skill ${s.name || s.slug}`}><X size={13} /></button>
+          <button className={`${styles.iconBtn} ${styles.iconBtnDanger}`} onClick={() => uninstall(s.slug)} title="Desinstalar" aria-label={`Desinstalar skill ${s.name || s.slug}`}><X size={13} /></button>
         </div>
       ))}
     </div>
@@ -191,26 +192,14 @@ function SkillsSection() {
 }
 
 export default function AgentsPanel({ onClose }) {
-  const [agents, setAgents] = useState([]);
+  const { data: agents = [], isLoading, error: loadError } = useAgents();
+  const deleteAgent = useDeleteAgent();
   const [showForm, setShowForm] = useState(false);
   const [editAgent, setEditAgent] = useState(null);
-  const [loadError, setLoadError] = useState('');
-
-  const fetchAgents = useCallback(async () => {
-    try {
-      setLoadError('');
-      const res = await apiFetch(API);
-      const data = await res.json();
-      setAgents(Array.isArray(data) ? data : []);
-    } catch { setLoadError('Error cargando agentes'); }
-  }, []);
-
-  useEffect(() => { fetchAgents(); }, [fetchAgents]);
 
   const handleSave = () => {
     setShowForm(false);
     setEditAgent(null);
-    fetchAgents();
   };
 
   const handleEdit = (agent) => {
@@ -220,10 +209,7 @@ export default function AgentsPanel({ onClose }) {
 
   const handleDelete = async (key) => {
     if (!confirm(`¿Eliminar el agente "${key}"?`)) return;
-    try {
-      await apiFetch(`${API}/${key}`, { method: 'DELETE' });
-      fetchAgents();
-    } catch { setLoadError('Error eliminando agente'); }
+    deleteAgent.mutate(key);
   };
 
   const handleNewClick = () => {
@@ -231,23 +217,25 @@ export default function AgentsPanel({ onClose }) {
     setShowForm(true);
   };
 
+  if (isLoading) return <div className={styles.panel}><p style={{ padding: 16 }}>Cargando...</p></div>;
+
   return (
-    <div className="ap-panel" role="region" aria-label="Panel de agentes">
-      <div className="ap-header">
-        <span className="ap-header-title">
-          <span className="ap-icon"><Users size={16} /></span>
+    <div className={styles.panel} role="region" aria-label="Panel de agentes">
+      <div className={styles.header}>
+        <span className={styles.headerTitle}>
+          <span className={styles.icon}><Users size={16} /></span>
           Agentes personalizados
         </span>
-        <button className="ap-close" onClick={onClose} aria-label="Cerrar panel de agentes"><X size={16} /></button>
+        {onClose && <button className={styles.close} onClick={onClose} aria-label="Cerrar panel de agentes"><X size={16} /></button>}
       </div>
 
-      {loadError && <div className="ap-error" style={{ padding: '6px 14px' }}>{loadError}</div>}
-      <div className="ap-body">
+      {(loadError || deleteAgent.error) && <div className={styles.error} style={{ padding: '6px 14px' }}>{loadError?.message || deleteAgent.error?.message || 'Error'}</div>}
+      <div className={styles.body}>
         {agents.length === 0 && !showForm && (
-          <div className="ap-empty-state">
+          <div className={styles.emptyState}>
             <p>Sin agentes configurados</p>
-            <p className="ap-empty-hint">Creá un agente con un prompt de rol para usarlo en Telegram con /{'<key>'}</p>
-            <button className="ap-btn ap-btn-primary" style={{ marginTop: 10 }} onClick={handleNewClick}>
+            <p className={styles.emptyHint}>Creá un agente con un prompt de rol para usarlo en Telegram con /{'<key>'}</p>
+            <button className={`${styles.btn} ${styles.btnPrimary}`} style={{ marginTop: 10 }} onClick={handleNewClick}>
               <Plus size={13} /> Crear primer agente
             </button>
           </div>
@@ -271,12 +259,12 @@ export default function AgentsPanel({ onClose }) {
             onCancel={() => { setShowForm(false); setEditAgent(null); }}
           />
         ) : (
-          <button className="ap-btn ap-btn-add" onClick={handleNewClick}>
+          <button className={`${styles.btn} ${styles.btnAdd}`} onClick={handleNewClick}>
             <Plus size={14} /> Nuevo agente
           </button>
         )}
 
-        <div className="ap-divider" />
+        <div className={styles.divider} />
         <SkillsSection />
       </div>
     </div>

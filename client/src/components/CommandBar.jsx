@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import './CommandBar.css';
+import styles from './CommandBar.module.css';
 
 export default function CommandBar({ onCommand, onClaude, onAI }) {
   const [value, setValue] = useState('');
@@ -30,7 +30,6 @@ export default function CommandBar({ onCommand, onClaude, onAI }) {
       return;
     }
 
-    // /ai [system prompt opcional] → Anthropic API
     if (raw === '/ai' || raw.startsWith('/ai ')) {
       const sys = raw.slice(3).trim();
       onClaude(sys || null);
@@ -38,7 +37,6 @@ export default function CommandBar({ onCommand, onClaude, onAI }) {
       return;
     }
 
-    // /gemini [system] → Gemini
     if (raw === '/gemini' || raw.startsWith('/gemini ')) {
       const sys = raw.slice(7).trim();
       if (onAI) onAI('gemini', sys || null);
@@ -46,7 +44,6 @@ export default function CommandBar({ onCommand, onClaude, onAI }) {
       return;
     }
 
-    // /openai [system] → OpenAI
     if (raw === '/openai' || raw.startsWith('/openai ')) {
       const sys = raw.slice(7).trim();
       if (onAI) onAI('openai', sys || null);
@@ -54,7 +51,6 @@ export default function CommandBar({ onCommand, onClaude, onAI }) {
       return;
     }
 
-    // /anthropic [system] → Anthropic API
     if (raw === '/anthropic' || raw.startsWith('/anthropic ')) {
       const sys = raw.slice(10).trim();
       if (onAI) onAI('anthropic', sys || null);
@@ -62,7 +58,6 @@ export default function CommandBar({ onCommand, onClaude, onAI }) {
       return;
     }
 
-    // /grok [system] → Grok (xAI)
     if (raw === '/grok' || raw.startsWith('/grok ')) {
       const sys = raw.slice(5).trim();
       if (onAI) onAI('grok', sys || null);
@@ -70,7 +65,6 @@ export default function CommandBar({ onCommand, onClaude, onAI }) {
       return;
     }
 
-    // /ollama [system] → Ollama (local)
     if (raw === '/ollama' || raw.startsWith('/ollama ')) {
       const sys = raw.slice(7).trim();
       if (onAI) onAI('ollama', sys || null);
@@ -78,7 +72,6 @@ export default function CommandBar({ onCommand, onClaude, onAI }) {
       return;
     }
 
-    // /cc — Claude Code PTY interactivo
     if (raw === '/cc') {
       onCommand('claude --dangerously-skip-permissions');
       setValue('');
@@ -89,12 +82,12 @@ export default function CommandBar({ onCommand, onClaude, onAI }) {
   };
 
   return (
-    <form className="command-bar" onSubmit={handleSubmit} role="search" aria-label="Barra de comandos">
-      <label htmlFor="command-input" className="command-prefix" aria-hidden="true">/</label>
+    <form className={styles.bar} onSubmit={handleSubmit} role="search" aria-label="Barra de comandos">
+      <label htmlFor="command-input" className={styles.prefix} aria-hidden="true">/</label>
       <input
         id="command-input"
         ref={inputRef}
-        className="command-input"
+        className={styles.input}
         value={value.startsWith('/') ? value.slice(1) : value}
         onChange={(e) => setValue('/' + e.target.value)}
         placeholder="new  |  cmd npm start  |  ai  |  gemini  |  openai  |  grok  |  ollama  |  cc"
@@ -103,8 +96,8 @@ export default function CommandBar({ onCommand, onClaude, onAI }) {
         aria-label="Comando"
         aria-describedby={error ? 'command-error' : undefined}
       />
-      <button type="submit" className="command-submit">Abrir</button>
-      {error && <span id="command-error" className="command-error" role="alert">{error}</span>}
+      <button type="submit" className={styles.submit}>Abrir</button>
+      {error && <span id="command-error" className={styles.error} role="alert">{error}</span>}
     </form>
   );
 }

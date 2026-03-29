@@ -9,7 +9,7 @@ module.exports = {
   defaultModel: 'gpt-4o',
   models: ['gpt-4o', 'gpt-4o-mini', 'o1', 'o3-mini'],
 
-  async *chat({ systemPrompt, history, apiKey, model, executeTool: execToolFn, channel }) {
+  async *chat({ systemPrompt, history, apiKey, model, executeTool: execToolFn, channel, agentRole }) {
     if (!apiKey) {
       yield { type: 'done', fullText: 'Error: API key de OpenAI no configurada. Configurala en el panel ⚙️.' };
       return;
@@ -17,7 +17,7 @@ module.exports = {
 
     const client = new OpenAI({ apiKey });
     const usedModel = model || this.defaultModel;
-    const toolDefs  = tools.toOpenAIFormat({ channel });
+    const toolDefs  = tools.toOpenAIFormat({ channel, agentRole });
     const execTool  = execToolFn || tools.executeTool;
 
     // Construir messages OpenAI

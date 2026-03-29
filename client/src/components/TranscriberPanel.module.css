@@ -1,0 +1,7 @@
+.msg { padding: 6px 10px; margin-bottom: 8px; background: rgba(74,222,128,0.10); border-radius: 4px; color: var(--accent-green); font-size: 12px; }
+.sectionTitle { font-size: 11px; font-weight: 700; color: var(--accent-teal); letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 8px; font-family: var(--font-ui); }
+.fieldLabel { font-size: 11px; color: var(--text-hint); display: block; margin-bottom: 3px; margin-top: 8px; }
+.select { width: 100%; margin-bottom: 8px; padding: 7px 10px; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-primary); border-radius: 6px; font-size: 12.5px; font-family: var(--font-ui); box-sizing: border-box; outline: none; }
+.select:focus { border-color: rgba(45,212,191,0.45); }
+.infoRow { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); padding: 4px 0; }
+.infoLabel { color: var(--text-hint); }

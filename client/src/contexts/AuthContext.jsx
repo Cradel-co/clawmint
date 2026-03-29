@@ -1,7 +1,7 @@
-import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useRef,  } from 'react';
 import {
   getStoredUser, setStoredUser, getStoredTokens, setStoredTokens,
-  clearStoredTokens, isTokenExpired, refreshTokens as refreshAuthTokens, linkSession,
+  clearStoredTokens, refreshTokens, linkSession,
 } from '../authUtils';
 
 const AuthContext = createContext(null);
@@ -11,7 +11,6 @@ export function AuthProvider({ children }) {
   const [showAuthPanel, setShowAuthPanel] = useState(false);
   const wsRef = useRef(null);
 
-  // Permitir que useChatSocket pase su wsRef para refresh proactivo
   const setWsRef = useCallback((ref) => { wsRef.current = ref; }, []);
 
   // Refresh proactivo del JWT antes de que expire
@@ -46,11 +45,11 @@ export function AuthProvider({ children }) {
     return () => clearTimeout(timer);
   }, [user]);
 
-  const handleAuth = useCallback(async (result, sessionId) => {
+  const handleAuth = useCallback(async (result, sessionId = null) => {
     setUser(result.user);
     setShowAuthPanel(false);
 
-    if (sessionId && sessionId !== result.user.id) {
+    if (sessionId && sessionId !== String(result.user.id)) {
       try { await linkSession(sessionId); } catch {}
     }
   }, []);

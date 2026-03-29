@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 
 /**
  * Hook que maneja el estado del chat y procesamiento de mensajes WS.
@@ -12,6 +12,28 @@ export default function useChat({ onAuthMessage, onNewMessage }) {
   const [agent, setAgent] = useState(null);
   const [cwd, setCwd] = useState('~');
   const [statusText, setStatusText] = useState(null);
+  const sendingTimerRef = useRef(null);
+
+  // Safety net: si después de 2 min no llega respuesta, limpiar typing indicator
+  useEffect(() => {
+    if (sending) {
+      sendingTimerRef.current = setTimeout(() => {
+        setSending(false);
+        setStatusText(null);
+        setMessages(prev => {
+          const last = prev[prev.length - 1];
+          if (last && last.role === 'assistant' && last.streaming) {
+            return [...prev.slice(0, -1), { ...last, content: last.content || 'Error: el provider no respondió a tiempo.', streaming: false }];
+          }
+          return [...prev, { role: 'system', content: 'Error: el provider no respondió a tiempo.', error: true }];
+        });
+      }, 120000);
+    } else if (sendingTimerRef.current) {
+      clearTimeout(sendingTimerRef.current);
+      sendingTimerRef.current = null;
+    }
+    return () => { if (sendingTimerRef.current) clearTimeout(sendingTimerRef.current); };
+  }, [sending]);
 
   const handleWsMessage = useCallback((msg) => {
     // Delegar mensajes de auth al contexto

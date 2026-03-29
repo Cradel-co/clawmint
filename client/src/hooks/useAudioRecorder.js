@@ -1,9 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 
-/**
- * Hook para grabación de audio con MediaRecorder.
- * Retorna estado de grabación y funciones de control.
- */
 export default function useAudioRecorder({ onRecordingComplete }) {
   const [recording, setRecording] = useState(false);
   const [recPaused, setRecPaused] = useState(false);
@@ -12,33 +8,31 @@ export default function useAudioRecorder({ onRecordingComplete }) {
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const streamRef = useRef(null);
-  const recTimerRef = useRef(null);
+  const recTimerRef = useRef | null>(null);
   const recCancelledRef = useRef(false);
   const recTimeRef = useRef(0);
 
-  // Timer de grabación
   useEffect(() => {
     if (recording && !recPaused) {
       recTimerRef.current = setInterval(() => {
         setRecTime(t => { recTimeRef.current = t + 1; return t + 1; });
       }, 1000);
     } else {
-      clearInterval(recTimerRef.current);
+      if (recTimerRef.current) clearInterval(recTimerRef.current);
     }
-    return () => clearInterval(recTimerRef.current);
+    return () => { if (recTimerRef.current) clearInterval(recTimerRef.current); };
   }, [recording, recPaused]);
 
-  // Cleanup al desmontar
   useEffect(() => {
     return () => {
       streamRef.current?.getTracks().forEach(t => t.stop());
       streamRef.current = null;
-      clearInterval(recTimerRef.current);
+      if (recTimerRef.current) clearInterval(recTimerRef.current);
     };
   }, []);
 
   const cleanupRecording = useCallback(() => {
-    clearInterval(recTimerRef.current);
+    if (recTimerRef.current) clearInterval(recTimerRef.current);
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
     mediaRecorderRef.current = null;

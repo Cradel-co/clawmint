@@ -12,8 +12,9 @@ const critterStatus = require('./critter-status');
 const users         = require('./users');          // array
 const scheduled     = require('./scheduled');      // array
 const contacts      = require('./contacts');       // array
+const orchestration = require('./orchestration');  // array, coordinatorOnly
 
-const ALL_TOOLS = [bash, git, ...files, ...pty, ...telegram, ...memory, ...webchat, ...critter, critterStatus, ...users, ...scheduled, ...contacts];
+const ALL_TOOLS = [bash, git, ...files, ...pty, ...telegram, ...memory, ...webchat, ...critter, critterStatus, ...users, ...scheduled, ...contacts, ...orchestration];
 
 const _byName = new Map(ALL_TOOLS.map(t => [t.name, t]));
 
@@ -24,13 +25,20 @@ function _getPool() {
   return _pool;
 }
 
-/** @returns {Array} todos los tools (internos + externos, filtrados por channel si se especifica) */
+/** @returns {Array} todos los tools (internos + externos, filtrados por channel y agentRole) */
 function all(opts = {}) {
   const pool = _getPool();
   const external = pool ? pool.getExternalToolDefs() : [];
-  const all = [...ALL_TOOLS, ...external];
-  if (!opts.channel) return all.filter(t => !t.channel);
-  return all.filter(t => !t.channel || t.channel === opts.channel);
+  let result = [...ALL_TOOLS, ...external];
+  // Filtrar por channel
+  result = opts.channel
+    ? result.filter(t => !t.channel || t.channel === opts.channel)
+    : result.filter(t => !t.channel);
+  // Filtrar tools de coordinación (solo para role='coordinator')
+  if (opts.agentRole !== 'coordinator') {
+    result = result.filter(t => !t.coordinatorOnly);
+  }
+  return result;
 }
 
 /**

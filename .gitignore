@@ -2,8 +2,11 @@ node_modules/
 dist/
 .env
 *.local
+.claude/
+docs/b2b/
 server/agents.json
 server/agents/*.json
+!server/agents/coordinator.json
 server/skills/
 server/bots.json
 server/bots.json.migrated

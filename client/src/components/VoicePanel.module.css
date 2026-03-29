@@ -1,0 +1,165 @@
+.msg {
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  background: rgba(74,222,128,0.10);
+  border-radius: 4px;
+  color: var(--accent-green);
+  font-size: 12px;
+}
+
+.sectionTitle {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-yellow);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  font-family: var(--font-ui);
+}
+
+.toggleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  gap: 10px;
+}
+
+.toggleLabel {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+}
+
+.toggle {
+  width: 38px;
+  height: 22px;
+  border-radius: 11px;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-hover);
+  cursor: pointer;
+  position: relative;
+  transition: background 0.2s, border-color 0.2s;
+  flex-shrink: 0;
+}
+
+.toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: transform 0.2s, background 0.2s;
+}
+
+.toggleOn {
+  background: rgba(74,222,128,0.15);
+  border-color: rgba(74,222,128,0.4);
+}
+
+.toggleOn::after {
+  transform: translateX(16px);
+  background: var(--accent-green);
+}
+
+.defaultSelect {
+  width: 100%;
+  padding: 7px 10px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.18s;
+}
+
+.defaultSelect:focus {
+  border-color: rgba(251,191,36,0.45);
+}
+
+.providerTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.statusBadge {
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+}
+
+.local {
+  background: rgba(45,212,191,0.14);
+  color: var(--accent-teal);
+}
+
+.cloud {
+  background: rgba(91,141,240,0.14);
+  color: var(--accent-blue);
+}
+
+.configured {
+  background: rgba(74,222,128,0.14);
+  color: var(--accent-green);
+}
+
+.unconfigured {
+  background: rgba(248,113,113,0.10);
+  color: var(--accent-red);
+}
+
+.fieldLabel {
+  font-size: 11px;
+  color: var(--text-hint);
+  display: block;
+  margin-bottom: 3px;
+}
+
+.input {
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 6px 10px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-family: var(--font-ui);
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.18s;
+}
+
+.input:focus {
+  border-color: rgba(251,191,36,0.45);
+}
+
+.select {
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-family: var(--font-ui);
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.18s;
+}
+
+.select:focus {
+  border-color: rgba(251,191,36,0.45);
+}

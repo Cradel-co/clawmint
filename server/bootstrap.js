@@ -225,6 +225,12 @@ function createContainer() {
   convSvc.setSchedulerDeps({ scheduler, usersRepo });
   scheduler.start();
 
+  // ── Orchestrator (multi-agente) ─────────────────────────────────────────
+
+  const AgentOrchestrator = require('./core/AgentOrchestrator');
+  const orchestrator = new AgentOrchestrator({ agents, eventBus, logger });
+  convSvc.setOrchestrator(orchestrator);
+
   // ── Container ─────────────────────────────────────────────────────────────
 
   _container = {
@@ -254,6 +260,7 @@ function createContainer() {
     authService,
     limitsRepo,
     scheduler,
+    orchestrator,
   };
 
   return _container;

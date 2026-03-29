@@ -1,0 +1,80 @@
+.container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  min-width: clamp(160px, 40vw, 200px);
+  max-width: clamp(220px, 50vw, 280px);
+  user-select: none;
+}
+
+.playBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: var(--audio-track);
+  color: var(--audio-fg);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.playBtn:hover {
+  background: var(--bg-hover);
+}
+
+.time {
+  font-size: 11px;
+  color: var(--audio-fg-muted);
+  min-width: 28px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.progress {
+  flex: 1;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  position: relative;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.progressBg {
+  position: absolute;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--audio-track);
+}
+
+.progressFill {
+  position: absolute;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--audio-fg);
+  pointer-events: none;
+}
+
+.progressThumb {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--audio-thumb);
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.15);
+}
+
+.container:hover .progressThumb,
+.progressThumb.dragging {
+  opacity: 1;
+}

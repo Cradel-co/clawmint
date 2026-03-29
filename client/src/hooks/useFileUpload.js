@@ -1,9 +1,5 @@
 import { useRef, useCallback } from 'react';
 
-/**
- * Hook para manejo de upload de archivos (click + drag & drop).
- * Retorna ref del input file y handlers.
- */
 export default function useFileUpload({ onFile }) {
   const fileInputRef = useRef(null);
 

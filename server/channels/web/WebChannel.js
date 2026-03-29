@@ -131,6 +131,16 @@ class WebChannel extends BaseChannel {
       this._scheduler.deliverPending('web', sessionId).catch(() => {});
     }
 
+    // Suscribir a eventos de orquestación
+    if (this.eventBus) {
+      const orchListener = (data) => {
+        if (ws.readyState === ws.OPEN) this._sendJson(ws, { type: 'orchestration_event', ...data });
+      };
+      const orchEvents = ['orchestration:start', 'orchestration:task', 'orchestration:done'];
+      for (const evt of orchEvents) this.eventBus.on(evt, orchListener);
+      ws.on('close', () => { for (const evt of orchEvents) this.eventBus.removeListener(evt, orchListener); });
+    }
+
     // ── Takeover: si ya hay sesión activa con este sessionId (otro device) ────
     const existing = this.sessions.get(sessionId);
     if (existing && existing.ws !== ws) {

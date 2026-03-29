@@ -1,5 +1,6 @@
 import { useRef, useEffect } from 'react';
 import ChatMessage from '../ChatMessage.jsx';
+import styles from '../WebChatPanel.module.css';
 
 export default function MessageList({ messages, sending, connected, providerLabel, onButtonClick }) {
   const messagesEndRef = useRef(null);
@@ -9,18 +10,18 @@ export default function MessageList({ messages, sending, connected, providerLabe
   }, [messages]);
 
   return (
-    <div className="wc-messages">
+    <div className={styles.messages}>
       {messages.length === 0 && (
-        <div className="wc-empty">
+        <div className={styles.empty}>
           {connected ? (
             <>
               <p>Escribí algo para comenzar</p>
-              <p className="wc-hint">Usá / para comandos: /ayuda</p>
+              <p className={styles.hint}>Usá / para comandos: /ayuda</p>
             </>
           ) : (
             <>
               <p>Sin conexión al servidor</p>
-              <p className="wc-hint">Verificá que el servidor esté corriendo y recargá la página</p>
+              <p className={styles.hint}>Verificá que el servidor esté corriendo y recargá la página</p>
             </>
           )}
         </div>
@@ -46,12 +47,12 @@ export default function MessageList({ messages, sending, connected, providerLabe
         />
       ))}
       {sending && !messages.some(m => m.streaming) && (
-        <div className="wc-msg wc-msg-assistant">
-          <div className="wc-msg-label">{providerLabel}</div>
-          <div className="wc-msg-content wc-typing-indicator">
-            <span className="wc-typing-dot" />
-            <span className="wc-typing-dot" />
-            <span className="wc-typing-dot" />
+        <div className={`${styles.msg} ${styles.msgAssistant}`}>
+          <div className={styles.msgLabel}>{providerLabel}</div>
+          <div className={`${styles.msgContent} ${styles.typingIndicator}`}>
+            <span className={styles.typingDot} />
+            <span className={styles.typingDot} />
+            <span className={styles.typingDot} />
           </div>
         </div>
       )}
