@@ -80,7 +80,7 @@ export const useChatStore = create((set, get) => ({
 
   _init: () => {
     const manager = new WsManager({
-      url,
+      url: WS_URL,
       buildInitPayload: () => {
         const savedSessionId = localStorage.getItem('wc-session-id');
         const authToken = localStorage.getItem('wc-auth-token') || undefined;
