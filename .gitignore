@@ -2,6 +2,7 @@ node_modules/
 dist/
 .env
 *.local
+server/agents.json
 server/agents/*.json
 server/skills/
 server/bots.json
@@ -14,6 +15,7 @@ server/models-cache/
 server/voice-providers/piper/
 server/mcps/
 server/provider-config.json
+server/mcp-config.json
 ecosystem.config.js
 logs/
 server/logs/
