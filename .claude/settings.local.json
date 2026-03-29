@@ -83,7 +83,15 @@
       "Bash(python3 -c \"import sys,json; data=json.load\\(sys.stdin\\); [print\\(f{r[''''full_name'''']} | stars:{r[''''stargazers_count'''']} | lang:{r.get\\(''''language'''',''''''''\\)} | {r[''''description'''']} | updated:{r[''''updated_at'''']}\\) for r in data.get\\(''''items'''',[]\\)]\")",
       "Bash(pm2 env:*)",
       "WebFetch(domain:www.bing.com)",
-      "Bash(curl -s \"https://registry.npmjs.org/-/v1/search?text=kheiron&size=20\")"
+      "Bash(curl -s \"https://registry.npmjs.org/-/v1/search?text=kheiron&size=20\")",
+      "Bash(echo \"exit: $?\")",
+      "Bash(pm2 describe:*)",
+      "Bash(curl -s \"https://api.telegram.org/bot8793100760:AAEgNx5nnC_IyNQHq9YPs0UiTFEL8D7E6gw/getUpdates?offset=101123432&limit=5\")",
+      "Bash(curl:*)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1YmY4ZDYzZi1hNmU5LTQxYzItOTRkMS05ODRkMzk2ZDZhOTAiLCJpYXQiOjE3NzQ3MjM5NDYsImV4cCI6MTc3NDcyNDg0Nn0.wJ9sOuIdoqc57Wsf8Y3rqETCbs1w5neuijeko_mA1aE\")",
+      "Bash(xargs kill:*)",
+      "Bash(pm2 flush:*)",
+      "Bash(npx vite:*)"
     ]
   }
 }

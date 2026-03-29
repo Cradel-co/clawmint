@@ -6,6 +6,7 @@ server/agents/*.json
 !server/agents/coordinator.json
 server/skills/
 server/bots.json
+server/bots.json.migrated
 server/whisper-config.json
 server/logs.json
 server/server.log

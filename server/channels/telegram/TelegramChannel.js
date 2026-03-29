@@ -170,8 +170,9 @@ class TelegramChannel extends BaseChannel {
   async loadAndStart() {
     const saved = this._readFile();
     for (const entry of saved) {
-      const { key, token, defaultAgent, whitelist, groupWhitelist, rateLimit, rateLimitKeyword, offset, startGreeting, lastGreetingAt } = entry;
+      const { key, token, defaultAgent, whitelist, groupWhitelist, rateLimit, rateLimitKeyword, offset, startGreeting, lastGreetingAt, ownerId } = entry;
       const bot = this._buildBot(key, token, { initialOffset: offset || 0 });
+      bot.ownerId = ownerId || null;
       if (defaultAgent) bot.defaultAgent = defaultAgent;
 
       const envWhitelist = (process.env.BOT_WHITELIST || '')
@@ -202,9 +203,10 @@ class TelegramChannel extends BaseChannel {
     // Nota: recordatorios ahora gestionados por Scheduler (server/scheduler.js)
   }
 
-  async addBot(key, token) {
+  async addBot(key, token, { ownerId = null } = {}) {
     if (this.bots.has(key)) await this.bots.get(key).stop();
     const bot  = this._buildBot(key, token);
+    bot.ownerId = ownerId || null;
     const info = this._telegramMode === 'webhook'
       ? await bot.startWebhook(this._webhookBaseUrl)
       : await bot.start();
@@ -218,7 +220,8 @@ class TelegramChannel extends BaseChannel {
     if (!bot) return false;
     await bot.stop();
     this.bots.delete(key);
-    this._saveFile();
+    if (this._botsRepo) this._botsRepo.remove(key);
+    else this._saveFile();
     return true;
   }
 
@@ -238,6 +241,11 @@ class TelegramChannel extends BaseChannel {
 
   getBot(key)   { return this.bots.get(key); }
   listBots()    { return [...this.bots.values()].map(b => b.toJSON()); }
+  listBotsByOwner(ownerId) {
+    return [...this.bots.values()]
+      .filter(b => !b.ownerId || b.ownerId === ownerId)
+      .map(b => b.toJSON());
+  }
 
   linkSession(key, chatId, sessionId) {
     const bot = this.bots.get(key);
@@ -315,6 +323,7 @@ class TelegramChannel extends BaseChannel {
   _saveFile() {
     const data = [...this.bots.entries()].map(([key, bot]) => ({
       key,
+      ownerId:          bot.ownerId || null,
       token:            bot.token,
       defaultAgent:     bot.defaultAgent,
       whitelist:        bot.whitelist,

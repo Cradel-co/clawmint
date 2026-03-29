@@ -1,0 +1,174 @@
+/* ── LimitsPanel ─────────────────────────────────────────────────────────── */
+
+.lp-section-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+
+.lp-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+  margin: 14px 0 6px;
+}
+
+/* ── Row ──────────────────────────────────────────────────────────────────── */
+
+.lp-row {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+}
+
+.lp-row-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lp-type-badge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.lp-type-badge.rate    { background: #1a3a2a; color: #4ade80; }
+.lp-type-badge.session { background: #1a2a3a; color: #60a5fa; }
+
+.lp-scope {
+  font-size: 12px;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lp-row-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.lp-btn-danger:hover { color: #f87171 !important; }
+
+.lp-row-detail {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.lp-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.lp-window {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.lp-disabled-badge {
+  font-size: 10px;
+  background: #3a2a1a;
+  color: #fbbf24;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-left: auto;
+}
+
+/* ── Empty ────────────────────────────────────────────────────────────────── */
+
+.lp-empty {
+  text-align: center;
+  padding: 20px 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.lp-empty-hint {
+  font-size: 11px;
+  margin-top: 4px;
+  opacity: 0.7;
+}
+
+/* ── Form ─────────────────────────────────────────────────────────────────── */
+
+.lp-form {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  margin-top: 8px;
+}
+
+.lp-form-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 10px;
+}
+
+.lp-toggle-row {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.lp-toggle {
+  flex: 1;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.lp-toggle:hover { border-color: var(--accent); }
+.lp-toggle.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.lp-window-row {
+  display: flex;
+  gap: 6px;
+}
+
+.lp-window-input {
+  flex: 1;
+}
+
+.lp-window-unit {
+  width: 110px;
+  flex-shrink: 0;
+}
+
+.lp-form-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.lp-error-msg {
+  background: #3a1a1a;
+  color: #f87171;
+  border: 1px solid #5a2a2a;
+}

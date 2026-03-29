@@ -15,31 +15,37 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
   const manualCloseRef = useRef(false);
 
   useEffect(() => {
+    // Leer colores del tema CSS
+    const styles = getComputedStyle(document.documentElement);
+    const v = (name) => styles.getPropertyValue(name).trim();
+
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 14,
       fontFamily: '"Cascadia Code", "Fira Code", "Courier New", monospace',
       theme: {
-        background: '#1a1a1a',
-        foreground: '#f0f0f0',
-        cursor: '#f0f0f0',
-        selectionBackground: '#555',
-        black: '#1a1a1a',
-        red: '#ff5f57',
-        green: '#28c840',
-        yellow: '#febc2e',
-        blue: '#007aff',
-        magenta: '#c678dd',
-        cyan: '#56b6c2',
-        white: '#f0f0f0',
-        brightBlack: '#666',
-        brightRed: '#ff6b6b',
-        brightGreen: '#5af78e',
-        brightYellow: '#f4f99d',
-        brightBlue: '#caa9fa',
-        brightMagenta: '#ff92d0',
-        brightCyan: '#9aedfe',
-        brightWhite: '#ffffff',
+        background:          v('--bg-primary')   || '#0d1117',
+        foreground:          v('--text-primary')  || '#e8edf2',
+        cursor:              v('--accent-cyan')   || '#4fc3f7',
+        cursorAccent:        v('--bg-primary')    || '#0d1117',
+        selectionBackground: v('--bg-active')     || '#1a2d42',
+        selectionForeground: v('--text-primary')  || '#e8edf2',
+        black:               v('--bg-primary')    || '#0d1117',
+        red:                 v('--accent-red')    || '#f87171',
+        green:               v('--accent-green')  || '#4ade80',
+        yellow:              v('--accent-yellow') || '#fbbf24',
+        blue:                v('--accent-blue')   || '#5b8df0',
+        magenta:             v('--accent-purple') || '#a78bfa',
+        cyan:                v('--accent-cyan')   || '#4fc3f7',
+        white:               v('--text-primary')  || '#e8edf2',
+        brightBlack:         v('--text-muted')    || '#637282',
+        brightRed:           '#ff6b6b',
+        brightGreen:         '#5af78e',
+        brightYellow:        '#f4f99d',
+        brightBlue:          '#93c5fd',
+        brightMagenta:       '#c4b5fd',
+        brightCyan:          '#67e8f9',
+        brightWhite:         '#ffffff',
       },
       scrollback: 1000,
     });
@@ -120,8 +126,8 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
       }
     });
 
-    const handleResize = () => {
-      if (!active || !containerRef.current?.offsetWidth) return;
+    const doFit = () => {
+      if (!containerRef.current?.offsetWidth || !containerRef.current?.offsetHeight) return;
       fitAddon.fit();
       const ws = wsRef.current;
       if (ws && ws.readyState === WebSocket.OPEN) {
@@ -129,11 +135,15 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
       }
     };
 
-    window.addEventListener('resize', handleResize);
+    // ResizeObserver para detectar cambios de tamaño del contenedor
+    // (sidebar toggle, split mode, lazy mount, window resize)
+    const ro = new ResizeObserver(() => {
+      requestAnimationFrame(doFit);
+    });
+    if (containerRef.current) ro.observe(containerRef.current);
 
     return () => {
-      cancelled = true;
-      window.removeEventListener('resize', handleResize);
+      ro.disconnect();
       clearTimeout(reconnectTimerRef.current);
       manualCloseRef.current = true;
       wsRef.current?.close();
@@ -146,10 +156,8 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
   // Cuando este panel se vuelve activo, abrir terminal si es necesario y re-ajustar el tamaño
   useEffect(() => {
     if (active && fitAddonRef.current && xtermRef.current) {
-      // Esperar al siguiente frame para que el DOM se actualice antes de medir
       const rafId = requestAnimationFrame(() => {
         if (!containerRef.current?.offsetWidth) return;
-        // Si el terminal no fue abierto aún (contenedor tenía display:none al montar), abrirlo ahora
         if (!xtermRef.current.element) {
           xtermRef.current.open(containerRef.current);
         }
@@ -163,6 +171,8 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
             rows: xtermRef.current.rows,
           }));
         }
+        // Segundo fit después de que el layout se estabilice
+        setTimeout(() => fitAddonRef.current?.fit(), 100);
       });
       return () => cancelAnimationFrame(rafId);
     }
@@ -181,6 +191,60 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
         ref={containerRef}
         style={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}
       />
+      <div
+        style={{
+          display: 'flex',
+          gap: '6px',
+          padding: '6px 8px',
+          background: 'var(--bg-secondary)',
+          borderTop: '1px solid var(--border-primary)',
+          flexShrink: 0,
+        }}
+      >
+        <input
+          ref={inputRef}
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              sendText();
+            }
+          }}
+          placeholder="Escribí un comando y presioná Enter..."
+          aria-label="Entrada de comando de terminal"
+          autoComplete="off"
+          spellCheck={false}
+          style={{
+            flex: 1,
+            background: 'var(--bg-input)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--border-primary)',
+            borderRadius: '4px',
+            padding: '6px 10px',
+            fontFamily: '"Cascadia Code", "Fira Code", "Courier New", monospace',
+            fontSize: '13px',
+            outline: 'none',
+          }}
+          onFocus={(e) => (e.target.style.borderColor = 'var(--accent-cyan)')}
+          onBlur={(e) => (e.target.style.borderColor = 'var(--border-primary)')}
+        />
+        <button
+          onClick={sendText}
+          style={{
+            padding: '6px 14px',
+            background: 'var(--btn-primary-bg)',
+            color: 'var(--btn-primary-text)',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '13px',
+            fontFamily: 'inherit',
+          }}
+        >
+          Enviar
+        </button>
+      </div>
     </div>
   );
 }

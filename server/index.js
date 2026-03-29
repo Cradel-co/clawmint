@@ -28,7 +28,7 @@ logger.info('HOME:', process.env.HOME);
 
 // ── Carga de módulos (async por sql.js WASM) ─────────────────────────────────
 
-let sessionManager, telegram, webChannel, agents, skills, events, memory, providerConfig, providersModule, consolidator, convSvc, mcps, authService, usersRepo, transcriber, reminders;
+let sessionManager, telegram, webChannel, agents, skills, events, memory, providerConfig, providersModule, consolidator, convSvc, mcps, authService, usersRepo, transcriber, reminders, limitsRepo;
 let mcpRouter = null;
 let nodrizaInstance = null;
 
@@ -61,6 +61,7 @@ const _modulesReady = (async function loadModules() {
     usersRepo    = _c.usersRepo;
     transcriber  = _c.transcriber;
     reminders    = _c.reminders;
+    limitsRepo   = _c.limitsRepo;
     try {
       const { createMcpRouter } = require('./mcp');
       mcpRouter = createMcpRouter({ sessionManager: _c.sessionManager, memory: _c.memory, scheduler: _c.scheduler, usersRepo: _c.usersRepo });
@@ -154,6 +155,7 @@ _modulesReady.then(() => {
   app.use('/api/contacts',        requireAuth, require('./routes/contacts')({ usersRepo }));
   app.use('/api/transcriber',    requireAuth, require('./routes/transcriber')({ transcriber }));
   app.use('/api/reminders',      requireAuth, require('./routes/reminders')({ reminders }));
+  app.use('/api/limits',          requireAuth, require('./routes/limits')({ limitsRepo }));
 
   // Montar MCP router si está disponible
   if (mcpRouter) app.use('/mcp', mcpRouter);

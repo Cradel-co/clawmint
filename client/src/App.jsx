@@ -28,6 +28,7 @@ const TerminalPanel  = lazy(() => import('./components/TerminalPanel.jsx'));
 const TelegramPanel  = lazy(() => import('./components/TelegramPanel.jsx'));
 const WebChatPanel   = lazy(() => import('./components/WebChatPanel.jsx'));
 const ContactsPanel  = lazy(() => import('./components/ContactsPanel.jsx'));
+const LimitsPanel    = lazy(() => import('./components/LimitsPanel.jsx'));
 
 // ── App principal ─────────────────────────────────────────────────────────────
 

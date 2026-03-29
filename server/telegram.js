@@ -35,9 +35,12 @@ try { consolidator = require('./memory-consolidator'); } catch {}
 
 // ── Repos de storage ─────────────────────────────────────────────────────────
 
-const botsRepo = new BotsRepository(path.join(__dirname, 'bots.json'));
+const db = memoryModule.getDB();
 
-const chatSettingsRepo = new ChatSettingsRepository(memoryModule.getDB());
+const botsRepo = new BotsRepository(db, path.join(__dirname, 'bots.json'));
+botsRepo.init();
+
+const chatSettingsRepo = new ChatSettingsRepository(db);
 chatSettingsRepo.init();
 
 // ── Singleton ─────────────────────────────────────────────────────────────────

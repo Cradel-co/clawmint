@@ -43,6 +43,7 @@ class ConversationService {
     ClaudePrintSession,
     GeminiCliSession = null,
     consolidator   = null,
+    limitsRepo     = null,
     logger         = console,
   }) {
     this._sessionManager     = sessionManager;
@@ -60,6 +61,7 @@ class ConversationService {
     if (this._rlCleanup.unref) this._rlCleanup.unref();
     this._agents             = agents;
     this._skills             = skills;
+    this._limitsRepo         = limitsRepo;
     this._ClaudePrintSession = ClaudePrintSession;
     this._GeminiCliSession   = GeminiCliSession || (() => {
       try { return require('../core/GeminiCliSession'); } catch { return null; }
@@ -306,21 +308,23 @@ class ConversationService {
     const resolvedShellId = shellId || String(chatId);
     csdbg('msg', `chatId=${chatId} provider=${provider} agent=${agentKey} model=${model} textLen=${text.length} images=${images?.length || 0} histLen=${history.length} hasSession=${!!claudeSession}`);
 
-    // Rate limiting: 10 mensajes/minuto por chat (solo providers API, no CLI)
+    // Rate limiting configurable (solo providers API, no CLI)
     const CLI_PROVIDERS = new Set(['claude-code', 'gemini-cli']);
     if (!CLI_PROVIDERS.has(provider)) {
-      const MAX_PER_MIN = 10;
+      const rateRule = this._limitsRepo
+        ? this._limitsRepo.resolve('rate', { provider, agentKey, userId, botKey, channel })
+        : { max_count: 10, window_ms: 60000 };
       const now = Date.now();
       const key = `${botKey || 'web'}:${chatId}`;
       let rl = this._rateLimits.get(key);
       if (!rl || now > rl.resetAt) {
-        rl = { count: 0, resetAt: now + 60000 };
+        rl = { count: 0, resetAt: now + rateRule.window_ms };
         this._rateLimits.set(key, rl);
       }
       rl.count++;
-      if (rl.count > MAX_PER_MIN) {
+      if (rl.count > rateRule.max_count) {
         const waitSec = Math.ceil((rl.resetAt - now) / 1000);
-        return { text: `⏳ Rate limit: máximo ${MAX_PER_MIN} mensajes por minuto. Esperá ${waitSec}s.`, history };
+        return { text: `⏳ Rate limit: máximo ${rateRule.max_count} mensajes por ${Math.round(rateRule.window_ms / 1000)}s. Esperá ${waitSec}s.`, history };
       }
       this._rateLimits.set(key, rl);
     }
@@ -417,7 +421,9 @@ class ConversationService {
   // ── Proveedor gemini-cli (GeminiCliSession) ───────────────────────────────
 
   async _processGeminiCli({ chatId, agentKey, text, geminiSession, claudeMode, onChunk, onStatus, botKey, channel }) {
-    const MAX_SESSION_MESSAGES = 10;
+    const sessionRule = this._limitsRepo
+      ? this._limitsRepo.resolve('session', { provider: 'gemini-cli', agentKey, botKey, channel })
+      : { max_count: 10 };
     let session = geminiSession;
     let isNewSession = false;
 
@@ -427,7 +433,7 @@ class ConversationService {
       : '';
 
     // Auto-reset de sesión y guardado de resumen en memoria
-    if (session && session.messageCount >= MAX_SESSION_MESSAGES) {
+    if (session && session.messageCount >= sessionRule.max_count) {
       csdbg('gemini', `auto-reset: session tiene ${session.messageCount} msgs`);
       if (agentKey && this._memory) {
         try {
@@ -570,7 +576,9 @@ class ConversationService {
       const imgContext = descriptions.join('\n\n');
       text = `[El usuario envió ${images.length} imagen(es). Análisis:]\n\n${imgContext}\n\n[Mensaje original del usuario: "${text}"]`;
     }
-    const MAX_SESSION_MESSAGES = 10;
+    const sessionRule = this._limitsRepo
+      ? this._limitsRepo.resolve('session', { provider: 'claude-code', agentKey, botKey, channel })
+      : { max_count: 10 };
     let session = claudeSession;
     let isNewSession = false;
     const isWebChannel = channel === 'web' || botKey === 'web';
@@ -617,9 +625,9 @@ class ConversationService {
 
     // Auto-reset: si la sesión tiene demasiados mensajes, crear una nueva
     // Antes de resetear, guardar resumen en memoria para continuidad
-    if (session && session.messageCount >= MAX_SESSION_MESSAGES) {
-      csdbg('claude', `auto-reset: session tiene ${session.messageCount} msgs (max ${MAX_SESSION_MESSAGES}), creando nueva`);
-      console.log(`[ConvSvc] Auto-reset de sesión (${session.messageCount} mensajes)`);
+    if (session && session.messageCount >= sessionRule.max_count) {
+      csdbg('claude', `auto-reset: session tiene ${session.messageCount} msgs (max ${sessionRule.max_count}), creando nueva`);
+      console.log(`[ConvSvc] Auto-reset de sesión (${session.messageCount}/${sessionRule.max_count} mensajes)`);
 
       // Guardar resumen de sesión en memoria para continuidad
       if (agentKey && this._memory) {
