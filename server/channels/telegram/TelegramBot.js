@@ -1,11 +1,14 @@
 'use strict';
 
+const path = require('path');
 const ClaudePrintSession = require('../../core/ClaudePrintSession');
 const ConsoleHandler     = require('./ConsoleHandler');
 const ResponseRenderer   = require('./ResponseRenderer');
 const OutboundQueue      = require('./OutboundQueue');
 
 const { httpsPost, httpsPostMultipart, stripAnsi, chunkText, tdbg } = require('./utils');
+
+const MCP_CONFIG_PATH = path.join(__dirname, '..', '..', 'mcp-config.json');
 
 const POLL_TIMEOUT   = 25;
 const RATE_WINDOW_MS = 60 * 60 * 1000;
@@ -161,6 +164,7 @@ class TelegramBot {
       model: chat.claudeSession?.model || null,
       permissionMode: chat.claudeMode || 'auto',
       cwd: chat.monitorCwd || process.env.HOME,
+      mcpConfig: MCP_CONFIG_PATH,
     };
   }
 
@@ -502,6 +506,7 @@ class TelegramBot {
           cwd:             defaultCwd,
           model:           saved.model || null,
           permissionMode:  saved.claude_mode || 'auto',
+          mcpConfig:       MCP_CONFIG_PATH,
         });
         tdbg('init', `restored session ${saved.claude_session_id.slice(0,8)}… msgCount=${saved.message_count} cwd=${saved.cwd} mode=${saved.claude_mode || 'auto'}`);
       }
