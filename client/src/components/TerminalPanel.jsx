@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
+import './TerminalPanel.css';
 
 export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
   const containerRef = useRef(null);
@@ -59,13 +60,10 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
     fitAddonRef.current = fitAddon;
 
     // Diferir open() al siguiente frame para que el renderer se inicialice correctamente
-    let cancelled = false;
     requestAnimationFrame(() => {
-      if (cancelled) return;
       if (containerRef.current && containerRef.current.offsetWidth > 0) {
         term.open(containerRef.current);
         fitAddon.fit();
-        term.focus();
       }
     });
 
@@ -145,13 +143,12 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
     if (containerRef.current) ro.observe(containerRef.current);
 
     return () => {
-      ro.disconnect();
-      clearTimeout(reconnectTimerRef.current);
       manualCloseRef.current = true;
-      wsRef.current?.close();
+      clearTimeout(reconnectTimerRef.current);
       onDataDisposable.dispose();
+      wsRef.current?.close();
+      ro.disconnect();
       term.dispose();
-      if (containerRef.current) containerRef.current.innerHTML = '';
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -164,7 +161,6 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
           xtermRef.current.open(containerRef.current);
         }
         fitAddonRef.current.fit();
-        xtermRef.current.focus();
         const ws = wsRef.current;
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({
@@ -187,34 +183,17 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'input', data: text + '\r' }));
       setInputValue('');
+      inputRef.current?.focus();
     }
   };
 
   return (
-    <div
-      style={{
-        position: 'absolute',
-        inset: 0,
-        display: active ? 'flex' : 'none',
-        flexDirection: 'column',
-      }}
-    >
-      <div
-        ref={containerRef}
-        style={{ flex: 1, minHeight: 0, overflow: 'hidden', position: 'relative' }}
-      />
-      <div
-        style={{
-          display: 'flex',
-          gap: '6px',
-          padding: '6px 8px',
-          background: 'var(--bg-secondary)',
-          borderTop: '1px solid var(--border-primary)',
-          flexShrink: 0,
-        }}
-      >
+    <div className="tp-container" aria-hidden={!active}>
+      <div ref={containerRef} className="tp-xterm" />
+      <div className="tp-input-bar">
         <input
           ref={inputRef}
+          className="tp-input"
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={(e) => {
@@ -227,33 +206,8 @@ export default function TerminalPanel({ session, wsUrl, active, onSessionId }) {
           aria-label="Entrada de comando de terminal"
           autoComplete="off"
           spellCheck={false}
-          style={{
-            flex: 1,
-            background: 'var(--bg-input)',
-            color: 'var(--text-primary)',
-            border: '1px solid var(--border-primary)',
-            borderRadius: '4px',
-            padding: '6px 10px',
-            fontFamily: '"Cascadia Code", "Fira Code", "Courier New", monospace',
-            fontSize: '13px',
-            outline: 'none',
-          }}
-          onFocus={(e) => (e.target.style.borderColor = 'var(--accent-cyan)')}
-          onBlur={(e) => (e.target.style.borderColor = 'var(--border-primary)')}
         />
-        <button
-          onClick={sendText}
-          style={{
-            padding: '6px 14px',
-            background: 'var(--btn-primary-bg)',
-            color: 'var(--btn-primary-text)',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '13px',
-            fontFamily: 'inherit',
-          }}
-        >
+        <button className="tp-send-btn" onClick={sendText}>
           Enviar
         </button>
       </div>

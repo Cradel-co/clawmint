@@ -36,7 +36,7 @@ export default function WebChatPanel({ onClose, embedded, onNewMessage, onStateC
   }, [handleWsAuthMessage, onNewMessage, setOnAuthMessage, setOnNewMessage]);
 
   // Reportar cwd + provider al padre (para context bar en split mode)
-  useEffect(() => { onStateChange?.({ cwd, provider }); }, [cwd, provider]); // eslint-disable-line
+  useEffect(() => { onStateChange?.({ cwd, provider }); }, [cwd, provider, onStateChange]);
 
   // Setear provider default cuando llegan los datos
   useEffect(() => {

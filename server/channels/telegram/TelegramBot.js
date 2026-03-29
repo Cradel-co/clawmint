@@ -446,14 +446,14 @@ class TelegramBot {
     const dedupKey = `${msg.chat.id}:${(msg.text || '').trim()}`;
     const lastTs   = this._lastMsgByChat.get(dedupKey) || 0;
     const now      = Date.now();
-    if (now - lastTs < 2000) {
+    if (now - lastTs < 5000) {
       tdbg('dedup', `SKIP "${(msg.text||'').slice(0,30)}" (mismo texto en ${now - lastTs}ms)`);
       return;
     }
     this._lastMsgByChat.set(dedupKey, now);
     if (this._lastMsgByChat.size > 500) {
       for (const [k, v] of this._lastMsgByChat) {
-        if (now - v > 10000) this._lastMsgByChat.delete(k);
+        if (now - v > 30000) this._lastMsgByChat.delete(k);
       }
     }
 

@@ -12,7 +12,12 @@ export default function TabBar({ sessions, activeId, onSelect, onClose, onNew })
           tabIndex={session.id === activeId ? 0 : -1}
           aria-selected={session.id === activeId}
           onClick={() => onSelect(session.id)}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(session.id); } }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(session.id); }
+            const idx = sessions.findIndex(s => s.id === session.id);
+            if (e.key === 'ArrowRight' && idx < sessions.length - 1) { e.preventDefault(); onSelect(sessions[idx + 1].id); }
+            if (e.key === 'ArrowLeft' && idx > 0) { e.preventDefault(); onSelect(sessions[idx - 1].id); }
+          }}
         >
           <span className={styles.title}>{session.title}</span>
           {sessions.length > 1 && (

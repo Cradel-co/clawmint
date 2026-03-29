@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { X, Plus, Star, StarOff, Pencil, Trash2, Check, Phone, Mail, FileText, Link, MessageSquare } from 'lucide-react';
 import { API_BASE } from '../config';
 import { apiFetch } from '../authUtils';
@@ -268,15 +268,23 @@ export default function ContactsPanel({ onClose, embedded }) {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const debounceRef = useRef(null);
   const [view, setView] = useState('list'); // 'list' | 'new' | 'edit' | 'detail'
   const [selected, setSelected] = useState(null); // contacto editando o detalle
   const [favOnly, setFavOnly] = useState(false);
+
+  // Debounce del query de búsqueda (300ms)
+  useEffect(() => {
+    debounceRef.current = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(debounceRef.current);
+  }, [query]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (query) params.set('q', query);
+      if (debouncedQuery) params.set('q', debouncedQuery);
       if (favOnly) params.set('favorites', 'true');
       const res = await apiFetch(`${API}?${params}`);
       const data = await res.json();
@@ -286,7 +294,7 @@ export default function ContactsPanel({ onClose, embedded }) {
     } finally {
       setLoading(false);
     }
-  }, [query, favOnly]);
+  }, [debouncedQuery, favOnly]);
 
   useEffect(() => { load(); }, [load]);
 
