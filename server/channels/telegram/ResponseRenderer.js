@@ -8,6 +8,26 @@ const parseButtons = require('../parseButtons');
  *
  * Extraído de TelegramBot._startDotAnimation y _sendResult.
  */
+// Patrones de texto meta/interno que la IA genera pero no deben enviarse al usuario
+const NOISE_PATTERNS = [
+  /^no\s+response\s+(requested|needed|required)/i,
+  /^continue\s+from\s+where\s+you\s+left/i,
+  /^waiting\s+for\s+(the\s+)?user/i,
+  /^no\s+action\s+(needed|required|necessary)/i,
+  /^nothing\s+(else\s+)?to\s+(do|say|add|respond)/i,
+  /^the\s+(user\s+)?(was|has\s+been)\s+(notified|informed)/i,
+  /^message\s+sent\s+(successfully|to\s+the\s+user)/i,
+  /^already\s+(sent|responded|replied)/i,
+  /^(i('ve| have)|the\s+)?\s*(response|message|answer)\s+(was\s+)?(already\s+)?sent/i,
+];
+
+function isNoiseText(text) {
+  const t = (text || '').trim();
+  if (!t) return true;
+  if (t.length > 300) return false;
+  return NOISE_PATTERNS.some(rx => rx.test(t));
+}
+
 class ResponseRenderer {
   async startDotAnimation(bot, chatId, mode = 'ask') {
     const modeLabels = { ask: 'ask', plan: 'plan-mode', auto: 'auto-accept' };
@@ -40,6 +60,7 @@ class ResponseRenderer {
     const finalText = cleanPtyOutput(parsedText).trim();
     tdbg('result', `chatId=${chatId} rawLen=${(text||'').length} cleanLen=${finalText.length} hasSentMsg=${!!sentMsg} hasButtons=${!!buttons}`);
     if (!finalText && !buttons) { tdbg('result', `SKIP — finalText vacío`); return; }
+    if (isNoiseText(finalText)) { tdbg('result', `SKIP — noise: "${finalText.slice(0, 60)}"`); return; }
 
     const chunks = chunkText(finalText, 4096);
     const lastIdx = chunks.length - 1;
