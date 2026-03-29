@@ -294,7 +294,7 @@ function AppContent() {
               return [...prev, s];
             });
           }
-        } catch { /* silenciar */ }
+        } catch (err) { console.warn('[WS] Error procesando mensaje:', err.message); }
       };
     }
     connect();
@@ -475,7 +475,7 @@ function AppContent() {
               <SectionBar section="telegram" />
               <ErrorBoundary>
                 <Suspense fallback={<Skeleton lines={6} style={{ padding: '24px' }} />}>
-                  <TelegramPanel onClose={toTerminal} onOpenSession={handleOpenSession} embedded />
+                  <TelegramPanel onClose={toTerminal} onOpenSession={handleOpenSession} embedded active={section === 'telegram'} />
                 </Suspense>
               </ErrorBoundary>
             </div>

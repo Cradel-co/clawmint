@@ -37,14 +37,14 @@ const ChatRow = memo(function ChatRow({ botKey, chat, onOpenSession, onRefresh }
         body: JSON.stringify({ sessionId }),
       });
       onRefresh();
-    } catch { /* ignorar */ }
+    } catch (err) { console.warn('[Telegram]', err.message); }
   };
 
   const handleDisconnect = async () => {
     try {
       await apiFetch(`${API}/bots/${botKey}/chats/${chat.chatId}`, { method: 'DELETE' });
       onRefresh();
-    } catch { /* ignorar */ }
+    } catch (err) { console.warn('[Telegram]', err.message); }
   };
 
   return (
@@ -173,7 +173,7 @@ const BotCard = memo(function BotCard({ bot, allAgents, onOpenSession, onRefresh
     try {
       await apiFetch(`${API}/bots/${bot.key}/start`, { method: 'POST' });
       onRefresh();
-    } catch { /* ignorar */ } finally { setLoading(false); }
+    } catch (err) { console.warn('[Telegram]', err.message); } finally { setLoading(false); }
   };
 
   const handleStop = async () => {
@@ -181,7 +181,7 @@ const BotCard = memo(function BotCard({ bot, allAgents, onOpenSession, onRefresh
     try {
       await apiFetch(`${API}/bots/${bot.key}/stop`, { method: 'POST' });
       onRefresh();
-    } catch { /* ignorar */ } finally { setLoading(false); }
+    } catch (err) { console.warn('[Telegram]', err.message); } finally { setLoading(false); }
   };
 
   const handleRemove = async () => {
@@ -190,7 +190,7 @@ const BotCard = memo(function BotCard({ bot, allAgents, onOpenSession, onRefresh
     try {
       await apiFetch(`${API}/bots/${bot.key}`, { method: 'DELETE' });
       onRefresh();
-    } catch { /* ignorar */ } finally { setLoading(false); }
+    } catch (err) { console.warn('[Telegram]', err.message); } finally { setLoading(false); }
   };
 
   const handleChangeAgent = async (e) => {
@@ -202,7 +202,7 @@ const BotCard = memo(function BotCard({ bot, allAgents, onOpenSession, onRefresh
         body: JSON.stringify({ defaultAgent: e.target.value }),
       });
       onRefresh();
-    } catch { /* ignorar */ }
+    } catch (err) { console.warn('[Telegram]', err.message); }
   };
 
   return (
@@ -342,7 +342,7 @@ const AddBotForm = memo(function AddBotForm({ onAdd, onCancel }) {
   );
 });
 
-export default function TelegramPanel({ onClose, onOpenSession, embedded }) {
+export default function TelegramPanel({ onClose, onOpenSession, embedded, active = true }) {
   const [bots, setBots] = useState([]);
   const [allAgents, setAllAgents] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
@@ -353,14 +353,15 @@ export default function TelegramPanel({ onClose, onOpenSession, embedded }) {
       const res = await apiFetch(`${API}/bots`);
       const data = await res.json();
       setBots(Array.isArray(data) ? data : []);
-    } catch { /* ignorar */ }
+    } catch (err) { console.warn('[Telegram]', err.message); }
   }, []);
 
   useEffect(() => {
+    if (!active && !embedded) return;
     fetchBots();
-    intervalRef.current = setInterval(fetchBots, 3000);
+    intervalRef.current = setInterval(fetchBots, 5000);
     return () => clearInterval(intervalRef.current);
-  }, [fetchBots]);
+  }, [fetchBots, active, embedded]);
 
   // Cargar agentes una sola vez (en vez de por cada BotCard)
   useEffect(() => {

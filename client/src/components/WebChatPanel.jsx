@@ -44,7 +44,7 @@ export default function WebChatPanel({ onClose, embedded, onNewMessage, onStateC
   useEffect(() => { setWsRef(wsRef.current); }, [connected, setWsRef, wsRef]);
 
   // Reportar cwd + provider al padre (para context bar en split mode)
-  useEffect(() => { onStateChange?.({ cwd, provider }); }, [cwd, provider]); // eslint-disable-line
+  useEffect(() => { onStateChange?.({ cwd, provider }); }, [cwd, provider, onStateChange]);
 
   // ── Cargar providers y agentes ─────────────────────────────────────────────
 
