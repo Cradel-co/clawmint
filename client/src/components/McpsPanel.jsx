@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Check, Pencil, Trash2, X, Plus, Plug } from 'lucide-react';
 import { API_BASE } from '../config';
 import { apiFetch } from '../authUtils';
+import styles from './AgentsPanel.module.css';
 
 const API = `${API_BASE}/api/mcps`;
 
@@ -98,22 +99,22 @@ function McpForm({ initial, onSave, onCancel }) {
   };
 
   return (
-    <div className="ap-form">
-      <p className="ap-form-title">{isEdit ? `Editar: ${initial.name}` : 'Nuevo MCP'}</p>
+    <div className={styles.form}>
+      <p className={styles.formTitle}>{isEdit ? `Editar: ${initial.name}` : 'Nuevo MCP'}</p>
 
       {!isEdit && (
         <>
-          <label className="ap-label">Nombre</label>
+          <label className={styles.label}>Nombre</label>
           <input
-            className="ap-input"
+            className={styles.input}
             type="text"
             placeholder="filesystem, sentry, github..."
             value={name}
             onChange={e => { setName(e.target.value); setError(''); }}
           />
 
-          <label className="ap-label" style={{ marginTop: 8 }}>Tipo</label>
-          <select className="ap-input" value={type} onChange={e => setType(e.target.value)}>
+          <label className={styles.label} style={{ marginTop: 8 }}>Tipo</label>
+          <select className={styles.input} value={type} onChange={e => setType(e.target.value)}>
             <option value="stdio">stdio</option>
             <option value="http">http</option>
             <option value="sse">sse</option>
@@ -123,27 +124,27 @@ function McpForm({ initial, onSave, onCancel }) {
 
       {(isEdit ? initial.type === 'stdio' : type === 'stdio') ? (
         <>
-          <label className="ap-label" style={{ marginTop: 8 }}>Comando</label>
+          <label className={styles.label} style={{ marginTop: 8 }}>Comando</label>
           <input
-            className="ap-input"
+            className={styles.input}
             type="text"
             placeholder="npx, node, python..."
             value={command}
             onChange={e => setCommand(e.target.value)}
           />
 
-          <label className="ap-label" style={{ marginTop: 8 }}>Args (separados por espacio)</label>
+          <label className={styles.label} style={{ marginTop: 8 }}>Args (separados por espacio)</label>
           <input
-            className="ap-input"
+            className={styles.input}
             type="text"
             placeholder="-y @modelcontextprotocol/server-filesystem /tmp"
             value={argsText}
             onChange={e => setArgsText(e.target.value)}
           />
 
-          <label className="ap-label" style={{ marginTop: 8 }}>Variables de entorno (KEY=VALUE por línea)</label>
+          <label className={styles.label} style={{ marginTop: 8 }}>Variables de entorno (KEY=VALUE por línea)</label>
           <textarea
-            className="ap-textarea"
+            className={styles.textarea}
             rows={3}
             placeholder="SENTRY_TOKEN=xxx&#10;API_KEY=yyy"
             value={envText}
@@ -152,18 +153,18 @@ function McpForm({ initial, onSave, onCancel }) {
         </>
       ) : (
         <>
-          <label className="ap-label" style={{ marginTop: 8 }}>URL</label>
+          <label className={styles.label} style={{ marginTop: 8 }}>URL</label>
           <input
-            className="ap-input"
+            className={styles.input}
             type="text"
             placeholder="https://..."
             value={url}
             onChange={e => setUrl(e.target.value)}
           />
 
-          <label className="ap-label" style={{ marginTop: 8 }}>Headers (Key: Value por línea)</label>
+          <label className={styles.label} style={{ marginTop: 8 }}>Headers (Key: Value por línea)</label>
           <textarea
-            className="ap-textarea"
+            className={styles.textarea}
             rows={3}
             placeholder="Authorization: Bearer xxx&#10;X-API-Key: yyy"
             value={headersText}
@@ -172,26 +173,26 @@ function McpForm({ initial, onSave, onCancel }) {
         </>
       )}
 
-      <label className="ap-label" style={{ marginTop: 8 }}>Descripción (opcional)</label>
+      <label className={styles.label} style={{ marginTop: 8 }}>Descripción (opcional)</label>
       <input
-        className="ap-input"
+        className={styles.input}
         type="text"
         placeholder="Acceso al sistema de archivos local"
         value={description}
         onChange={e => setDescription(e.target.value)}
       />
 
-      {error && <p className="ap-error">{error}</p>}
+      {error && <p className={styles.error}>{error}</p>}
 
-      <div className="ap-btn-row">
+      <div className={styles.btnRow}>
         <button
-          className="ap-btn ap-btn-primary"
+          className={`${styles.btn} ${styles.btnPrimary}`}
           onClick={handleSubmit}
           disabled={loading || missingRequired}
         >
           {loading ? '...' : isEdit ? <><Check size={13} /> Guardar</> : <><Check size={13} /> Crear</>}
         </button>
-        <button className="ap-btn ap-btn-ghost" onClick={onCancel}>Cancelar</button>
+        <button className={`${styles.btn} ${styles.btnGhost}`} onClick={onCancel}>Cancelar</button>
       </div>
     </div>
   );
@@ -199,18 +200,18 @@ function McpForm({ initial, onSave, onCancel }) {
 
 function McpRow({ mcp, onEdit, onDelete, onToggle, toggling }) {
   return (
-    <div className="ap-agent-row">
-      <div className="ap-agent-top">
-        <span className="ap-agent-key">
+    <div className={styles.agentRow}>
+      <div className={styles.agentTop}>
+        <span className={styles.agentKey}>
           <span style={{ color: mcp.enabled ? '#4caf50' : '#888', marginRight: 6 }}>●</span>
           {mcp.name}
-          <span className="ap-role-badge" style={{ marginLeft: 6, fontSize: '0.7rem', opacity: 0.7 }}>
+          <span className={styles.roleBadge} style={{ marginLeft: 6, fontSize: '0.7rem', opacity: 0.7 }}>
             [{mcp.type}]
           </span>
         </span>
-        <div className="ap-agent-actions">
+        <div className={styles.agentActions}>
           <button
-            className="ap-btn ap-btn-primary"
+            className={`${styles.btn} ${styles.btnPrimary}`}
             style={{ fontSize: '0.72rem', padding: '2px 8px', marginRight: 4 }}
             onClick={() => onToggle(mcp)}
             disabled={toggling === mcp.name}
@@ -218,18 +219,18 @@ function McpRow({ mcp, onEdit, onDelete, onToggle, toggling }) {
           >
             {toggling === mcp.name ? '...' : mcp.enabled ? 'OFF' : 'ON'}
           </button>
-          <button className="ap-icon-btn" onClick={() => onEdit(mcp)} title="Editar"><Pencil size={13} /></button>
-          <button className="ap-icon-btn ap-icon-btn-danger" onClick={() => onDelete(mcp.name)} title="Eliminar"><Trash2 size={13} /></button>
+          <button className={styles.iconBtn} onClick={() => onEdit(mcp)} title="Editar"><Pencil size={13} /></button>
+          <button className={`${styles.iconBtn} ${styles.iconBtnDanger}`} onClick={() => onDelete(mcp.name)} title="Eliminar"><Trash2 size={13} /></button>
         </div>
       </div>
-      {mcp.description && <p className="ap-agent-desc">{mcp.description}</p>}
+      {mcp.description && <p className={styles.agentDesc}>{mcp.description}</p>}
       {mcp.type === 'stdio' && mcp.command && (
-        <p className="ap-agent-prompt" style={{ fontFamily: 'monospace', fontSize: '0.78rem' }}>
+        <p className={styles.agentPrompt} style={{ fontFamily: 'monospace', fontSize: '0.78rem' }}>
           {mcp.command} {(mcp.args || []).join(' ')}
         </p>
       )}
       {mcp.type !== 'stdio' && mcp.url && (
-        <p className="ap-agent-prompt" style={{ fontFamily: 'monospace', fontSize: '0.78rem' }}>
+        <p className={styles.agentPrompt} style={{ fontFamily: 'monospace', fontSize: '0.78rem' }}>
           {mcp.url}
         </p>
       )}
@@ -291,27 +292,27 @@ export default function McpsPanel({ onClose }) {
   };
 
   return (
-    <div className="ap-panel" role="region" aria-label="Panel de MCPs">
-      <div className="ap-header">
-        <span className="ap-header-title">
-          <span className="ap-icon"><Plug size={16} /></span>
+    <div className={styles.panel} role="region" aria-label="Panel de MCPs">
+      <div className={styles.header}>
+        <span className={styles.headerTitle}>
+          <span className={styles.icon}><Plug size={16} /></span>
           MCPs
         </span>
-        <button className="ap-close" onClick={onClose} aria-label="Cerrar panel de MCPs"><X size={16} /></button>
+        {onClose && <button className={styles.close} onClick={onClose} aria-label="Cerrar panel de MCPs"><X size={16} /></button>}
       </div>
 
-      <div className="ap-body">
+      <div className={styles.body}>
         {mcpList.length === 0 && !showForm && (
-          <div className="ap-empty-state">
+          <div className={styles.emptyState}>
             <p>Sin MCPs configurados</p>
-            <p className="ap-empty-hint">Agregá un MCP para extender las capacidades de Claude con herramientas externas.</p>
-            <button className="ap-btn ap-btn-primary" style={{ marginTop: 10 }} onClick={() => { setEditMcp(null); setShowForm(true); }}>
+            <p className={styles.emptyHint}>Agregá un MCP para extender las capacidades de Claude con herramientas externas.</p>
+            <button className={`${styles.btn} ${styles.btnPrimary}`} style={{ marginTop: 10 }} onClick={() => { setEditMcp(null); setShowForm(true); }}>
               <Plus size={13} /> Agregar primer MCP
             </button>
           </div>
         )}
 
-        {cliError && <p className="ap-error">{cliError}</p>}
+        {cliError && <p className={styles.error}>{cliError}</p>}
 
         {mcpList.map(mcp =>
           showForm && editMcp?.name === mcp.name ? null : (
@@ -333,7 +334,7 @@ export default function McpsPanel({ onClose }) {
             onCancel={() => { setShowForm(false); setEditMcp(null); }}
           />
         ) : (
-          <button className="ap-btn ap-btn-add" onClick={() => { setEditMcp(null); setShowForm(true); }}>
+          <button className={`${styles.btn} ${styles.btnAdd}`} onClick={() => { setEditMcp(null); setShowForm(true); }}>
             <Plus size={14} /> Nuevo MCP
           </button>
         )}

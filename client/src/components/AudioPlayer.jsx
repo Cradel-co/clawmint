@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import './AudioPlayer.css';
+import styles from './AudioPlayer.module.css';
 
 export default function AudioPlayer({ src, knownDuration }) {
   const audioRef = useRef(null);
@@ -99,9 +99,9 @@ export default function AudioPlayer({ src, knownDuration }) {
   const progress = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
 
   return (
-    <div className="ap-container">
+    <div className={styles.container}>
       <audio ref={audioRef} src={src} preload="auto" />
-      <button className="ap-play-btn" onClick={togglePlay}>
+      <button className={styles.playBtn} onClick={togglePlay}>
         {playing ? (
           <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
             <rect x="6" y="5" width="4" height="14" rx="1" />
@@ -113,17 +113,17 @@ export default function AudioPlayer({ src, knownDuration }) {
           </svg>
         )}
       </button>
-      <span className="ap-time">{fmt(currentTime)}</span>
+      <span className={styles.time}>{fmt(currentTime)}</span>
       <div
-        className="ap-progress"
+        className={styles.progress}
         ref={progressRef}
         onPointerDown={onPointerDown}
       >
-        <div className="ap-progress-bg" />
-        <div className="ap-progress-fill" style={{ width: `${progress}%` }} />
-        <div className="ap-progress-thumb" style={{ left: `${progress}%` }} />
+        <div className={styles.progressBg} />
+        <div className={styles.progressFill} style={{ width: `${progress}%` }} />
+        <div className={styles.progressThumb} style={{ left: `${progress}%` }} />
       </div>
-      <span className="ap-time">{fmt(duration)}</span>
+      <span className={styles.time}>{fmt(duration)}</span>
     </div>
   );
 }

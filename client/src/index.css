@@ -54,6 +54,27 @@
   --skeleton-bg:    #111f2d;
   --skeleton-shine: #1a2d40;
 
+  /* ── Surfaces — gradients & overlays ───────────────────────────────── */
+  --header-gradient:  linear-gradient(90deg, #0f1923 0%, #111927 100%);
+  --sidebar-gradient: linear-gradient(180deg, #0f1923 0%, #0d1520 100%);
+  --overlay-bg:       rgba(0, 0, 0, 0.6);
+  --shadow-popup:     0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-toast:     0 4px 24px rgba(0, 0, 0, 0.5);
+
+  /* ── On-accent text (text on colored backgrounds) ────────────────── */
+  --on-accent:        #000;
+  --on-accent-muted:  rgba(0, 0, 0, 0.6);
+
+  /* ── Audio player (inside colored bubbles) ───────────────────────── */
+  --audio-fg:         rgba(255, 255, 255, 0.8);
+  --audio-fg-muted:   rgba(255, 255, 255, 0.5);
+  --audio-track:      rgba(255, 255, 255, 0.15);
+  --audio-thumb:      #fff;
+
+  /* ── Chat bubble user ────────────────────────────────────────────── */
+  --bubble-user-bg:   linear-gradient(135deg, #1a6ef5 0%, #0f9fe8 100%);
+  --bubble-user-text: #fff;
+
   /* ── Typography ───────────────────────────────────────────────────────── */
   --font-ui:   'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'Courier New', Courier, monospace;
@@ -102,6 +123,23 @@
 
   --skeleton-bg:    #d8e4ee;
   --skeleton-shine: #e8f0f8;
+
+  --header-gradient:  linear-gradient(90deg, #dae4ef 0%, #d0dce8 100%);
+  --sidebar-gradient: linear-gradient(180deg, #e4ecf4 0%, #dae4ef 100%);
+  --overlay-bg:       rgba(0, 0, 0, 0.3);
+  --shadow-popup:     0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-toast:     0 4px 24px rgba(0, 0, 0, 0.15);
+
+  --on-accent:        #fff;
+  --on-accent-muted:  rgba(255, 255, 255, 0.7);
+
+  --audio-fg:         var(--text-primary);
+  --audio-fg-muted:   var(--text-muted);
+  --audio-track:      rgba(0, 0, 0, 0.12);
+  --audio-thumb:      var(--text-primary);
+
+  --bubble-user-bg:   linear-gradient(135deg, #2563eb 0%, #0097c4 100%);
+  --bubble-user-text: #fff;
 }
 
 /* ── Reset ────────────────────────────────────────────────────────────────── */
@@ -139,7 +177,7 @@ body {
   flex-direction: column;
   gap: 8px;
   pointer-events: none;
-  max-width: 380px;
+  max-width: min(380px, calc(100vw - 24px));
 }
 
 .toast {
@@ -152,13 +190,13 @@ body {
   font-family: var(--font-ui);
   pointer-events: auto;
   animation: toast-slide-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  box-shadow: var(--shadow-toast);
 }
 
-.toast-info    { background: rgba(79, 195, 247, 0.12); border: 1px solid rgba(79, 195, 247, 0.30); color: #7dd3fc; }
-.toast-success { background: rgba(74, 222, 128, 0.12); border: 1px solid rgba(74, 222, 128, 0.30); color: #86efac; }
-.toast-error   { background: rgba(248, 113, 113, 0.12); border: 1px solid rgba(248, 113, 113, 0.30); color: #fca5a5; }
-.toast-warning { background: rgba(251, 191, 36, 0.12);  border: 1px solid rgba(251, 191, 36, 0.30);  color: #fde68a; }
+.toast-info    { background: rgba(79, 195, 247, 0.12); border: 1px solid rgba(79, 195, 247, 0.30); color: var(--accent-cyan); }
+.toast-success { background: rgba(74, 222, 128, 0.12); border: 1px solid rgba(74, 222, 128, 0.30); color: var(--accent-green); }
+.toast-error   { background: rgba(248, 113, 113, 0.12); border: 1px solid rgba(248, 113, 113, 0.30); color: var(--accent-red); }
+.toast-warning { background: rgba(251, 191, 36, 0.12);  border: 1px solid rgba(251, 191, 36, 0.30);  color: var(--accent-yellow); }
 
 .toast-icon {
   font-size: 15px;
@@ -231,19 +269,19 @@ body {
 .reconnect-warning {
   background: rgba(251, 191, 36, 0.10);
   border-bottom: 1px solid rgba(251, 191, 36, 0.20);
-  color: #fbbf24;
+  color: var(--accent-yellow);
 }
 
 .reconnect-success {
   background: rgba(74, 222, 128, 0.10);
   border-bottom: 1px solid rgba(74, 222, 128, 0.20);
-  color: #4ade80;
+  color: var(--accent-green);
 }
 
 .reconnect-spinner {
   width: 12px;
   height: 12px;
-  border: 2px solid rgba(255, 255, 255, 0.15);
+  border: 2px solid var(--border-primary);
   border-top-color: currentColor;
   border-radius: 50%;
   animation: reconnect-spin 0.8s linear infinite;
@@ -258,51 +296,11 @@ body {
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* ── Mobile bottom nav ────────────────────────────────────────────────────── */
+/* legacy .mobile-bottom-nav removed — replaced by CSS Module .mobileBottomNav in App.module.css */
 
-@media (max-width: 640px) {
-  .mobile-bottom-nav {
-    display: flex;
-    align-items: center;
-    justify-content: space-around;
-    background: var(--bg-header);
-    border-top: 1px solid var(--border-primary);
-    padding: 6px 0;
-    flex-shrink: 0;
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 100;
-    padding-bottom: env(safe-area-inset-bottom, 6px);
-  }
-
-  .mobile-bottom-nav button {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    font-size: 10px;
-    font-family: var(--font-ui);
-    padding: 4px 8px;
-    cursor: pointer;
-    border-radius: 8px;
-    transition: color 0.15s, background 0.15s;
-  }
-
-  .mobile-bottom-nav button.active {
-    color: var(--accent-cyan);
-    background: rgba(79, 195, 247, 0.10);
-  }
-
-  .mobile-bottom-nav button:hover {
-    color: var(--accent-cyan);
-  }
+/* ── xterm viewport fix — evitar que tape el contenido ───────────────────── */
+.xterm .xterm-viewport {
+  pointer-events: none;
+  z-index: -1;
 }
 
-@media (min-width: 641px) {
-  .mobile-bottom-nav { display: none; }
-}

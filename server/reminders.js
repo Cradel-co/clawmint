@@ -82,4 +82,8 @@ const formatRemaining = _formatRemaining;
 // Cargar al importar
 _load();
 
-module.exports = { add, remove, listForChat, popTriggered, parseDuration, formatRemaining };
+function listAll() {
+  return reminders.filter(r => r.triggerAt > Date.now());
+}
+
+module.exports = { add, remove, listForChat, listAll, popTriggered, parseDuration, formatRemaining };

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { LogIn, UserPlus, Mail, Lock, User, Eye, EyeOff } from 'lucide-react';
 import { API_BASE } from '../config';
 import { login, register, setStoredTokens, setStoredUser } from '../authUtils';
-import './AuthPanel.css';
+import styles from './AuthPanel.module.css';
 
 export default function AuthPanel({ onAuth, onSkip }) {
   const [mode, setMode] = useState('login'); // 'login' | 'register'
@@ -93,49 +93,49 @@ export default function AuthPanel({ onAuth, onSkip }) {
   const hasOAuth = oauthProviders.google || oauthProviders.github;
 
   return (
-    <div className="auth-overlay">
+    <div className={styles.overlay}>
       {/* Panel izquierdo — branding */}
-      <div className="auth-brand">
-        <div className="auth-brand-logo">Claw<span>mint</span></div>
-        <div className="auth-brand-tagline">Tu terminal en la nube</div>
-        <div className="auth-brand-desc">
-          Terminal PTY en tiempo real, agentes IA multi-proveedor y control
-          remoto desde cualquier dispositivo.
+      <div className={styles.brand}>
+        <div className={styles.brandLogo}>Claw<span>mint</span></div>
+        <div className={styles.brandTagline}>Tu asistente IA sin límites</div>
+        <div className={styles.brandDesc}>
+          Desplegá agentes inteligentes, conectá infinitos MCPs,
+          automatizá tareas programadas y ampliá capacidades con skills.
         </div>
-        <div className="auth-brand-features">
-          <div className="auth-brand-feature">
-            <div className="auth-brand-feature-icon">⚡</div>
-            Terminal PTY en tiempo real vía WebSocket
+        <div className={styles.brandFeatures}>
+          <div className={styles.brandFeature}>
+            <div className={styles.brandFeatureIcon}>🤖</div>
+            Agentes IA multi-proveedor con tareas programadas
           </div>
-          <div className="auth-brand-feature">
-            <div className="auth-brand-feature-icon">🤖</div>
-            Claude, Gemini, GPT, Grok y Ollama
+          <div className={styles.brandFeature}>
+            <div className={styles.brandFeatureIcon}>🔌</div>
+            Conexiones MCP y skills ilimitados
           </div>
-          <div className="auth-brand-feature">
-            <div className="auth-brand-feature-icon">📱</div>
-            Telegram + WebChat integrados
+          <div className={styles.brandFeature}>
+            <div className={styles.brandFeatureIcon}>⚡</div>
+            Terminal, Telegram y WebChat integrados
           </div>
         </div>
       </div>
 
       {/* Panel derecho — formulario */}
-      <div className="auth-panel">
-        <div className="auth-panel-title">
+      <div className={styles.panel}>
+        <div className={styles.panelTitle}>
           {mode === 'login' ? 'Iniciar sesión' : 'Crear cuenta'}
         </div>
-        <div className="auth-panel-subtitle">
+        <div className={styles.panelSubtitle}>
           {mode === 'login' ? 'Bienvenido de vuelta' : 'Empezá gratis, sin tarjeta'}
         </div>
 
-        <div className="auth-tabs">
+        <div className={styles.tabs}>
           <button
-            className={`auth-tab ${mode === 'login' ? 'active' : ''}`}
+            className={`${styles.tab} ${mode === 'login' ? styles.active : ''}`}
             onClick={() => { setMode('login'); setError(null); }}
           >
             <LogIn size={14} /> Iniciar sesión
           </button>
           <button
-            className={`auth-tab ${mode === 'register' ? 'active' : ''}`}
+            className={`${styles.tab} ${mode === 'register' ? styles.active : ''}`}
             onClick={() => { setMode('register'); setError(null); }}
           >
             <UserPlus size={14} /> Crear cuenta
@@ -143,25 +143,25 @@ export default function AuthPanel({ onAuth, onSkip }) {
         </div>
 
         {hasOAuth && (
-          <div className="auth-oauth">
+          <div className={styles.oauth}>
             {oauthProviders.google && (
-              <button className="auth-oauth-btn auth-oauth-google" onClick={() => openOAuth('google')}>
+              <button className={`${styles.oauthBtn} ${styles.oauthGoogle}`} onClick={() => openOAuth('google')}>
                 <GoogleIcon /> Google
               </button>
             )}
             {oauthProviders.github && (
-              <button className="auth-oauth-btn auth-oauth-github" onClick={() => openOAuth('github')}>
+              <button className={`${styles.oauthBtn} ${styles.oauthGithub}`} onClick={() => openOAuth('github')}>
                 <GithubIcon /> GitHub
               </button>
             )}
-            <div className="auth-divider"><span>o</span></div>
+            <div className={styles.divider}><span>o</span></div>
           </div>
         )}
 
-        <form className="auth-form" onSubmit={handleSubmit}>
+        <form className={styles.form} onSubmit={handleSubmit}>
           {mode === 'register' && (
-            <div className="auth-field">
-              <User size={14} className="auth-field-icon" />
+            <div className={styles.field}>
+              <User size={14} className={styles.fieldIcon} />
               <input
                 type="text"
                 placeholder="Nombre"
@@ -172,8 +172,8 @@ export default function AuthPanel({ onAuth, onSkip }) {
             </div>
           )}
 
-          <div className="auth-field">
-            <Mail size={14} className="auth-field-icon" />
+          <div className={styles.field}>
+            <Mail size={14} className={styles.fieldIcon} />
             <input
               type="email"
               placeholder="Email"
@@ -184,8 +184,8 @@ export default function AuthPanel({ onAuth, onSkip }) {
             />
           </div>
 
-          <div className="auth-field">
-            <Lock size={14} className="auth-field-icon" />
+          <div className={styles.field}>
+            <Lock size={14} className={styles.fieldIcon} />
             <input
               type={showPass ? 'text' : 'password'}
               placeholder="Contraseña"
@@ -197,7 +197,7 @@ export default function AuthPanel({ onAuth, onSkip }) {
             />
             <button
               type="button"
-              className="auth-toggle-pass"
+              className={styles.togglePass}
               onClick={() => setShowPass(!showPass)}
               tabIndex={-1}
             >
@@ -205,15 +205,15 @@ export default function AuthPanel({ onAuth, onSkip }) {
             </button>
           </div>
 
-          {error && <div className="auth-error">{error}</div>}
+          {error && <div className={styles.error}>{error}</div>}
 
-          <button className="auth-submit" type="submit" disabled={loading}>
+          <button className={styles.submit} type="submit" disabled={loading}>
             {loading ? 'Cargando...' : mode === 'login' ? 'Entrar' : 'Crear cuenta'}
           </button>
         </form>
 
         {onSkip && (
-          <button className="auth-skip" onClick={onSkip}>
+          <button className={styles.skip} onClick={onSkip}>
             Continuar sin cuenta
           </button>
         )}

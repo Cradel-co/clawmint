@@ -6,6 +6,9 @@ import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { Highlight, themes } from 'prism-react-renderer';
 import AudioPlayer from './AudioPlayer.jsx';
+import styles from './WebChatPanel.module.css';
+
+const ROLE_CLASS = { user: styles.msgUser, assistant: styles.msgAssistant, system: styles.msgSystem, tts: styles.msgTts };
 
 /** Schema de sanitización: permite HTML visual pero bloquea scripts/iframes */
 const sanitizeSchema = {
@@ -38,10 +41,10 @@ function ChatMessage({ content, role, streaming, error, providerLabel, buttons, 
   // Mensaje de audio TTS
   if (role === 'tts' && audioUrl) {
     return (
-      <div className="wc-msg wc-msg-tts">
-        <div className="wc-msg-label">Audio TTS</div>
-        <div className="wc-msg-content wc-audio-content">
-          <audio controls src={audioUrl} className="wc-audio-player" />
+      <div className={`${styles.msg} ${styles.msgTts}`}>
+        <div className={styles.msgLabel}>Audio TTS</div>
+        <div className={`${styles.msgContent} ${styles.audioContent}`}>
+          <audio controls src={audioUrl} className={styles.audioPlayer} />
         </div>
       </div>
     );
@@ -50,49 +53,49 @@ function ChatMessage({ content, role, streaming, error, providerLabel, buttons, 
   // Media: photo, document, voice, video
   if (mediaType && mediaSrc) {
     return (
-      <div className={`wc-msg wc-msg-${role}`}>
+      <div className={`${styles.msg} ${ROLE_CLASS[role] || ''}`}>
         {role === 'assistant' && providerLabel && (
-          <div className="wc-msg-label">{providerLabel}</div>
+          <div className={styles.msgLabel}>{providerLabel}</div>
         )}
-        <div className="wc-msg-content wc-media-content">
+        <div className={`${styles.msgContent} ${styles.mediaContent}`}>
           {mediaType === 'photo' && (
-            <img src={mediaSrc} alt={caption || filename || 'imagen'} className="wc-media-img" />
+            <img src={mediaSrc} alt={caption || filename || 'imagen'} className={styles.mediaImg} />
           )}
           {mediaType === 'video' && (
-            <video controls src={mediaSrc} className="wc-media-video" />
+            <video controls src={mediaSrc} className={styles.mediaVideo} />
           )}
           {mediaType === 'voice' && (
-            <div className="wc-media-voice">
-              <Volume2 size={14} className="wc-media-voice-icon" />
-              <audio controls src={mediaSrc} className="wc-media-audio" />
+            <div className={styles.mediaVoice}>
+              <Volume2 size={14} className={styles.mediaVoiceIcon} />
+              <audio controls src={mediaSrc} className={styles.mediaAudio} />
             </div>
           )}
           {mediaType === 'document' && (
-            <a href={mediaSrc} download={filename || 'archivo'} className="wc-media-doc">
+            <a href={mediaSrc} download={filename || 'archivo'} className={styles.mediaDoc}>
               <FileText size={18} />
-              <span className="wc-media-doc-name">{filename || 'archivo'}</span>
-              <Download size={14} className="wc-media-doc-dl" />
+              <span className={styles.mediaDocName}>{filename || 'archivo'}</span>
+              <Download size={14} className={styles.mediaDocDl} />
             </a>
           )}
-          {caption && <p className="wc-media-caption">{caption}</p>}
+          {caption && <p className={styles.mediaCaption}>{caption}</p>}
         </div>
       </div>
     );
   }
 
   return (
-    <div className={`wc-msg wc-msg-${role} ${error ? 'wc-msg-error' : ''}`}>
+    <div className={`${styles.msg} ${ROLE_CLASS[role] || ''} ${error ? styles.msgError : ''}`}>
       {role === 'assistant' && providerLabel && (
-        <div className="wc-msg-label">{providerLabel}</div>
+        <div className={styles.msgLabel}>{providerLabel}</div>
       )}
-      <div className="wc-msg-content">
+      <div className={styles.msgContent}>
         {audioUrl ? (
           <>
             <AudioPlayer src={audioUrl} knownDuration={audioDuration} />
             {transcription ? (
-              <span className="wc-audio-transcription">{transcription}</span>
+              <span className={styles.audioTranscription}>{transcription}</span>
             ) : (
-              <span className="wc-audio-transcribing">Transcribiendo...</span>
+              <span className={styles.audioTranscribing}>Transcribiendo...</span>
             )}
           </>
         ) : role === 'user' || role === 'system' ? (
@@ -109,14 +112,14 @@ function ChatMessage({ content, role, streaming, error, providerLabel, buttons, 
             {content}
           </Markdown>
         )}
-        {streaming && <span className="wc-cursor">▊</span>}
+        {streaming && <span className={styles.cursor}>▊</span>}
       </div>
       {buttons && buttons.length > 0 && (
-        <div className="wc-msg-buttons">
+        <div className={styles.msgButtons}>
           {buttons.map((btn, i) => (
             <button
               key={i}
-              className="wc-inline-btn"
+              className={styles.inlineBtn}
               onClick={() => onButtonClick?.(btn)}
             >
               {btn.text || btn.label}
@@ -154,16 +157,16 @@ function CodeBlock({ node, inline, className, children, ...props }) {
   }, [code]);
 
   if (inline) {
-    return <code className="wc-inline-code" {...props}>{children}</code>;
+    return <code className={styles.inlineCode} {...props}>{children}</code>;
   }
 
   // Bloque corto sin lenguaje: renderizar compacto (inline con botón copiar)
   const isSingleLine = !code.includes('\n');
   if (isSingleLine && !lang) {
     return (
-      <div className="wc-code-inline-block">
-        <code className="wc-code-inline-text">{code}</code>
-        <button className="wc-code-inline-copy" onClick={handleCopy} title="Copiar">
+      <div className={styles.codeInlineBlock}>
+        <code className={styles.codeInlineText}>{code}</code>
+        <button className={styles.codeInlineCopy} onClick={handleCopy} title="Copiar">
           {copied ? <Check size={12} /> : <Copy size={12} />}
         </button>
       </div>
@@ -171,10 +174,10 @@ function CodeBlock({ node, inline, className, children, ...props }) {
   }
 
   return (
-    <div className="wc-code-block">
-      <div className="wc-code-header">
-        <span className="wc-code-lang">{lang || 'text'}</span>
-        <button className="wc-code-copy" onClick={handleCopy}>
+    <div className={styles.codeBlock}>
+      <div className={styles.codeHeader}>
+        <span className={styles.codeLang}>{lang || 'text'}</span>
+        <button className={styles.codeCopy} onClick={handleCopy}>
           {copied ? <Check size={12} /> : <><Copy size={12} /> Copiar</>}
         </button>
       </div>

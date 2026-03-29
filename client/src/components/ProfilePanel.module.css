@@ -1,0 +1,11 @@
+.msg { padding: 6px 10px; margin-bottom: 8px; background: rgba(74,222,128,0.10); border-radius: 4px; color: var(--accent-green); font-size: 12px; }
+.msgError { background: rgba(248,113,113,0.08); color: var(--accent-red); }
+.sectionTitle { font-size: 11px; font-weight: 700; color: var(--accent-cyan); letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 8px; font-family: var(--font-ui); }
+.fieldLabel { font-size: 11px; color: var(--text-hint); display: block; margin-bottom: 3px; margin-top: 8px; }
+.input { width: 100%; margin-bottom: 4px; padding: 6px 10px; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-primary); border-radius: 6px; font-size: 12.5px; font-family: var(--font-ui); box-sizing: border-box; outline: none; }
+.input:focus { border-color: rgba(79,195,247,0.45); }
+.infoCard { background: var(--bg-card); border: 1px solid var(--border-primary); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+.infoRow { display: flex; justify-content: space-between; font-size: 12px; }
+.infoLabel { color: var(--text-hint); }
+.infoValue { color: var(--text-primary); font-weight: 500; }
+.avatar { width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue)); color: var(--on-accent); font-size: 20px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-bottom: 8px; }

@@ -1,23 +1,23 @@
 import { X, Plus } from 'lucide-react';
-import './TabBar.css';
+import styles from './TabBar.module.css';
 
 export default function TabBar({ sessions, activeId, onSelect, onClose, onNew }) {
   return (
-    <div className="tab-bar" role="tablist" aria-label="Sesiones de terminal">
+    <div className={styles.bar} role="tablist" aria-label="Sesiones de terminal">
       {sessions.map((session) => (
         <div
           key={session.id}
-          className={`tab ${session.id === activeId ? 'active' : ''}`}
+          className={`${styles.tab} ${session.id === activeId ? styles.active : ''}`}
           role="tab"
           tabIndex={session.id === activeId ? 0 : -1}
           aria-selected={session.id === activeId}
           onClick={() => onSelect(session.id)}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(session.id); } }}
         >
-          <span className="tab-title">{session.title}</span>
+          <span className={styles.title}>{session.title}</span>
           {sessions.length > 1 && (
             <button
-              className="tab-close"
+              className={styles.close}
               onClick={(e) => {
                 e.stopPropagation();
                 onClose(session.id);
@@ -29,7 +29,7 @@ export default function TabBar({ sessions, activeId, onSelect, onClose, onNew })
           )}
         </div>
       ))}
-      <button className="tab-new" onClick={onNew} aria-label="Nueva terminal">
+      <button className={styles.new} onClick={onNew} aria-label="Nueva terminal">
         <Plus size={14} aria-hidden="true" />
       </button>
     </div>

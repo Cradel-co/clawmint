@@ -1,0 +1,154 @@
+.msg {
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  background: rgba(74,222,128,0.10);
+  border-radius: 4px;
+  color: var(--accent-green);
+  font-size: 12px;
+}
+
+.sectionTitle {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-purple);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  font-family: var(--font-ui);
+}
+
+.toggleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  gap: 10px;
+}
+
+.toggleLabel {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.toggle {
+  width: 38px;
+  height: 22px;
+  border-radius: 11px;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-hover);
+  cursor: pointer;
+  position: relative;
+  transition: background 0.2s, border-color 0.2s;
+  flex-shrink: 0;
+}
+
+.toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: transform 0.2s, background 0.2s;
+}
+
+.toggleOn {
+  background: rgba(74,222,128,0.15);
+  border-color: rgba(74,222,128,0.4);
+}
+
+.toggleOn::after {
+  transform: translateX(16px);
+  background: var(--accent-green);
+}
+
+.fieldLabel {
+  font-size: 11px;
+  color: var(--text-hint);
+  display: block;
+  margin-bottom: 3px;
+  margin-top: 8px;
+}
+
+.input {
+  width: 100%;
+  margin-bottom: 4px;
+  padding: 6px 10px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-family: var(--font-ui);
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.18s;
+}
+
+.input:focus {
+  border-color: rgba(167,139,250,0.45);
+}
+
+.statusCard {
+  background: var(--bg-card);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.statusRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.connected {
+  background: var(--accent-green);
+  box-shadow: 0 0 6px rgba(74,222,128,0.5);
+}
+
+.disconnected {
+  background: var(--accent-red);
+  box-shadow: 0 0 6px rgba(248,113,113,0.4);
+}
+
+.peerList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.peer {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  background: var(--bg-secondary);
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.noPeers {
+  font-size: 11px;
+  color: var(--text-hint);
+  font-style: italic;
+}
+
+.btnRow {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}

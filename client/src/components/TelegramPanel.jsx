@@ -2,7 +2,9 @@ import { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { Lock, CheckCircle, Sparkles, Square, Play, X, ChevronUp, ChevronDown, Eye, EyeOff, Check, Plus, Bot } from 'lucide-react';
 import { API_BASE } from '../config';
 import { apiFetch } from '../authUtils';
-import './TelegramPanel.css';
+import { useTelegramBots, useInvalidateTelegramBots } from '../api/telegram';
+import { useAgents } from '../api/agents';
+import styles from './TelegramPanel.module.css';
 
 const API = `${API_BASE}/api/telegram`;
 
@@ -48,55 +50,55 @@ const ChatRow = memo(function ChatRow({ botKey, chat, onOpenSession, onRefresh }
   };
 
   return (
-    <div className="tg-chat-row">
-      <div className="tg-chat-top">
-        <span className="tg-chat-name">
+    <div className={styles.chatRow}>
+      <div className={styles.chatTop}>
+        <span className={styles.chatName}>
           {chat.username ? `@${chat.username}` : chat.firstName || `Chat ${chat.chatId}`}
         </span>
-        <span className="tg-chat-time">{timeAgo(chat.lastMessageAt)}</span>
+        <span className={styles.chatTime}>{timeAgo(chat.lastMessageAt)}</span>
       </div>
       {chat.lastPreview && (
-        <p className="tg-chat-preview">"{chat.lastPreview}"</p>
+        <p className={styles.chatPreview}>"{chat.lastPreview}"</p>
       )}
       {chat.sessionId && (
-        <p className="tg-chat-session">
+        <p className={styles.chatSession}>
           sesión: <code>{chat.sessionId.slice(0, 8)}…</code>
         </p>
       )}
       {linking && (
-        <div className="tg-session-picker">
+        <div className={styles.sessionPicker}>
           {sessions.length === 0
-            ? <span className="tg-session-empty">Sin sesiones activas</span>
+            ? <span className={styles.sessionEmpty}>Sin sesiones activas</span>
             : sessions.map(s => (
               <button
                 key={s.id}
-                className="tg-session-option"
+                className={styles.sessionOption}
                 onClick={() => handleSelectSession(s.id)}
               >
-                <span className="tg-session-title">{s.title || s.id.slice(0, 8)}</span>
-                <code className="tg-session-id">{s.id.slice(0, 8)}…</code>
+                <span className={styles.sessionTitle}>{s.title || s.id.slice(0, 8)}</span>
+                <code className={styles.sessionId}>{s.id.slice(0, 8)}…</code>
               </button>
             ))
           }
         </div>
       )}
-      <div className="tg-chat-btns">
+      <div className={styles.chatBtns}>
         {chat.sessionId && (
           <button
-            className="tg-btn tg-btn-sm tg-btn-ghost"
+            className={`${styles.btn} ${styles.btnSm} ${styles.btnGhost}`}
             onClick={() => onOpenSession(chat.sessionId)}
           >
             Ver terminal
           </button>
         )}
         <button
-          className={`tg-btn tg-btn-sm ${linking ? 'tg-btn-link-active' : 'tg-btn-ghost'}`}
+          className={`${styles.btn} ${styles.btnSm} ${linking ? styles.btnLinkActive : styles.btnGhost}`}
           onClick={handleLink}
         >
           {linking ? 'Cancelar' : 'Vincular'}
         </button>
         <button
-          className="tg-btn tg-btn-sm tg-btn-danger-ghost"
+          className={`${styles.btn} ${styles.btnSm} ${styles.btnDangerGhost}`}
           onClick={handleDisconnect}
         >
           Desconectar
@@ -130,7 +132,7 @@ function AccessConfig({ bot, onRefresh }) {
   };
 
   return (
-    <div className="access-config">
+    <div className={styles.accessConfig}>
       <h4><Lock size={14} style={{ marginRight: 4, verticalAlign: 'middle' }} />Control de acceso</h4>
       <label>IDs de usuarios permitidos <span>(separados por coma — vacío = todos)</span></label>
       <input
@@ -206,16 +208,16 @@ const BotCard = memo(function BotCard({ bot, allAgents, onOpenSession, onRefresh
   };
 
   return (
-    <div className={`tg-bot-card ${bot.running ? 'running' : 'stopped'}`}>
-      <div className="tg-bot-header" onClick={() => setExpanded(v => !v)}>
-        <div className="tg-bot-info">
-          <span className={`tg-status-dot ${bot.running ? 'active' : 'inactive'}`} />
-          <span className="tg-bot-key">{bot.key}</span>
+    <div className={`${styles.botCard} ${bot.running ? styles.running : ''}`}>
+      <div className={styles.botHeader} onClick={() => setExpanded(v => !v)}>
+        <div className={styles.botInfo}>
+          <span className={`${styles.statusDot} ${bot.running ? styles.active : styles.inactive}`} />
+          <span className={styles.botKey}>{bot.key}</span>
           {bot.botInfo && (
-            <span className="tg-bot-username">@{bot.botInfo.username}</span>
+            <span className={styles.botUsername}>@{bot.botInfo.username}</span>
           )}
           <select
-            className="tg-agent-select"
+            className={styles.agentSelect}
             value={bot.defaultAgent || 'claude'}
             onChange={handleChangeAgent}
             onClick={e => e.stopPropagation()}
@@ -228,30 +230,30 @@ const BotCard = memo(function BotCard({ bot, allAgents, onOpenSession, onRefresh
             ))}
           </select>
         </div>
-        <div className="tg-bot-actions" onClick={e => e.stopPropagation()}>
+        <div className={styles.botActions} onClick={e => e.stopPropagation()}>
           {bot.running ? (
-            <button className="tg-btn tg-btn-sm tg-btn-stop" onClick={handleStop} disabled={loading}>
+            <button className={`${styles.btn} ${styles.btnSm} ${styles.btnStop}`} onClick={handleStop} disabled={loading}>
               <Square size={11} /> Stop
             </button>
           ) : (
-            <button className="tg-btn tg-btn-sm tg-btn-start" onClick={handleStart} disabled={loading}>
+            <button className={`${styles.btn} ${styles.btnSm} ${styles.btnStart}`} onClick={handleStart} disabled={loading}>
               <Play size={11} /> Start
             </button>
           )}
-          <button className="tg-btn tg-btn-sm tg-btn-delete" onClick={handleRemove} disabled={loading} title="Eliminar bot" aria-label="Eliminar bot">
+          <button className={`${styles.btn} ${styles.btnSm} ${styles.btnDelete}`} onClick={handleRemove} disabled={loading} title="Eliminar bot" aria-label="Eliminar bot">
             <X size={13} />
           </button>
-          <span className="tg-bot-expand">{expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</span>
+          <span className={styles.botExpand}>{expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</span>
         </div>
       </div>
 
       {expanded && (
-        <div className="tg-bot-body">
+        <div className={styles.botBody}>
           {bot.running && bot.chats.length === 0 && (
-            <p className="tg-empty-small">Sin chats activos</p>
+            <p className={styles.emptySmall}>Sin chats activos</p>
           )}
           {!bot.running && (
-            <p className="tg-empty-small">Bot detenido</p>
+            <p className={styles.emptySmall}>Bot detenido</p>
           )}
           {bot.chats.map(chat => (
             <ChatRow
@@ -297,44 +299,44 @@ const AddBotForm = memo(function AddBotForm({ onAdd, onCancel }) {
   };
 
   return (
-    <div className="tg-add-form">
-      <p className="tg-form-title">Agregar bot</p>
+    <div className={styles.addForm}>
+      <p className={styles.formTitle}>Agregar bot</p>
 
-      <label className="tg-label">Clave (identificador)</label>
+      <label className={styles.label}>Clave (identificador)</label>
       <input
-        className="tg-input"
+        className={styles.input}
         type="text"
         placeholder="mibot, iglesia, radio..."
         value={key}
         onChange={e => { setKey(e.target.value); setError(''); }}
       />
 
-      <label className="tg-label" style={{ marginTop: 8 }}>Token de BotFather</label>
-      <div className="tg-token-input-row">
+      <label className={styles.label} style={{ marginTop: 8 }}>Token de BotFather</label>
+      <div className={styles.tokenInputRow}>
         <input
-          className="tg-input"
+          className={styles.input}
           type={showToken ? 'text' : 'password'}
           placeholder="123456:ABC-DEF..."
           value={token}
           onChange={e => { setToken(e.target.value); setError(''); }}
           onKeyDown={e => e.key === 'Enter' && handleSubmit()}
         />
-        <button className="tg-icon-btn" onClick={() => setShowToken(v => !v)} aria-label={showToken ? 'Ocultar token' : 'Mostrar token'}>
+        <button className={styles.iconBtn} onClick={() => setShowToken(v => !v)} aria-label={showToken ? 'Ocultar token' : 'Mostrar token'}>
           {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
         </button>
       </div>
 
-      {error && <p className="tg-error">{error}</p>}
+      {error && <p className={styles.error}>{error}</p>}
 
-      <div className="tg-form-help">
+      <div className={styles.formHelp}>
         <p>Obtené el token en <strong>@BotFather</strong> → /newbot</p>
       </div>
 
-      <div className="tg-btn-row">
-        <button className="tg-btn tg-btn-primary" onClick={handleSubmit} disabled={loading || !key || !token}>
+      <div className={styles.btnRow}>
+        <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={handleSubmit} disabled={loading || !key || !token}>
           {loading ? '...' : <><Check size={13} /> Agregar</>}
         </button>
-        <button className="tg-btn tg-btn-ghost" onClick={onCancel}>
+        <button className={`${styles.btn} ${styles.btnGhost}`} onClick={onCancel}>
           Cancelar
         </button>
       </div>
@@ -343,32 +345,12 @@ const AddBotForm = memo(function AddBotForm({ onAdd, onCancel }) {
 });
 
 export default function TelegramPanel({ onClose, onOpenSession, embedded }) {
-  const [bots, setBots] = useState([]);
-  const [allAgents, setAllAgents] = useState([]);
+  const { data: bots = [] } = useTelegramBots();
+  const { data: allAgents = [] } = useAgents();
+  const invalidateBots = useInvalidateTelegramBots();
   const [showAdd, setShowAdd] = useState(false);
-  const intervalRef = useRef(null);
 
-  const fetchBots = useCallback(async () => {
-    try {
-      const res = await apiFetch(`${API}/bots`);
-      const data = await res.json();
-      setBots(Array.isArray(data) ? data : []);
-    } catch { /* ignorar */ }
-  }, []);
-
-  useEffect(() => {
-    fetchBots();
-    intervalRef.current = setInterval(fetchBots, 3000);
-    return () => clearInterval(intervalRef.current);
-  }, [fetchBots]);
-
-  // Cargar agentes una sola vez (en vez de por cada BotCard)
-  useEffect(() => {
-    apiFetch(`${API_BASE}/api/agents`)
-      .then(r => r.json())
-      .then(data => setAllAgents(Array.isArray(data) ? data : []))
-      .catch(() => {});
-  }, []);
+  const fetchBots = invalidateBots; // alias para compatibilidad con componentes hijos
 
   const handleAdd = () => {
     setShowAdd(false);
@@ -379,22 +361,22 @@ export default function TelegramPanel({ onClose, onOpenSession, embedded }) {
   const activeBots = bots.filter(b => b.running).length;
 
   return (
-    <div className="tg-panel" role="region" aria-label="Panel de Telegram">
+    <div className={styles.panel} role="region" aria-label="Panel de Telegram">
       {!embedded && (
-        <div className="tg-header">
-          <span className="tg-header-title">
-            <span className="tg-icon"><Bot size={16} /></span>
+        <div className={styles.header}>
+          <span className={styles.headerTitle}>
+            <span className={styles.icon}><Bot size={16} /></span>
             Bots de Telegram
-            {activeBots > 0 && <span className="tg-header-badge">{activeBots} activo{activeBots > 1 ? 's' : ''}</span>}
+            {activeBots > 0 && <span className={styles.headerBadge}>{activeBots} activo{activeBots > 1 ? 's' : ''}</span>}
           </span>
-          <button className="tg-close" onClick={onClose} aria-label="Cerrar panel de Telegram"><X size={16} /></button>
+          <button className={styles.close} onClick={onClose} aria-label="Cerrar panel de Telegram"><X size={16} /></button>
         </div>
       )}
 
-      <div className="tg-body">
+      <div className={styles.body}>
         {/* Resumen */}
         {bots.length > 0 && (
-          <div className="tg-summary">
+          <div className={styles.summary}>
             <span>{bots.length} bot{bots.length > 1 ? 's' : ''}</span>
             <span>·</span>
             <span>{totalChats} chat{totalChats !== 1 ? 's' : ''} activo{totalChats !== 1 ? 's' : ''}</span>
@@ -403,9 +385,9 @@ export default function TelegramPanel({ onClose, onOpenSession, embedded }) {
 
         {/* Lista de bots */}
         {bots.length === 0 && !showAdd && (
-          <div className="tg-empty-state">
+          <div className={styles.emptyState}>
             <p>Sin bots configurados</p>
-            <p className="tg-empty-hint">Agregá tu primer bot con el token de @BotFather</p>
+            <p className={styles.emptyHint}>Agregá tu primer bot con el token de @BotFather</p>
           </div>
         )}
 
@@ -423,7 +405,7 @@ export default function TelegramPanel({ onClose, onOpenSession, embedded }) {
         {showAdd ? (
           <AddBotForm onAdd={handleAdd} onCancel={() => setShowAdd(false)} />
         ) : (
-          <button className="tg-btn tg-btn-add" onClick={() => setShowAdd(true)}>
+          <button className={`${styles.btn} ${styles.btnAdd}`} onClick={() => setShowAdd(true)}>
             <Plus size={14} /> Agregar bot
           </button>
         )}

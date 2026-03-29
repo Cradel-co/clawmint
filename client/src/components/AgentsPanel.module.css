@@ -1,0 +1,366 @@
+/* ─── AgentsPanel ─────────────────────────────────────────────────────────── */
+
+.panel {
+  width: clamp(260px, 28vw, 360px);
+  min-width: 0;
+  background: var(--bg-primary);
+  border-left: 1px solid var(--border-secondary);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+  .panel {
+    width: 100%;
+    min-width: 0;
+    border-left: none;
+    border-top: 1px solid var(--border-secondary);
+  }
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-primary);
+  background: linear-gradient(90deg, rgba(79,195,247,0.07) 0%, var(--bg-secondary) 50%);
+}
+
+.headerTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.icon {
+  font-size: 16px;
+}
+
+.close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.close:hover { color: var(--text-primary); }
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ─── Agent rows ─── */
+
+.agentRow {
+  background: var(--bg-card);
+  border: 1px solid var(--border-primary);
+  border-left: 3px solid var(--accent-cyan);
+  border-radius: 6px;
+  padding: 10px 12px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.agentRow:hover {
+  background: var(--bg-hover);
+  border-color: rgba(79,195,247,0.30);
+  border-left-color: var(--accent-cyan);
+}
+
+.agentTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.agentKey {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-cyan);
+  font-family: var(--font-mono);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.roleBadge {
+  font-size: 12px;
+}
+
+.agentDesc {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 4px 0 0;
+}
+
+.agentPrompt {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin: 4px 0 0;
+  line-height: 1.4;
+}
+
+.agentActions {
+  display: flex;
+  gap: 4px;
+}
+
+.iconBtn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 13px;
+  border-radius: 4px;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+.iconBtn:hover { opacity: 1; background: var(--border-secondary); }
+
+.iconBtnDanger:hover { background: rgba(248,113,113,0.10); }
+
+/* ─── Form ─── */
+
+.form {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.formTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+}
+
+.label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  display: block;
+}
+
+.input {
+  width: 100%;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 13px;
+  padding: 6px 8px;
+  box-sizing: border-box;
+  outline: none;
+  font-family: inherit;
+}
+
+.input:focus { border-color: var(--focus-ring); }
+
+.textarea {
+  width: 100%;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 6px 8px;
+  box-sizing: border-box;
+  outline: none;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+.textarea:focus { border-color: var(--focus-ring); }
+
+.hint {
+  font-size: 10px;
+  color: var(--text-hint);
+  margin: 4px 0 0;
+}
+
+.error {
+  font-size: 11px;
+  color: var(--accent-red);
+  margin: 6px 0 0;
+}
+
+.btnRow {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* ─── Buttons ─── */
+
+.btn {
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: opacity 0.15s;
+}
+
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btnPrimary {
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+}
+.btnPrimary:hover:not(:disabled) { background: var(--btn-primary-hover); }
+
+.btnGhost {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border-primary);
+}
+.btnGhost:hover:not(:disabled) { color: var(--text-secondary); border-color: var(--border-primary); }
+
+.btnAdd {
+  width: 100%;
+  background: transparent;
+  color: var(--accent-blue);
+  border: 1px dashed var(--border-primary);
+  font-size: 12px;
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-top: 4px;
+}
+.btnAdd:hover { background: rgba(79,195,247,0.10); border-color: var(--accent-blue); }
+
+/* ─── Empty state ─── */
+
+.emptyState {
+  text-align: center;
+  color: var(--text-hint);
+  padding: 24px 12px;
+  font-size: 13px;
+}
+
+.emptyHint {
+  font-size: 11px;
+  color: var(--text-hint);
+  margin-top: 6px;
+}
+
+/* ─── Divider ─── */
+
+.divider {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 8px 0;
+}
+
+/* ─── Skills section ─── */
+
+.skillsSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.skillsTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 0 0 2px;
+}
+
+.skillsHint {
+  font-size: 10px;
+  color: var(--text-hint);
+  margin: 0 0 6px;
+}
+
+.skillsInstall {
+  display: flex;
+  gap: 6px;
+}
+
+.skillsInstall .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.skillsEmpty {
+  font-size: 11px;
+  color: var(--text-hint);
+  text-align: center;
+  padding: 8px 0;
+}
+
+.skillRow {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-secondary);
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.skillInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.skillName {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.skillSlug {
+  font-size: 10px;
+  color: var(--accent-blue);
+  font-family: monospace;
+}
+
+.skillDesc {
+  font-size: 10px;
+  color: var(--text-hint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ─── Aliases for shared usage (ProvidersPanel, McpsPanel) ─── */
+
+.section {
+  /* placeholder for ProvidersPanel ap-section usage */
+}
+
+.title {
+  /* alias — ProvidersPanel uses ap-title instead of ap-header-title */
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}

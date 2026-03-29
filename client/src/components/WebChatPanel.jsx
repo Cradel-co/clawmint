@@ -1,66 +1,47 @@
 import { useState, useEffect, useCallback } from 'react';
-import { API_BASE } from '../config';
-import { useAuth } from '../contexts/AuthContext.jsx';
-import { apiFetch } from '../authUtils';
-import useChatSocket from '../hooks/useChatSocket.js';
-import useChat from '../hooks/useChat.js';
-import useAudioRecorder from '../hooks/useAudioRecorder.js';
-import useFileUpload from '../hooks/useFileUpload.js';
+import { useAuth } from '../contexts/AuthContext';
+import { useChatStore } from '../stores/chatStore';
+import { useProviders } from '../api/providers';
+import { useAgents } from '../api/agents';
+import useAudioRecorder from '../hooks/useAudioRecorder';
+import useFileUpload from '../hooks/useFileUpload';
 import ChatHeader from './chat/ChatHeader.jsx';
 import StatusBar from './chat/StatusBar.jsx';
 import MessageList from './chat/MessageList.jsx';
 import ChatInput from './chat/ChatInput.jsx';
 import AuthPanel from './AuthPanel.jsx';
-import './WebChatPanel.css';
+import styles from './WebChatPanel.module.css';
 
 export default function WebChatPanel({ onClose, embedded, onNewMessage, onStateChange }) {
-  const [providers, setProviders] = useState([]);
-  const [agentsList, setAgentsList] = useState([]);
+  const { data: providersData } = useProviders();
+  const { data: agentsList = [] } = useAgents();
+  const providers = providersData?.providers || [];
 
-  const { user: authUser, showAuthPanel, setShowAuthPanel, handleAuth, handleLogout, handleWsAuthMessage, setWsRef } = useAuth();
+  const { user: authUser, showAuthPanel, setShowAuthPanel, handleAuth, handleLogout, handleWsAuthMessage } = useAuth();
 
-  // ── Chat state (useChat hook) ──────────────────────────────────────────────
+  // ── Chat state (Zustand store) ───────────────────────────────────────────────
 
   const {
-    messages, setMessages,
-    input, setInput,
-    sending, setSending,
-    provider, setProvider,
-    agent, setAgent,
-    cwd,
-    statusText, setStatusText,
-    handleWsMessage,
-    addUserMessage,
-    clearMessages,
-    setError,
-  } = useChat({ onAuthMessage: handleWsAuthMessage, onNewMessage });
+    messages, input, setInput, sending, setSending,
+    provider, setProvider, agent, setAgent, cwd,
+    statusText, setStatusText, connected,
+    addUserMessage, clearMessages, send, getSessionId, reconnect,
+    setOnAuthMessage, setOnNewMessage,
+  } = useChatStore();
 
-  const { connected, send, getSessionId, reconnect, wsRef } = useChatSocket({
-    onMessage: handleWsMessage,
-    onAuthError: () => { handleLogout(); },
-  });
-
-  // Pasar wsRef al AuthContext para refresh proactivo
-  useEffect(() => { setWsRef(wsRef.current); }, [connected, setWsRef, wsRef]);
+  // Registrar callbacks de auth y new message en el store
+  useEffect(() => {
+    setOnAuthMessage(handleWsAuthMessage);
+    setOnNewMessage(onNewMessage || null);
+  }, [handleWsAuthMessage, onNewMessage, setOnAuthMessage, setOnNewMessage]);
 
   // Reportar cwd + provider al padre (para context bar en split mode)
   useEffect(() => { onStateChange?.({ cwd, provider }); }, [cwd, provider]); // eslint-disable-line
 
-  // ── Cargar providers y agentes ─────────────────────────────────────────────
-
+  // Setear provider default cuando llegan los datos
   useEffect(() => {
-    apiFetch(`${API_BASE}/api/providers`)
-      .then(r => r.json())
-      .then(data => {
-        setProviders(data.providers || []);
-        if (data.default) setProvider(data.default);
-      })
-      .catch(() => setStatusText('Error cargando providers'));
-    apiFetch(`${API_BASE}/api/agents`)
-      .then(r => r.json())
-      .then(data => setAgentsList(Array.isArray(data) ? data : []))
-      .catch(() => setStatusText('Error cargando agentes'));
-  }, []);
+    if (providersData?.default) setProvider(providersData.default);
+  }, [providersData?.default]); // eslint-disable-line
 
   // ── Enviar mensaje ─────────────────────────────────────────────────────────
 
@@ -71,7 +52,7 @@ export default function WebChatPanel({ onClose, embedded, onNewMessage, onStateC
     setInput('');
     setSending(true);
     send({ type: 'chat', text, provider, agent });
-  }, [input, sending, provider, agent, send, addUserMessage]);
+  }, [input, sending, provider, agent, send, addUserMessage, setInput, setSending]);
 
   const clearChat = useCallback(() => {
     clearMessages();
@@ -84,9 +65,14 @@ export default function WebChatPanel({ onClose, embedded, onNewMessage, onStateC
     const data = btn.callback_data || btn.data || btn.text || btn.label;
     send({ type: 'chat:action', data });
     setSending(true);
-  }, [send]);
+  }, [send, setSending]);
 
   // ── Audio ──────────────────────────────────────────────────────────────────
+
+  const setError = useCallback((text, timeout = 5000) => {
+    setStatusText(text);
+    if (timeout) setTimeout(() => setStatusText(null), timeout);
+  }, [setStatusText]);
 
   const handleRecordingComplete = useCallback(({ blob, audioUrl, audioDuration, mimeType }) => {
     addUserMessage('', { audioUrl, audioDuration, transcription: null });
@@ -97,7 +83,7 @@ export default function WebChatPanel({ onClose, embedded, onNewMessage, onStateC
       send({ type: 'chat:audio', data: base64, mimeType });
     };
     reader.readAsDataURL(blob);
-  }, [send, addUserMessage]);
+  }, [send, addUserMessage, setSending]);
 
   const recorder = useAudioRecorder({ onRecordingComplete: handleRecordingComplete });
 
@@ -113,7 +99,7 @@ export default function WebChatPanel({ onClose, embedded, onNewMessage, onStateC
     if (!lastAssistant) return;
     send({ type: 'chat:tts', text: lastAssistant.content });
     setStatusText('Generando audio...');
-  }, [messages, send]);
+  }, [messages, send, setStatusText]);
 
   // ── File upload ────────────────────────────────────────────────────────────
 
@@ -132,7 +118,7 @@ export default function WebChatPanel({ onClose, embedded, onNewMessage, onStateC
       setSending(true);
       send({ type: 'chat', text, provider, agent, files: [{ base64, mediaType, name: file.name }] });
     }
-  }, [provider, agent, send, addUserMessage, setError]);
+  }, [provider, agent, send, addUserMessage, setError, setInput, setSending]);
 
   const { fileInputRef, openPicker, handleFileSelect, handleDrop, handleDragOver } = useFileUpload({ onFile: handleFile });
 
@@ -157,7 +143,7 @@ export default function WebChatPanel({ onClose, embedded, onNewMessage, onStateC
   const providerLabel = providers.find(p => p.name === provider)?.label || provider;
 
   return (
-    <div className="wc-panel" onDrop={handleDrop} onDragOver={handleDragOver} role="region" aria-label="Panel de chat web">
+    <div className={styles.panel} onDrop={handleDrop} onDragOver={handleDragOver} role="region" aria-label="Panel de chat web">
       <ChatHeader
         providers={providers}
         provider={provider}

@@ -1,0 +1,14 @@
+.msg { padding: 6px 10px; margin-bottom: 8px; background: rgba(74,222,128,0.10); border-radius: 4px; color: var(--accent-green); font-size: 12px; }
+.sectionTitle { font-size: 11px; font-weight: 700; color: var(--accent-orange); letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 8px; font-family: var(--font-ui); }
+.fieldLabel { font-size: 11px; color: var(--text-hint); display: block; margin-bottom: 3px; margin-top: 6px; }
+.input { width: 100%; margin-bottom: 4px; padding: 6px 10px; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-primary); border-radius: 6px; font-size: 12.5px; font-family: var(--font-ui); box-sizing: border-box; outline: none; }
+.input:focus { border-color: rgba(251,191,36,0.45); }
+.row { display: flex; gap: 6px; }
+.row .input { flex: 1; }
+.reminderCard { background: var(--bg-card); border: 1px solid var(--border-primary); border-left: 3px solid var(--accent-orange); border-radius: 6px; padding: 8px 10px; display: flex; align-items: center; gap: 8px; }
+.reminderInfo { flex: 1; min-width: 0; }
+.reminderText { font-size: 12px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.reminderMeta { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+.deleteBtn { background: none; border: none; color: var(--text-hint); cursor: pointer; padding: 4px; border-radius: 4px; display: flex; align-items: center; transition: color 0.15s; }
+.deleteBtn:hover { color: var(--accent-red); }
+.empty { text-align: center; color: var(--text-hint); font-size: 12px; padding: 16px 0; }
