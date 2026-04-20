@@ -2,8 +2,9 @@
 
 const fs = require('fs');
 const path = require('path');
+const { CONFIG_FILES } = require('./paths');
 
-const CONFIG_FILE = path.join(__dirname, 'tts-config.json');
+const CONFIG_FILE = CONFIG_FILES.ttsConfig;
 
 const DEFAULT_CONFIG = {
   enabled: false,

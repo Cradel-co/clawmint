@@ -69,6 +69,19 @@ describe('ShellSession — instancia directa', () => {
     expect(results[1]).toContain('B');
     expect(results[2]).toContain('C');
   });
+
+  (IS_WIN ? test.skip : test)('output > 2MB se trunca al inicio (FIFO) con prefix', async () => {
+    // Generar ~3MB de output; el sentinel al final sigue siendo detectable.
+    const out = await shell.run('yes abcdefghij | head -c 3000000', 15000);
+    expect(out).toMatch(/\[truncado \d+ bytes/);
+    // El resultado no debe pasar demasiado de 2MB + prefix + stderr
+    expect(out.length).toBeLessThan(2.5 * 1024 * 1024);
+  }, 20000);
+
+  (IS_WIN ? test.skip : test)('runaway >50MB/s dispara SIGKILL', async () => {
+    // `yes` sin head produce ~GB/s; debe killearse antes de los 3s.
+    await expect(shell.run('yes', 5000)).rejects.toThrow(/killed/);
+  }, 10000);
 });
 
 // ── Pool de sesiones ──────────────────────────────────────────────────────────

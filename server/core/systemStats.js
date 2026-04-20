@@ -1,7 +1,7 @@
 'use strict';
 
 const os = require('os');
-const { execSync } = require('child_process');
+const fs = require('fs');
 
 function formatBytes(bytes) {
   if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(1) + ' GB';
@@ -9,48 +9,70 @@ function formatBytes(bytes) {
   return (bytes / 1024).toFixed(0) + ' KB';
 }
 
+function getDiskRaw() {
+  try {
+    const target = process.platform === 'win32' ? 'C:\\' : '/';
+    const s = fs.statfsSync(target);
+    const bsize = Number(s.bsize);
+    const total = Number(s.blocks) * bsize;
+    const free  = Number(s.bfree)  * bsize;
+    return { total, free, used: total - free };
+  } catch {}
+  return null;
+}
+
 /**
- * Retorna estadísticas del sistema (CPU, RAM, disco, uptime).
- * Cross-platform: Windows y Linux.
- * @returns {{ cpu: string, ram: string, disk: string, uptime: string }}
+ * Retorna estadísticas del sistema (strings pre-formateados).
+ * Cross-platform: Windows y Linux. Usado por comandos de Telegram.
  */
 function getSystemStats() {
+  const d = getSystemStatsDetailed();
+  const diskStr = d.disk.total
+    ? `${formatBytes(d.disk.used)} / ${formatBytes(d.disk.total)} (${d.disk.percent}%)`
+    : 'N/A';
+  return {
+    cpu:    `${d.cpu.percent}% (load: ${d.cpu.load[0].toFixed(1)}, ${d.cpu.load[1].toFixed(1)}, ${d.cpu.load[2].toFixed(1)})`,
+    ram:    `${formatBytes(d.ram.used)} / ${formatBytes(d.ram.total)} (${d.ram.percent}%)`,
+    disk:   diskStr,
+    uptime: `${d.uptime.days}d ${d.uptime.hours}h ${d.uptime.minutes}m`,
+  };
+}
+
+/**
+ * Retorna estadísticas detalladas (estructura numérica) para el dashboard del cliente.
+ * @returns {{ cpu: {percent, count, load:[number,number,number]}, ram: {used,total,free,percent}, disk: {used,total,free,percent}, uptime: {seconds,days,hours,minutes}, host: {platform,arch,hostname,node} }}
+ */
+function getSystemStatsDetailed() {
   const totalMem = os.totalmem();
   const freeMem  = os.freemem();
   const usedMem  = totalMem - freeMem;
   const memPct   = Math.round((usedMem / totalMem) * 100);
-  const [l1, l5, l15] = os.loadavg();
+  const load     = os.loadavg();
   const cpuCount = os.cpus().length;
-  const cpuPct   = Math.min(100, Math.round((l1 / cpuCount) * 100));
-  const uptimeSecs = os.uptime();
-  const days  = Math.floor(uptimeSecs / 86400);
-  const hours = Math.floor((uptimeSecs % 86400) / 3600);
-  const mins  = Math.floor((uptimeSecs % 3600) / 60);
+  const cpuPct   = Math.min(100, Math.round((load[0] / cpuCount) * 100));
 
-  let disk = 'N/A';
-  try {
-    if (process.platform === 'win32') {
-      const out = execSync('wmic logicaldisk where "DeviceID=\'C:\'" get Size,FreeSpace /format:csv', { encoding: 'utf8', timeout: 3000 });
-      const parts = out.trim().split('\n').pop()?.split(',');
-      if (parts && parts.length >= 3) {
-        const free = parseInt(parts[1], 10), total = parseInt(parts[2], 10);
-        const used = total - free;
-        const fmt = (b) => (b / (1024 ** 3)).toFixed(1) + 'G';
-        disk = `${fmt(used)} / ${fmt(total)} (${Math.round((used / total) * 100)}%)`;
-      }
-    } else {
-      const df  = execSync('df -h /', { encoding: 'utf8', timeout: 3000 });
-      const row = df.trim().split('\n')[1]?.split(/\s+/);
-      if (row) disk = `${row[2]} / ${row[1]} (${row[4]})`;
-    }
-  } catch {}
+  const uptimeSecs = Math.floor(os.uptime());
+  const days    = Math.floor(uptimeSecs / 86400);
+  const hours   = Math.floor((uptimeSecs % 86400) / 3600);
+  const minutes = Math.floor((uptimeSecs % 3600) / 60);
+
+  const diskRaw = getDiskRaw();
+  const disk = diskRaw
+    ? { ...diskRaw, percent: Math.round((diskRaw.used / diskRaw.total) * 100) }
+    : { used: 0, total: 0, free: 0, percent: 0 };
 
   return {
-    cpu:    `${cpuPct}% (load: ${l1.toFixed(1)}, ${l5.toFixed(1)}, ${l15.toFixed(1)})`,
-    ram:    `${formatBytes(usedMem)} / ${formatBytes(totalMem)} (${memPct}%)`,
+    cpu: { percent: cpuPct, count: cpuCount, load },
+    ram: { used: usedMem, total: totalMem, free: freeMem, percent: memPct },
     disk,
-    uptime: `${days}d ${hours}h ${mins}m`,
+    uptime: { seconds: uptimeSecs, days, hours, minutes },
+    host: {
+      platform: process.platform,
+      arch: process.arch,
+      hostname: os.hostname(),
+      node: process.version,
+    },
   };
 }
 
-module.exports = { getSystemStats, formatBytes };
+module.exports = { getSystemStats, getSystemStatsDetailed, formatBytes };

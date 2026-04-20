@@ -1,0 +1,4 @@
+test.js
+.npmignore
+node_modules/
+*.test.js

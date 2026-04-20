@@ -175,3 +175,123 @@ cd client && npm run dev
 ```
 
 Vite proxea todas las peticiones `/api/*` y WS al servidor, evitando problemas de CORS en desarrollo.
+
+---
+
+## Componentes nuevos (v1.5.0)
+
+### Dashboard.jsx (Mission Control)
+
+Landing default. Reemplaza la pantalla anterior con un dashboard modular:
+
+- **Hero**: título "Mission Control" + hostname + uptime pill + status LIVE/SYNC/OFFLINE.
+- **Métricas live** (poll 3s a `/api/system/stats`): 4 tiles grandes — CPU%, Memoria, Disco, Uptime — con barras de progreso coloreadas (verde <70% / amarillo 70-90% / rojo >90%).
+- **WeatherWidget**: hook `useWeather` que prioriza coords así: user pref (`/api/user-preferences/location`) → server location (`/api/system/location`) → localStorage cache → browser geo → fallback Madrid. Open-Meteo, sin API key. Refresca cada 15min.
+- **Status grid**: WebSocket clients, Sesiones PTY, Telegram bots running, Providers IA configurados, P2P Nodriza (si enabled).
+- **Multi-Agent System grid**: cards coloreadas por agente con name + model + status.
+
+### HouseholdPanel.jsx
+
+Sección "Hogar" en sidebar (grupo Familia, color naranja). 5 tabs:
+- **Mercadería** (`grocery_item`) — list interactivo con check/uncheck + cantidad + delete. Form al tope para agregar.
+- **Eventos** (`family_event`) — date picker + tipo (cumple/cita/reunión) + alert days before. Badge "vence en Nd" en rojo si <3 días.
+- **Notas** (`house_note`) — title + content + tags. Para info estable: wifi, plomero, escuela.
+- **Servicios** (`service`) — name + dueDate + amount/currency. Marca pagado o vencido en rojo si <5 días.
+- **Inventario** (`inventory`) — items de heladera/despensa con cantidad y location.
+
+REST: `/api/household/:kind` CRUD + `complete/uncomplete`. Permiso: cualquier user `status='active'`.
+
+### OAuthCredentialsPanel.jsx (admin)
+
+Tab en `Configuración → OAuth Creds` para configurar credentials de OAuth providers sin tocar `.env`. 3 cards (Google, GitHub, Spotify):
+
+- Form: client_id (text) + client_secret (password con toggle eye/eye-off).
+- Muestra los redirect URIs a registrar en cada provider.
+- Botones Guardar / Limpiar / Docs (link al provider).
+- Status badge "Configurado" verde si ya seteado, "Sin credenciales" gris.
+
+REST: `GET /api/system-config/oauth` + `PUT /api/system-config/oauth/:provider`.
+
+### IntegrationsPanel.jsx
+
+Hub catálogo con cards de servicios externos conocidos (Google Calendar, Gmail, Drive, Tasks, Spotify, Home Assistant, Slack, Discord, Telegram, Web Search, SQLite). Auto-detecta MCPs configurados → estado "Conectada" / "No configurada". Filtros por categoría (Google/Hogar/Media/Comms/Datos).
+
+Click "Configurar" abre modal con el JSON listo para copiar al panel MCPs (sin OAuth) o link al wizard MCP OAuth.
+
+### DevicesPanel.jsx + MusicPanel.jsx
+
+Placeholders para Home Assistant y Spotify. Detectan si el MCP correspondiente está configurado. Si no, setup guides paso a paso. Si sí, ejemplos de comandos para usar desde el chat.
+
+### StatusFooter.jsx
+
+Barra fija al pie de la app, persistente en todas las secciones. Muestra:
+- CPU%, RAM (used/total), Disco% — barras coloreadas según umbral.
+- Uptime del server.
+- Sesiones PTY activas.
+- Bots Telegram running.
+- P2P peers (si nodriza enabled).
+- Status WebSocket "ONLINE/OFFLINE" pill.
+
+Poll cada 5s a `/api/system/stats`. Pausa cuando la pestaña está oculta (visibility API).
+
+### UserLocationSection.jsx
+
+Dentro de ProfilePanel. Form con search box que llama a Nominatim (OSM) y muestra hasta 5 sugerencias. Click en sugerencia rellena lat/lon. Persiste en `userPreferencesRepo` (key `location`). El widget de clima del Dashboard la usa automáticamente con prioridad sobre browser geo.
+
+### UserRoutinesSection.jsx
+
+Dentro de ProfilePanel. 3 cards (Morning brief / Bedtime brief / Weather alert) con time picker + (umbral lluvia para weather) + toggle Activar/Desactivar. Guarda en `userPreferencesRepo` (key `routine_pref:<type>`). El agente activa el cron real cuando el user le pide "activá mi rutina morning".
+
+---
+
+## Layout y navegación (v1.5.0)
+
+### Sidebar (NAV_GROUPS)
+
+7 grupos labeled (definidos en `sectionMeta.js`):
+
+| Grupo | Sections |
+|---|---|
+| Overview | dashboard |
+| Control | terminal, chat |
+| Comms | telegram, contacts |
+| Familia | household |
+| Productividad | tasks, scheduler, skills |
+| Servicios | integrations, devices, music |
+| Settings | config |
+
+Sidebar collapsable (icon-only ↔ labeled). Items gated por `SECTION_FLAGS` (env var `VITE_FEATURE_*`). Scroll interno con scrollbar custom delgado cuando hay muchos items.
+
+### AppHeader
+
+- Brand a la izquierda (Claw**mint** v1.0) — click va al Dashboard.
+- Search bar central (placeholder, no funcional aún — UX shortcut).
+- Health pill ("Health OK" verde / "Health DOWN" rojo con pulse) según `wsConnected`.
+- **Bell icon** con badge naranja para admin si hay users pending (poll a `/api/auth/admin/users/pending/count` cada 30s, pausa en tab oculta). Click va a `Configuración → Usuarios`.
+- User avatar + theme toggle + power (logout).
+
+### Paleta visual (warm-only)
+
+```
+--accent-orange  #f97316   (primary brand)
+--accent-red     #ef4444   (errors, badges)
+--accent-amber   #fbbf24   (alias --accent-cyan, info/secondary)
+--accent-peach   #fb923c   (alias --accent-blue, telegram/peach)
+--accent-yellow  #f59e0b   (warnings)
+--accent-green   #10b981   (success)
+--accent-purple  #a855f7   (contacts)
+--accent-pink    #ec4899   (events)
+
+--bg-primary     #0a0a0c   (near-black)
+--bg-card        #16161a
+--bg-secondary   #111114
+--text-primary   #f5f5f7
+```
+
+### WS reconnect (lib/wsManager.js)
+
+- Backoff exponencial los primeros 5 intentos (1s, 2s, 4s, 8s, 16s).
+- Después: cap a 30s entre intentos **forever** — antes se rendía a los 5.
+- Método `forceReconnect()` que resetea contador y conecta inmediato.
+- `lib/listenerWs.js` agrega listeners `visibilitychange` y `online` que llaman `forceReconnect()` al volver a la tab o al recuperar red.
+- `ReconnectBanner.jsx` con grace period 1.5s al mount inicial — no parpadea durante el handshake normal.

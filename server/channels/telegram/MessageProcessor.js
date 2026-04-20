@@ -195,6 +195,7 @@ class MessageProcessor {
         shellId:       String(chatId),
         botKey:        bot.key,
         channel:       'telegram',
+        userId:        chat.userId || null,
       });
       tdbg('send', `← convSvc.processMessage() ${Date.now() - t0}ms resultText=${(result.text || '').length} chars usedMcpTools=${result.usedMcpTools} newSession=${!!result.newSession} savedFiles=${result.savedMemoryFiles?.length || 0}`);
 

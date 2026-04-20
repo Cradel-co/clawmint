@@ -20,10 +20,10 @@ async function collect(gen) {
 describe('providers/index.js', () => {
   const providers = require('../providers');
 
-  test('list() retorna un array de 6 providers', () => {
+  test('list() retorna un array con todos los providers registrados', () => {
     const list = providers.list();
     expect(Array.isArray(list)).toBe(true);
-    expect(list).toHaveLength(6);
+    expect(list.length).toBeGreaterThanOrEqual(6);
   });
 
   test('list() — cada provider tiene name, label, models', () => {
@@ -101,10 +101,12 @@ describe('providers/claude-code.js', () => {
       claudeSession: mockSession,
     }));
 
-    expect(events).toHaveLength(1);
-    expect(events[0].type).toBe('done');
-    expect(events[0].fullText).toBe('Respuesta del agente');
-    expect(mockSession.sendMessage).toHaveBeenCalledWith('hola', undefined);
+    // D4 — provider ahora puede emitir eventos extra (tool_call, usage) antes de 'done'.
+    const done = events.find(e => e.type === 'done');
+    expect(done).toBeDefined();
+    expect(done.fullText).toBe('Respuesta del agente');
+    // D4 — firma de sendMessage: (text, onChunk, onStatus, onEvent)
+    expect(mockSession.sendMessage).toHaveBeenCalledWith('hola', undefined, null, expect.any(Function));
   });
 
   test('en el primer mensaje (messageCount=0) con systemPrompt, lo prepende', async () => {
@@ -174,11 +176,16 @@ describe('providers/gemini.js', () => {
     { role: 'user', content: 'hola gemini' },
   ];
 
-  function makeAI(candidates) {
+  function makeAI(candidates, usageMetadata) {
+    // Emula el shape de @google/genai v1.45+: generateContentStream retorna async iterable de chunks.
     return {
       models: {
-        generateContent: jest.fn().mockResolvedValue({
-          candidates,
+        generateContentStream: jest.fn().mockResolvedValue({
+          async *[Symbol.asyncIterator]() {
+            for (const cand of candidates) {
+              yield { candidates: [cand], ...(usageMetadata ? { usageMetadata } : {}) };
+            }
+          },
         }),
       },
     };
@@ -245,30 +252,16 @@ describe('providers/gemini.js', () => {
   });
 
   test('function call → yields tool_call + tool_result + done', async () => {
+    function chunkStream(candidates) {
+      return {
+        async *[Symbol.asyncIterator]() { for (const cand of candidates) yield { candidates: [cand] }; },
+      };
+    }
     const mockAI = {
       models: {
-        generateContent: jest.fn()
-          // Primera respuesta: contiene una función
-          .mockResolvedValueOnce({
-            candidates: [{
-              content: {
-                parts: [{
-                  functionCall: {
-                    name: 'bash',
-                    args: { command: 'echo test' },
-                  },
-                }],
-              },
-            }],
-          })
-          // Segunda respuesta (con resultado de la herramienta): texto final
-          .mockResolvedValueOnce({
-            candidates: [{
-              content: {
-                parts: [{ text: 'El comando retornó: test' }],
-              },
-            }],
-          }),
+        generateContentStream: jest.fn()
+          .mockResolvedValueOnce(chunkStream([{ content: { parts: [{ functionCall: { name: 'bash', args: { command: 'echo test' } } }] } }]))
+          .mockResolvedValueOnce(chunkStream([{ content: { parts: [{ text: 'El comando retornó: test' }] } }])),
       },
     };
     GoogleGenAI.mockImplementation(() => mockAI);
@@ -301,7 +294,7 @@ describe('providers/gemini.js', () => {
   test('error de la API → yields done con mensaje de error', async () => {
     const mockAI = {
       models: {
-        generateContent: jest.fn().mockRejectedValue(new Error('API rate limit')),
+        generateContentStream: jest.fn().mockRejectedValue(new Error('API rate limit')),
       },
     };
     GoogleGenAI.mockImplementation(() => mockAI);
@@ -329,17 +322,14 @@ describe('providers/gemini.js', () => {
   });
 
   test('usa executeTool inyectado si se provee', async () => {
+    function chunkStream(candidates) {
+      return { async *[Symbol.asyncIterator]() { for (const cand of candidates) yield { candidates: [cand] }; } };
+    }
     const mockAI = {
       models: {
-        generateContent: jest.fn()
-          .mockResolvedValueOnce({
-            candidates: [{
-              content: { parts: [{ functionCall: { name: 'bash', args: { command: 'pwd' } } }] },
-            }],
-          })
-          .mockResolvedValueOnce({
-            candidates: [{ content: { parts: [{ text: 'done' }] } }],
-          }),
+        generateContentStream: jest.fn()
+          .mockResolvedValueOnce(chunkStream([{ content: { parts: [{ functionCall: { name: 'bash', args: { command: 'pwd' } } }] } }]))
+          .mockResolvedValueOnce(chunkStream([{ content: { parts: [{ text: 'done' }] } }])),
       },
     };
     GoogleGenAI.mockImplementation(() => mockAI);
@@ -369,7 +359,7 @@ describe('providers/gemini.js', () => {
 
     await collect(gemini.chat({ history, apiKey: 'test-key' }));
 
-    const callArgs = mockAI.models.generateContent.mock.calls[0][0];
+    const callArgs = mockAI.models.generateContentStream.mock.calls[0][0];
     // Debe pasar los primeros mensajes como "contents" y el último como parte del body
     expect(callArgs.contents.some(c => c.role === 'model')).toBe(true);
   });

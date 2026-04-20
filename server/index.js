@@ -28,7 +28,7 @@ logger.info('HOME:', process.env.HOME);
 
 // ── Carga de módulos (async por sql.js WASM) ─────────────────────────────────
 
-let sessionManager, telegram, webChannel, agents, skills, events, memory, providerConfig, providersModule, consolidator, convSvc, mcps, authService, usersRepo, transcriber, reminders, limitsRepo;
+let sessionManager, telegram, webChannel, agents, skills, events, memory, providerConfig, providersModule, consolidator, convSvc, mcps, authService, usersRepo, transcriber, reminders, limitsRepo, permissionService, metricsService, hooksRepo, hookRegistry, hookLoader, userPreferencesRepo, sharedSessionsRepo, sharedSessionsBroker, mcpAuthService, systemConfigRepo, locationService, householdRepo, tasksRepo, typedMemoryRepo, chatSettingsRepo, lspServerManager, orchestrator;
 let mcpRouter = null;
 let nodrizaInstance = null;
 
@@ -62,9 +62,26 @@ const _modulesReady = (async function loadModules() {
     transcriber  = _c.transcriber;
     reminders    = _c.reminders;
     limitsRepo   = _c.limitsRepo;
+    permissionService = _c.permissionService;
+    metricsService    = _c.metricsService;
+    hooksRepo    = _c.hooksRepo;
+    hookRegistry = _c.hookRegistry;
+    hookLoader   = _c.hookLoader;
+    userPreferencesRepo = _c.userPreferencesRepo;
+    sharedSessionsRepo = _c.sharedSessionsRepo;
+    sharedSessionsBroker = _c.sharedSessionsBroker || null;
+    mcpAuthService = _c.mcpAuthService || null;
+    tasksRepo = _c.tasksRepo || null;
+    typedMemoryRepo = _c.typedMemoryRepo || null;
+    systemConfigRepo = _c.systemConfigRepo || null;
+    locationService = _c.locationService || null;
+    householdRepo = _c.householdRepo || null;
+    chatSettingsRepo = _c.chatSettingsRepo || null;
+    lspServerManager = _c.lspServerManager || null;
+    orchestrator = _c.orchestrator || null;
     try {
       const { createMcpRouter } = require('./mcp');
-      mcpRouter = createMcpRouter({ sessionManager: _c.sessionManager, memory: _c.memory, scheduler: _c.scheduler, usersRepo: _c.usersRepo });
+      mcpRouter = createMcpRouter({ sessionManager: _c.sessionManager, memory: _c.memory, scheduler: _c.scheduler, usersRepo: _c.usersRepo, locationService: _c.locationService, userPreferencesRepo: _c.userPreferencesRepo, reminders: _c.reminders, tasksRepo: _c.tasksRepo, householdRepo: _c.householdRepo });
       logger.info('MCP router creado OK');
     } catch (mcpErr) {
       logger.warn('MCP router no disponible:', mcpErr.message);
@@ -94,6 +111,23 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Security headers (sin dep externa — helmet lite). Solo activos en prod para
+// no obstaculizar dev (ej. HMR de vite necesita CSP permisivo).
+if (process.env.NODE_ENV === 'production') {
+  app.use((_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'geolocation=(self), microphone=(self), camera=()');
+    next();
+  });
+  app.set('trust proxy', 1); // si hay reverse proxy (Tailscale/Caddy/nginx)
+  app.disable('x-powered-by');
+}
+
+// Correlation ID por request (Fase 5.5 Observabilidad)
+app.use(require('./middleware/correlationId'));
+
 // Health check
 const SERVER_START_TIME = Date.now();
 app.get('/api/health', (_req, res) => {
@@ -121,9 +155,14 @@ const setupPtyHandler = require('./ws/pty-handler');
 let startAISession = null;
 let startAISessionForDataChannel = null;
 
-// ── Client estático (producción / Docker) ────────────────────────────────────
+// ── Client estático (producción / Docker / packaged) ─────────────────────────
 
-const clientDist = path.join(__dirname, '..', 'client', 'dist');
+const { RESOURCES_DIR, ensureDirs } = require('./paths');
+ensureDirs();
+
+// En dev: RESOURCES_DIR === <repo-root>/ → client/dist queda bien.
+// En packaged: RESOURCES_DIR === <resources> → client/dist está ahí también.
+const clientDist = path.join(RESOURCES_DIR, 'client', 'dist');
 if (fs.existsSync(clientDist)) {
   app.use(express.static(clientDist));
   app.get(/^\/(?!api|ws|mcp).*/, (_req, res) => {
@@ -150,7 +189,8 @@ _modulesReady.then(() => {
   // Rutas protegidas (requieren JWT válido)
   app.use('/api/sessions',        requireAuth, require('./routes/sessions')({ sessionManager }));
   app.use('/api/agents',          requireAuth, require('./routes/agents')({ agents }));
-  app.use('/api/mcps',            requireAuth, require('./routes/mcps')({ mcps }));
+  // /api/mcps: GET libre (lista censurada), mutaciones admin-only (Fase 5.75 F4).
+  app.use('/api/mcps',            requireAuth, require('./routes/mcps')({ mcps, requireAdmin: require('./middleware/requireAdmin')({ usersRepo }) }));
   app.use('/api/skills',          requireAuth, require('./routes/skills')({ skills }));
   app.use('/api/memory',          requireAuth, require('./routes/memory')({ memory }));
   app.use('/api/logs',            requireAuth, require('./routes/logs')({ logger }));
@@ -163,6 +203,87 @@ _modulesReady.then(() => {
   app.use('/api/transcriber',    requireAuth, require('./routes/transcriber')({ transcriber }));
   app.use('/api/reminders',      requireAuth, require('./routes/reminders')({ reminders }));
   app.use('/api/limits',          requireAuth, require('./routes/limits')({ limitsRepo }));
+  app.use('/api/system',          requireAuth, require('./routes/system')({
+    serverStart: SERVER_START_TIME,
+    sessionManager,
+    telegram,
+    webChannel,
+    providersModule,
+    nodrizaInstance,
+    allWebClients,
+    locationService,
+    requireAdmin: require('./middleware/requireAdmin')({ usersRepo }),
+  }));
+
+  // Tasks (Fase C.1) + Typed Memory (C.3) — CRUD REST.
+  if (tasksRepo) {
+    app.use('/api/tasks',         requireAuth, require('./routes/tasks')({ tasksRepo, usersRepo, logger }));
+  }
+  if (typedMemoryRepo) {
+    app.use('/api/typed-memory',  requireAuth, require('./routes/typed-memory')({ typedMemoryRepo, logger }));
+  }
+
+  // Fase E — config admin (compaction, model-tiers, features snapshot)
+  if (chatSettingsRepo) {
+    app.use('/api/config',        requireAuth, require('./routes/config')({ chatSettingsRepo, usersRepo, logger }));
+    app.use('/api/tools',         requireAuth, require('./routes/tools-admin')({ chatSettingsRepo, usersRepo, logger }));
+  }
+  // Fase E — LSP status
+  if (lspServerManager) {
+    app.use('/api/lsp',           requireAuth, require('./routes/lsp')({ lspServerManager, usersRepo, logger }));
+  }
+  // Fase E — orchestration workflows
+  if (orchestrator) {
+    app.use('/api/orchestration', requireAuth, require('./routes/orchestration')({ orchestrator, usersRepo, logger }));
+  }
+
+  // Permissions: admin-only CRUD (Fase 5)
+  const requireAdmin = require('./middleware/requireAdmin')({ usersRepo });
+  app.use('/api/permissions',     requireAuth, requireAdmin, require('./routes/permissions')({ permissionService }));
+
+  // Metrics: admin-only (Fase 5.5)
+  app.use('/api/metrics',         requireAuth, requireAdmin, require('./routes/metrics')({ metricsService }));
+
+  // Hooks: admin-only (Fase 6)
+  app.use('/api/hooks',           requireAuth, requireAdmin, require('./routes/hooks')({ hooksRepo, hookRegistry, hookLoader }));
+
+  // SystemConfig: admin-only. Permite setear OAuth creds y otros settings globales
+  // sin .env (crítico para la versión instalable).
+  if (systemConfigRepo) {
+    app.use('/api/system-config', requireAuth, requireAdmin, require('./routes/system-config')({ systemConfigRepo, logger }));
+  }
+
+  // Household: cualquier user activo (Fase B — datos compartidos).
+  if (householdRepo) {
+    app.use('/api/household', requireAuth, require('./routes/household')({ householdRepo, usersRepo, logger }));
+  }
+
+  // Workspaces: admin-only (Fase 8.4 parked → cerrado). Expose workspace_status.
+  try {
+    const { createContainer } = require('./bootstrap');
+    const _c = createContainer();
+    if (_c.workspaceRegistry) {
+      app.use('/api/workspaces', requireAuth, require('./routes/workspaces')({
+        workspaceRegistry: _c.workspaceRegistry, usersRepo, logger,
+      }));
+    }
+  } catch (e) {
+    logger.warn('[index] workspaces router no montado:', e.message);
+  }
+
+  // User preferences: keybindings, statusline, etc. (Fase 11.3). Solo requireAuth — cada user maneja sus prefs.
+  app.use('/api/user-preferences', requireAuth, require('./routes/user-preferences')({ userPreferencesRepo }));
+
+  // MCP OAuth callback per-provider (Fase 11 parked → cerrado).
+  // El callback público no requiere auth de usuario — la seguridad viene del `state`.
+  if (mcpAuthService) {
+    app.use('/api/mcp-auth', require('./routes/mcp-auth')({ mcpAuthService, logger, requireAuth }));
+  }
+
+  // Session sharing (Fase 12.4) — gated por flag. El repo siempre existe; las routes solo si SESSION_SHARING_ENABLED=true.
+  if (process.env.SESSION_SHARING_ENABLED === 'true' && sharedSessionsRepo) {
+    app.use('/api', requireAuth, require('./routes/session-share')({ sharedSessionsRepo, sessionManager, logger }));
+  }
 
   // Montar MCP router si está disponible
   if (mcpRouter) app.use('/mcp', mcpRouter);
@@ -180,7 +301,7 @@ _modulesReady.then(() => {
   // Inicializar WS handlers (necesitan módulos async)
   startAISession = createAIHandler({ providersModule, agents, memory, providerConfig });
   startAISessionForDataChannel = createDataChannelHandler({ providerConfig, logger });
-  setupPtyHandler({ wss, sessionManager, webChannel, allWebClients, startAISession, events });
+  setupPtyHandler({ wss, sessionManager, webChannel, allWebClients, startAISession, events, sharedSessionsBroker, logger, authService, usersRepo });
 
   server.listen(PORT, HOST, async () => {
     logger.info(`Servidor escuchando en http://${HOST}:${PORT}`);

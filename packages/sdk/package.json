@@ -1,0 +1,44 @@
+{
+  "name": "@clawmint/sdk",
+  "version": "0.1.0",
+  "description": "Cliente oficial de Clawmint — conversaciones AI multi-provider, sesiones compartidas, MCPs, skills, memoria.",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "import": "./index.js",
+      "require": "./index.js",
+      "types": "./index.d.ts"
+    }
+  },
+  "scripts": {
+    "test": "node test.js",
+    "prepublishOnly": "node test.js"
+  },
+  "keywords": [
+    "clawmint",
+    "ai",
+    "agents",
+    "anthropic",
+    "openai",
+    "mcp",
+    "telegram-bot",
+    "whatsapp"
+  ],
+  "author": "Brian Padilla",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bpadilla/clawmint.git",
+    "directory": "packages/sdk"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,10 +1,29 @@
 'use strict';
 
+/**
+ * Ollama provider v2 — streaming + cancelación.
+ *
+ * Ollama tiene dos APIs:
+ *   - Nativa (/api/chat) — soporta imágenes (vision models) pero NO tools
+ *   - OpenAI-compat (/v1/chat/completions) — soporta tools + streaming pero NO imágenes
+ *
+ * Gotcha histórico: si el caller pasaba `images` + `tools`, la rama vision se ejecutaba e ignoraba
+ * silenciosamente las tools. Ahora emitimos error explícito con `code:'unsupported_combo'`.
+ *
+ * Implementación:
+ *   - Vision branch: HTTP nativo con AbortSignal; streaming del body (`"stream": true`) para UX progresivo
+ *   - Tool/text branch: delega a `openaiCompatChat` (mismo helper que openai/deepseek/grok)
+ *   - describeImage(): utility para que otros providers usen minicpm-v como "ojos"
+ */
+
 const OpenAI = require('openai');
 const http   = require('http');
+const https  = require('https');
+const { openaiCompatChat } = require('./base/openaiCompatChat');
 const tools  = require('../tools');
 
 const DEFAULT_BASE_URL = 'http://100.64.0.5:11434';
+const OLLAMA_VISION_TIMEOUT_MS = 300_000;
 
 // Modelos con soporte de visión (prefijos, se matchean sin tag)
 const VISION_PREFIXES = ['minicpm-v', 'llava', 'llava-llama3', 'bakllava'];
@@ -18,6 +37,7 @@ function getBaseUrl() {
 }
 
 function isVisionModel(model) {
+  if (!model) return false;
   const name = model.split(':')[0];
   return VISION_PREFIXES.some(p => name === p || name.startsWith(p));
 }
@@ -29,7 +49,7 @@ async function fetchAvailableModels() {
     if (!res.ok) return cachedModels || [];
     const data = await res.json();
     cachedModels = (data.models || []).map(m => m.name);
-    cacheExpiry = Date.now() + 30000; // cache 30s
+    cacheExpiry = Date.now() + 30000;
     return cachedModels;
   } catch {
     return cachedModels || [];
@@ -37,192 +57,169 @@ async function fetchAvailableModels() {
 }
 
 /**
- * Envía un mensaje con imágenes a Ollama usando la API nativa (/api/chat)
- * La API compatible con OpenAI no soporta imágenes en Ollama.
+ * POST a /api/chat con streaming — yielda chunks del body.
+ * Ollama stream format: una línea JSON por chunk, terminada en \n. Cada chunk tiene `message.content`
+ * (delta incremental) y el último tiene `done: true`.
+ *
+ * Respeta `signal` para cancelación real del socket.
  */
-function ollamaNativeChat(baseUrl, model, messages) {
-  return new Promise((resolve, reject) => {
-    const url = new URL('/api/chat', baseUrl);
-    const body = JSON.stringify({ model, messages, stream: false });
-    const req = http.request(url, { method: 'POST', headers: { 'Content-Type': 'application/json' } }, (res) => {
-      const chunks = [];
-      res.on('data', c => chunks.push(c));
-      res.on('end', () => {
-        try {
-          const data = JSON.parse(Buffer.concat(chunks).toString());
-          resolve(data.message?.content || '');
-        } catch (e) { reject(new Error(`Respuesta inválida de Ollama: ${e.message}`)); }
-      });
-      res.on('error', reject);
-    });
+function* _noop() {} // marker — mantener arrays equivalentes a generators
+
+async function* streamNativeChat(baseUrl, model, messages, signal) {
+  const url = new URL('/api/chat', baseUrl);
+  const client = url.protocol === 'https:' ? https : http;
+  const body = JSON.stringify({ model, messages, stream: true });
+
+  // Promise que completa con una response stream, o rechaza
+  const res = await new Promise((resolve, reject) => {
+    const req = client.request(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: signal || undefined,
+    }, resolve);
     req.on('error', reject);
-    req.setTimeout(300000, () => { req.destroy(); reject(new Error('Timeout: Ollama no respondió en 300s')); });
+    req.setTimeout(OLLAMA_VISION_TIMEOUT_MS, () => { req.destroy(new Error('Timeout Ollama vision (300s)')); });
     req.write(body);
     req.end();
   });
+
+  if (res.statusCode && res.statusCode >= 400) {
+    res.resume(); // drenar
+    throw new Error(`Ollama respondió ${res.statusCode}`);
+  }
+
+  let buf = '';
+  for await (const raw of res) {
+    if (signal && signal.aborted) {
+      try { res.destroy(); } catch {}
+      return;
+    }
+    buf += raw.toString();
+    // Ollama emite JSON por línea — partir por \n
+    let nl;
+    while ((nl = buf.indexOf('\n')) !== -1) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line) continue;
+      try {
+        const msg = JSON.parse(line);
+        yield msg;
+      } catch {
+        // línea malformada — ignorar
+      }
+    }
+  }
+  if (buf.trim()) {
+    try { yield JSON.parse(buf); } catch {}
+  }
 }
+void _noop;
 
 module.exports = {
   name: 'ollama',
   label: 'Ollama (local)',
   defaultModel: 'qwen2.5:7b',
-  models: [], // se llena dinámicamente con fetchModels()
+  models: [],
 
   async fetchModels() {
-    const models = await fetchAvailableModels();
-    this.models = models.length ? models : ['qwen2.5:7b'];
+    const mdls = await fetchAvailableModels();
+    this.models = mdls.length ? mdls : ['qwen2.5:7b'];
     return this.models;
   },
 
-  async *chat({ systemPrompt, history, model, images, executeTool: execToolFn, channel, agentRole }) {
-    const baseUrl   = getBaseUrl();
-    // Cargar modelos disponibles si no hay
+  async *chat({
+    systemPrompt, history, model, images,
+    executeTool: execToolFn, channel, agentRole,
+    signal,
+  }) {
+    const baseUrl = getBaseUrl();
     if (!this.models.length) await this.fetchModels();
     const usedModel = model || this.defaultModel;
-    const hasImages = images && images.length > 0;
+    const hasImages = Array.isArray(images) && images.length > 0;
 
-    // Si hay imágenes, usar la API nativa de Ollama (no la compatible con OpenAI)
-    // El path de visión no soporta tools (API nativa no los maneja)
+    // Gate: detectar combo no soportado en vez de silenciar
+    const toolDefs = tools.toOpenAIFormat({ channel, agentRole });
+    const hasTools = toolDefs.length > 0 && !!execToolFn;
+    if (hasImages && hasTools) {
+      const msg = 'Ollama no soporta imágenes Y tools simultáneamente: la API nativa (visión) no maneja tools, y la API OpenAI-compat no maneja imágenes. Usá un modelo sin visión para tools, o sacá las imágenes para usar tools.';
+      yield { type: 'done', fullText: `Error: ${msg}` };
+      return;
+    }
+
+    // Rama visión (streaming nativo sin tools)
     if (hasImages) {
       const visionModel = isVisionModel(usedModel) ? usedModel
         : this.models.find(m => isVisionModel(m)) || 'minicpm-v:latest';
+
       const messages = [];
       if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
-
-      for (const m of history.slice(0, -1)) {
-        messages.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content || '' });
+      const hist = Array.isArray(history) ? history : [];
+      for (const m of hist.slice(0, -1)) {
+        messages.push({
+          role: m.role === 'assistant' ? 'assistant' : 'user',
+          content: (typeof m.content === 'string' ? m.content : '') || '',
+        });
       }
-
-      // Último mensaje con imágenes
-      const lastMsg = history[history.length - 1];
-      const lastText = typeof lastMsg?.content === 'string' ? lastMsg.content : (Array.isArray(lastMsg?.content) ? lastMsg.content.find(c => c.type === 'text')?.text || '' : '');
+      const lastMsg = hist[hist.length - 1];
+      const lastText = (lastMsg && typeof lastMsg.content === 'string')
+        ? lastMsg.content
+        : (Array.isArray(lastMsg?.content) ? (lastMsg.content.find(c => c.type === 'text')?.text || '') : '');
       messages.push({
         role: 'user',
         content: lastText,
-        images: images.map(img => img.base64),
+        images: images.filter(img => img && img.base64).map(img => img.base64),
       });
 
+      let fullText = '';
       try {
-        const result = await ollamaNativeChat(baseUrl, visionModel, messages);
-        yield { type: 'text', text: result };
-        yield { type: 'done', fullText: result };
+        for await (const msg of streamNativeChat(baseUrl, visionModel, messages, signal)) {
+          if (signal && signal.aborted) break;
+          const content = msg.message?.content;
+          if (content) {
+            fullText += content;
+            yield { type: 'text', text: content };
+          }
+          if (msg.done) {
+            if (msg.prompt_eval_count || msg.eval_count) {
+              yield {
+                type: 'usage',
+                promptTokens: msg.prompt_eval_count || 0,
+                completionTokens: msg.eval_count || 0,
+              };
+            }
+            break;
+          }
+        }
+        yield { type: 'done', fullText };
       } catch (err) {
-        yield { type: 'text', text: `Error Ollama visión: ${err.message}` };
-        yield { type: 'done', fullText: `Error Ollama visión: ${err.message}` };
+        if (signal && signal.aborted) {
+          yield { type: 'done', fullText: fullText || 'Cancelado.' };
+          return;
+        }
+        const em = err.message || String(err);
+        if (em.includes('ECONNREFUSED') || em.includes('fetch failed')) {
+          yield { type: 'done', fullText: `Error Ollama visión: no se pudo conectar a ${baseUrl}. Verificá que esté corriendo.` };
+        } else {
+          yield { type: 'done', fullText: `Error Ollama visión: ${em}` };
+        }
       }
       return;
     }
 
-    // Sin imágenes: usar API compatible con OpenAI
-    const baseURL = baseUrl + '/v1';
-    const client = new OpenAI({ apiKey: 'ollama', baseURL });
-
-    const toolDefs = tools.toOpenAIFormat({ channel, agentRole });
-    const execTool = execToolFn || tools.executeTool;
-    const hasTools = toolDefs.length > 0 && execToolFn;
-
-    const messages = [];
-    if (systemPrompt) {
-      messages.push({ role: 'system', content: systemPrompt });
-    }
-    for (const m of history) {
-      messages.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content || '' });
-    }
-
-    let fullText = '';
-    let totalPromptTokens = 0, totalCompletionTokens = 0;
-
-    if (hasTools) {
-      // Non-streaming con tool loop (Ollama streaming + tools tiene bugs conocidos)
-      while (true) {
-        let response;
-        try {
-          response = await client.chat.completions.create({
-            model: usedModel,
-            messages,
-            tools: toolDefs,
-            tool_choice: 'auto',
-          });
-        } catch (err) {
-          yield { type: 'done', fullText: `Error Ollama: ${err.message}` };
-          return;
-        }
-
-        const u = response.usage;
-        if (u) { totalPromptTokens += u.prompt_tokens || 0; totalCompletionTokens += u.completion_tokens || 0; }
-
-        const choice = response.choices?.[0];
-        const msg = choice?.message;
-
-        if (!msg) {
-          yield { type: 'usage', promptTokens: totalPromptTokens, completionTokens: totalCompletionTokens };
-          yield { type: 'done', fullText };
-          return;
-        }
-
-        if (msg.content) {
-          fullText += msg.content;
-          yield { type: 'text', text: msg.content };
-        }
-
-        const toolCalls = msg.tool_calls || [];
-
-        if (toolCalls.length === 0 || choice.finish_reason === 'stop') {
-          yield { type: 'usage', promptTokens: totalPromptTokens, completionTokens: totalCompletionTokens };
-          yield { type: 'done', fullText };
-          return;
-        }
-
-        messages.push(msg);
-
-        for (const tc of toolCalls) {
-          const fnName = tc.function.name;
-          let fnArgs = {};
-          try { fnArgs = JSON.parse(tc.function.arguments || '{}'); } catch {}
-
-          yield { type: 'tool_call', name: fnName, args: fnArgs };
-          const result = await execTool(fnName, fnArgs);
-          yield { type: 'tool_result', name: fnName, result };
-
-          messages.push({
-            role: 'tool',
-            tool_call_id: tc.id,
-            content: String(result),
-          });
-        }
-      }
-    }
-
-    // Streaming sin tools (comportamiento original)
-    try {
-      const stream = await client.chat.completions.create({
-        model: usedModel,
-        messages,
-        stream: true,
-      });
-
-      for await (const chunk of stream) {
-        const delta = chunk.choices?.[0]?.delta?.content;
-        if (delta) {
-          fullText += delta;
-          yield { type: 'text', text: delta };
-        }
-      }
-    } catch (err) {
-      const msg = err.message || String(err);
-      if (msg.includes('ECONNREFUSED') || msg.includes('fetch failed')) {
-        yield { type: 'text', text: `Error: no se pudo conectar a Ollama en ${baseURL}. Verificá que esté corriendo.` };
-      } else {
-        yield { type: 'text', text: `Error Ollama: ${msg}` };
-      }
-    }
-
-    yield { type: 'done', fullText };
+    // Rama texto/tools — delegar al helper compartido (streaming + tool loop)
+    yield* openaiCompatChat({
+      OpenAI,
+      clientConfig: { apiKey: 'ollama', baseURL: baseUrl + '/v1' },
+      providerLabel: 'Ollama',
+      defaultModel: this.defaultModel,
+      systemPrompt, history, model: usedModel,
+      executeTool: execToolFn, channel, agentRole, signal,
+    });
   },
 
   /**
-   * Describe una imagen usando minicpm-v (usado como "ojos" para otros providers)
-   * Redimensiona a max 512px para evitar OOM en CPU
+   * Describe imágenes con minicpm-v (usado como "ojos" para providers sin visión).
+   * Redimensiona a max 512px para evitar OOM.
    */
   async describeImage(images, prompt = 'Describí detalladamente lo que ves en esta imagen.') {
     const sharp = require('sharp');
@@ -239,13 +236,31 @@ module.exports = {
         resized.push(img.base64);
       }
     }
-    const messages = [{
-      role: 'user',
-      content: prompt,
-      images: resized,
-    }];
-    const models = await fetchAvailableModels();
-    const visionModel = models.find(m => isVisionModel(m)) || 'minicpm-v:latest';
-    return ollamaNativeChat(baseUrl, visionModel, messages);
+    const messages = [{ role: 'user', content: prompt, images: resized }];
+    const mdls = await fetchAvailableModels();
+    const visionModel = mdls.find(m => isVisionModel(m)) || 'minicpm-v:latest';
+
+    // Usamos una request simple no-stream para describeImage (es síncrono)
+    const url = new URL('/api/chat', baseUrl);
+    return new Promise((resolve, reject) => {
+      const body = JSON.stringify({ model: visionModel, messages, stream: false });
+      const req = http.request(url, { method: 'POST', headers: { 'Content-Type': 'application/json' } }, (res) => {
+        const chunks = [];
+        res.on('data', c => chunks.push(c));
+        res.on('end', () => {
+          try {
+            const data = JSON.parse(Buffer.concat(chunks).toString());
+            resolve(data.message?.content || '');
+          } catch (e) { reject(new Error(`Respuesta inválida de Ollama: ${e.message}`)); }
+        });
+        res.on('error', reject);
+      });
+      req.on('error', reject);
+      req.setTimeout(OLLAMA_VISION_TIMEOUT_MS, () => { req.destroy(); reject(new Error('Timeout Ollama describeImage')); });
+      req.write(body);
+      req.end();
+    });
   },
+
+  _internal: { isVisionModel, getBaseUrl },
 };

@@ -39,7 +39,8 @@ class TelegramChannel extends BaseChannel {
     logger            = console,
   } = {}) {
     super({ eventBus, logger });
-    this._botsFilePath    = botsFilePath || path.join(__dirname, '../../bots.json');
+    const { CONFIG_FILES } = require('../../paths');
+    this._botsFilePath    = botsFilePath || CONFIG_FILES.bots;
     this._botsRepo        = botsRepo || null;
     this._convSvc         = convSvc;
     this._sessionManager  = sessionManager;

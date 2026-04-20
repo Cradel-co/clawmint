@@ -1,5 +1,19 @@
 'use strict';
 
+/**
+ * Gemini provider v2 — streaming + cancelación.
+ *
+ * Usa `ai.models.generateContentStream()` (SDK @google/genai v1.45+) para emitir
+ * chunks progresivos. La cancelación se propaga vía `abortSignal` en las opciones.
+ *
+ * Diferencias con providers OpenAI-compat:
+ *   - `systemInstruction` se pasa en `config`, no como primer message role=system
+ *   - Tool definitions van en `config.tools[0].functionDeclarations`
+ *   - Imágenes se inyectan como `inlineData` en el `parts` del último user turn
+ *   - functionCall llega normalmente completo en un solo chunk (no fragmentado como OpenAI)
+ *   - Los function results se reenvían con role='user' y parts con `functionResponse`
+ */
+
 const { GoogleGenAI } = require('@google/genai');
 const tools = require('../tools');
 
@@ -9,108 +23,147 @@ module.exports = {
   defaultModel: 'gemini-2.5-flash',
   models: ['gemini-2.5-flash', 'gemini-2.5-pro'],
 
-  async *chat({ systemPrompt, history, apiKey, model, executeTool: execToolFn, images, channel, agentRole }) {
+  async *chat({ systemPrompt, history, apiKey, model, executeTool: execToolFn, images, channel, agentRole, signal }) {
     if (!apiKey) {
       yield { type: 'done', fullText: 'Error: API key de Gemini no configurada. Configurala en el panel ⚙️.' };
       return;
     }
 
-    const ai = new GoogleGenAI({ apiKey });
+    const ai        = new GoogleGenAI({ apiKey });
     const usedModel = model || this.defaultModel;
     const toolDefs  = tools.toGeminiFormat({ channel, agentRole });
     const execTool  = execToolFn || tools.executeTool;
+    const hist      = Array.isArray(history) ? history : [];
 
-    // Convertir history al formato Gemini
-    // history: [{ role: 'user'|'assistant', content: string }]
-    const contents = history.slice(0, -1).map(m => ({
+    // Convertir history a formato Gemini (excluyendo el último mensaje — se construye aparte con imágenes)
+    const baseContents = hist.slice(0, -1).map(m => ({
       role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content || '' }],
+      parts: [{ text: (typeof m.content === 'string' ? m.content : '') || '' }],
     }));
 
-    // El último mensaje del user
-    const lastMsg = history[history.length - 1];
-    const userText = lastMsg?.content || '';
+    const lastMsg  = hist[hist.length - 1];
+    const userText = (lastMsg && typeof lastMsg.content === 'string') ? lastMsg.content : '';
 
-    const config = {
-      tools: [{ functionDeclarations: toolDefs }],
-    };
-    if (systemPrompt) config.systemInstruction = systemPrompt;
-
-    let fullText = '';
-    let totalPromptTokens = 0, totalCompletionTokens = 0;
-    // Construir parts del último mensaje con imágenes si las hay
+    // Último user turn: imágenes (si hay) + texto
     const lastParts = [];
-    if (images && images.length > 0) {
+    if (Array.isArray(images)) {
       for (const img of images) {
-        lastParts.push({ inlineData: { mimeType: img.mediaType, data: img.base64 } });
+        if (img && img.base64) {
+          lastParts.push({ inlineData: { mimeType: img.mediaType, data: img.base64 } });
+        }
       }
     }
     lastParts.push({ text: userText });
-    let currentContents = [...contents, { role: 'user', parts: lastParts }];
+
+    const config = {};
+    if (toolDefs && toolDefs.length) config.tools = [{ functionDeclarations: toolDefs }];
+    if (systemPrompt) config.systemInstruction = systemPrompt;
+    if (signal) config.abortSignal = signal;
+
+    let currentContents = [...baseContents, { role: 'user', parts: lastParts }];
+    let fullText = '';
+    let totalPromptTokens = 0;
+    let totalCompletionTokens = 0;
 
     while (true) {
-      let response;
+      if (signal && signal.aborted) {
+        yield { type: 'done', fullText: fullText || 'Cancelado.' };
+        return;
+      }
+
+      // Estado del turno
+      let turnText = '';
+      const turnParts = []; // ensamblado de parts del model — para reenvío al history
+      const functionCalls = [];
+      let finishReason = null;
+
       try {
-        response = await Promise.race([
-          ai.models.generateContent({
-            model: usedModel,
-            contents: currentContents,
-            config,
-          }),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Timeout: Gemini no respondió en 60s')), 60000)
-          ),
-        ]);
+        const stream = await ai.models.generateContentStream({
+          model: usedModel,
+          contents: currentContents,
+          config,
+        });
+
+        for await (const chunk of stream) {
+          if (signal && signal.aborted) break;
+
+          // Usage metadata puede venir en cualquier chunk, incluso sin candidates
+          if (chunk.usageMetadata) {
+            totalPromptTokens     += chunk.usageMetadata.promptTokenCount     || 0;
+            totalCompletionTokens += chunk.usageMetadata.candidatesTokenCount || 0;
+          }
+
+          const candidate = chunk.candidates && chunk.candidates[0];
+          if (!candidate) continue;
+
+          if (candidate.finishReason) finishReason = candidate.finishReason;
+
+          const parts = (candidate.content && candidate.content.parts) || [];
+          for (const part of parts) {
+            if (part.text) {
+              turnText += part.text;
+              fullText += part.text;
+              yield { type: 'text', text: part.text };
+              turnParts.push({ text: part.text });
+            } else if (part.functionCall) {
+              functionCalls.push(part.functionCall);
+              turnParts.push(part);
+            } else {
+              turnParts.push(part);
+            }
+          }
+        }
       } catch (err) {
+        if (signal && signal.aborted) {
+          yield { type: 'done', fullText: fullText || 'Cancelado por el usuario.' };
+          return;
+        }
         yield { type: 'done', fullText: `Error Gemini: ${err.message}` };
         return;
       }
 
-      const candidate = response.candidates?.[0];
-      const um = response.usageMetadata;
-      if (um) { totalPromptTokens += um.promptTokenCount || 0; totalCompletionTokens += um.candidatesTokenCount || 0; }
-      const parts = candidate?.content?.parts || [];
-
-      let assistantText = '';
-      const functionCalls = [];
-
-      for (const part of parts) {
-        if (part.text) {
-          assistantText += part.text;
-        } else if (part.functionCall) {
-          functionCalls.push(part.functionCall);
-        }
-      }
-
-      if (assistantText) {
-        fullText += assistantText;
-        yield { type: 'text', text: assistantText };
-      }
-
+      // Fin de turno: sin function calls O finish reason indica término
       if (functionCalls.length === 0) {
         yield { type: 'usage', promptTokens: totalPromptTokens, completionTokens: totalCompletionTokens };
         yield { type: 'done', fullText };
         return;
       }
 
-      // Agregar respuesta del modelo al historial
-      currentContents.push({ role: 'model', parts });
+      // Agregar turn del model al history (preservar parts completos)
+      currentContents.push({ role: 'model', parts: turnParts });
 
       // Ejecutar function calls
       const functionResponses = [];
       for (const fc of functionCalls) {
-        yield { type: 'tool_call', name: fc.name, args: fc.args };
-        const result = await execTool(fc.name, fc.args || {});
-        yield { type: 'tool_result', name: fc.name, result };
+        if (signal && signal.aborted) {
+          yield { type: 'done', fullText: fullText || 'Cancelado durante ejecución de tool.' };
+          return;
+        }
+
+        const fnName = fc.name || '(sin nombre)';
+        const fnArgs = fc.args || {};
+        yield { type: 'tool_call', name: fnName, args: fnArgs };
+
+        let result;
+        try {
+          result = await execTool(fnName, fnArgs);
+        } catch (err) {
+          result = `Error ejecutando ${fnName}: ${err.message}`;
+        }
+        yield { type: 'tool_result', name: fnName, result };
+
         functionResponses.push({
           functionResponse: {
-            name: fc.name,
+            name: fnName,
             response: { output: String(result) },
           },
         });
       }
 
       currentContents.push({ role: 'user', parts: functionResponses });
+
+      // Discard finishReason para el próximo turno — la condición de salida arriba maneja el fin
+      void finishReason;
     }
   },
 };

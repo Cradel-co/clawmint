@@ -2,18 +2,25 @@
 
 const fs   = require('fs');
 const path = require('path');
+const { getBaseDir, assertPathAllowed } = require('./user-sandbox');
 
 const DEFAULT_CWD  = process.env.HOME || '/';
 const MAX_FILE_SIZE = 50 * 1024; // 50 KB
+
+/** Resuelve el directorio base según el contexto del usuario */
+function _base(ctx) {
+  return getBaseDir(ctx) || DEFAULT_CWD;
+}
 
 const READ_FILE = {
   name: 'read_file',
   description: 'Lee el contenido de un archivo. Límite 50 KB.',
   params: { path: 'string' },
 
-  execute({ path: filePath } = {}) {
+  execute({ path: filePath } = {}, ctx = {}) {
     if (!filePath) return 'Error: parámetro path requerido';
-    const resolved = path.resolve(DEFAULT_CWD, filePath);
+    const resolved = path.resolve(_base(ctx), filePath);
+    assertPathAllowed(resolved, ctx);
     if (!fs.existsSync(resolved)) return `Error: archivo no encontrado: ${resolved}`;
     const stat = fs.statSync(resolved);
     if (stat.size > MAX_FILE_SIZE)
@@ -27,10 +34,11 @@ const WRITE_FILE = {
   description: 'Escribe contenido en un archivo, creando directorios intermedios si es necesario.',
   params: { path: 'string', content: 'string' },
 
-  execute({ path: filePath, content } = {}) {
+  execute({ path: filePath, content } = {}, ctx = {}) {
     if (!filePath)           return 'Error: parámetro path requerido';
     if (content === undefined) return 'Error: parámetro content requerido';
-    const resolved = path.resolve(DEFAULT_CWD, filePath);
+    const resolved = path.resolve(_base(ctx), filePath);
+    assertPathAllowed(resolved, ctx);
     fs.mkdirSync(path.dirname(resolved), { recursive: true });
     fs.writeFileSync(resolved, content, 'utf8');
     return `Archivo escrito: ${resolved}`;
@@ -42,8 +50,10 @@ const LIST_DIR = {
   description: 'Lista el contenido de un directorio mostrando tipo (file/dir) y nombre.',
   params: { path: '?string' },
 
-  execute({ path: dirPath } = {}) {
-    const resolved = path.resolve(DEFAULT_CWD, dirPath || DEFAULT_CWD);
+  execute({ path: dirPath } = {}, ctx = {}) {
+    const base = _base(ctx);
+    const resolved = path.resolve(base, dirPath || base);
+    assertPathAllowed(resolved, ctx);
     if (!fs.existsSync(resolved)) return `Error: directorio no encontrado: ${resolved}`;
     const entries = fs.readdirSync(resolved);
     const items   = entries.map(name => {
@@ -58,15 +68,23 @@ const LIST_DIR = {
   },
 };
 
+let _warnedSearchFilesDeprecated = false;
+
 const SEARCH_FILES = {
   name: 'search_files',
-  description: 'Busca archivos por patrón glob recursivo. Ej: "**/*.js".',
+  description: '[DEPRECADO — usar "glob"] Busca archivos por patrón glob recursivo. Ej: "**/*.js".',
   params: { pattern: 'string', dir: '?string' },
 
-  execute({ pattern, dir } = {}) {
+  execute({ pattern, dir } = {}, ctx = {}) {
     if (!pattern) return 'Error: parámetro pattern requerido';
+    if (!_warnedSearchFilesDeprecated) {
+      console.warn('[deprecado] search_files — usar la tool glob (ripgrep, soporta {a,b}, !negations, etc.)');
+      _warnedSearchFilesDeprecated = true;
+    }
     try {
-      const resolved = path.resolve(DEFAULT_CWD, dir || DEFAULT_CWD);
+      const base = _base(ctx);
+      const resolved = path.resolve(base, dir || base);
+      assertPathAllowed(resolved, ctx);
       // Convertir glob simple a RegExp (cross-platform, sin depender de `find`)
       const globStr = pattern.replace('**/', '').replace('**', '*');
       const escaped = globStr.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
@@ -111,12 +129,13 @@ const EDIT_FILE = {
     required: ['path', 'old_string', 'new_string'],
   },
 
-  execute({ path: filePath, old_string, new_string, replace_all } = {}) {
+  execute({ path: filePath, old_string, new_string, replace_all } = {}, ctx = {}) {
     if (!filePath)                return 'Error: parámetro path requerido';
     if (old_string === undefined) return 'Error: parámetro old_string requerido';
     if (new_string === undefined) return 'Error: parámetro new_string requerido';
 
-    const resolved = path.resolve(DEFAULT_CWD, filePath);
+    const resolved = path.resolve(_base(ctx), filePath);
+    assertPathAllowed(resolved, ctx);
     if (!fs.existsSync(resolved)) return `Error: archivo no encontrado: ${resolved}`;
 
     const content = fs.readFileSync(resolved, 'utf8');

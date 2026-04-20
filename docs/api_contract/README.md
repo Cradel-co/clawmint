@@ -1,4 +1,4 @@
-> Última actualización: 2026-03-17
+> Última actualización: 2026-04-19
 
 # API Contract
 
@@ -6,12 +6,18 @@ Todos los endpoints expuestos por `server/index.js` en `http://localhost:3001`.
 
 **Formato de respuesta:** JSON. Errores con `{ error: string }` y código HTTP apropiado.
 
+**Auth:** la mayoría requiere `Authorization: Bearer <accessToken>` (JWT). Endpoints admin requieren además `req.user.role === 'admin'`. Endpoints `household/*` requieren `req.user.status === 'active'`.
+
 ---
 
 ## Índice
 
 | Recurso | Prefijo | Descripción |
 |---------|---------|-------------|
+| [Auth + multi-user](#auth--multi-user) | `/api/auth` | Registro, login, aprobaciones, invitaciones |
+| [System](#system) | `/api/system` | Stats live, location (LAN/Tailscale/IP pública/manual) |
+| [SystemConfig](#systemconfig-admin) | `/api/system-config` | OAuth credentials cifradas (sin `.env`) |
+| [Household](#household-user-activo) | `/api/household` | Datos compartidos del hogar (Fase B) |
 | [Sesiones PTY](#sesiones-pty) | `/api/sessions` | Crear, listar y operar sesiones de terminal |
 | [Agentes](#agentes) | `/api/agents` | CRUD de agentes de IA |
 | [Skills](#skills) | `/api/skills` | Gestión de skills (locales + ClawHub) |
@@ -19,7 +25,116 @@ Todos los endpoints expuestos por `server/index.js` en `http://localhost:3001`.
 | [Logs](#logs) | `/api/logs` | Configuración y consulta de logs del servidor |
 | [Telegram](#telegram) | `/api/telegram` | Gestión de bots Telegram |
 | [Providers](#providers) | `/api/providers` | Configuración de providers de IA |
+| [MCPs](#mcps) | `/api/mcps` | Servidores MCP externos (GET libre, mutaciones admin) |
 | [WebSocket](#websocket) | `ws://localhost:3001` | Streaming bidireccional de terminal |
+
+---
+
+## Auth + multi-user
+
+### `POST /api/auth/register`
+Registro con email + password. Body opcional: `{ inviteCode }` para bypass del pending.
+
+**Response**:
+- `201 { user, accessToken, refreshToken }` — primer usuario (admin auto) o invitación válida.
+- `202 { user, pending: true, message }` — usuarios subsiguientes sin invitación. NO emite tokens.
+
+### `POST /api/auth/login`
+**Response**:
+- `200 { user, accessToken, refreshToken }` — login exitoso.
+- `403 { error, code: 'pending' }` — cuenta pendiente de aprobación.
+- `403 { error, code: 'disabled' }` — cuenta deshabilitada.
+- `401` — credenciales inválidas.
+
+### `GET /api/auth/me` (auth)
+Usuario actual con `oauthAccounts`.
+
+### Admin endpoints (admin)
+
+| Endpoint | Descripción |
+|---|---|
+| `GET /api/auth/admin/users` | Lista todos los users (sin password_hash) |
+| `PATCH /api/auth/admin/users/:id` | Cambia role (`{ role }`) |
+| `DELETE /api/auth/admin/users/:id` | Borra (no a sí mismo) |
+| `POST /api/auth/admin/users/:id/approve` | `pending` → `active` |
+| `POST /api/auth/admin/users/:id/reject` | `pending`/`active` → `disabled` (revoca tokens) |
+| `POST /api/auth/admin/users/:id/reactivate` | `disabled` → `active` |
+| `GET /api/auth/admin/users/pending/count` | `{ count }` para badge en UI |
+
+### Invitations (admin)
+
+| Endpoint | Descripción |
+|---|---|
+| `POST /api/auth/admin/invitations` | Body `{ ttlHours?, role?, familyRole? }` → `{ code, expires_at, ... }` |
+| `GET /api/auth/admin/invitations` | Lista con `status` derivado (`valid`/`used`/`expired`/`revoked`) |
+| `DELETE /api/auth/admin/invitations/:code` | Soft revoke |
+
+### Invitations público
+
+`GET /api/auth/invitations/:code` → `{ valid, status, family_role, role, expires_at }` — usado por AuthPanel para mostrar banner antes de registrar.
+
+---
+
+## System
+
+`GET /api/system/stats` (auth) → snapshot agregado:
+```json
+{
+  "ts": 1234567890,
+  "system": { "cpu": {...}, "ram": {...}, "disk": {...}, "uptime": {...}, "host": {...} },
+  "server": { "uptime": 123, "startedAt": "...", "pid": 9999, "node": "v22.13.1" },
+  "ws": { "clients": 3 },
+  "sessions": { "pty": 2, "web": 1 },
+  "telegram": { "total": 1, "running": 1 },
+  "providers": { "total": 6, "names": [...] },
+  "nodriza": { "enabled": false, "connected": false, "peers": 0 }
+}
+```
+
+`GET /api/system/location?refresh=1` (auth) → `{ hostname, lan, tailscale, public, manual, resolved }`. Combina LAN + Tailscale (rango 100.x) + IP pública (ipwho.is, cache 24h) + override manual.
+
+`GET /api/system/lan-addresses` (auth) → `{ addresses: [{ address, interface, isTailscale }] }`.
+
+`PUT /api/system/location` (admin) → body `{ latitude, longitude, name }` para override manual.
+
+`DELETE /api/system/location` (admin) → borra el override.
+
+---
+
+## SystemConfig (admin)
+
+Todas requieren admin. Permite setear OAuth credentials sin `.env`.
+
+| Endpoint | Descripción |
+|---|---|
+| `GET /api/system-config/oauth` | Status por provider (`{google, github, spotify}`, sin secrets) |
+| `PUT /api/system-config/oauth/:provider` | Body `{ client_id, client_secret }` → guarda cifrado |
+| `DELETE /api/system-config/oauth/:provider` | Limpia credenciales |
+| `GET /api/system-config/keys` | Lista keys (metadata, sin values) |
+| `GET /api/system-config/:key` | Lee un value (secrets devuelven `null` por seguridad) |
+| `PUT /api/system-config/:key` | Body `{ value, isSecret }` |
+| `DELETE /api/system-config/:key` | Borra |
+
+Las keys con `is_secret=1` se cifran con `TokenCrypto` (AES-256-GCM) en disco. Keys conocidas: `oauth:{google,github,spotify}:{client_id,client_secret}`, `location:manual:{latitude,longitude,name}`.
+
+---
+
+## Household (user activo)
+
+Cualquier user con `status='active'` puede leer/escribir. `:kind` ∈ `grocery_item | family_event | house_note | service | inventory`.
+
+| Endpoint | Descripción |
+|---|---|
+| `GET /api/household/summary` | `{ counts, upcoming }` para dashboard |
+| `GET /api/household/upcoming?days=7` | Items con `date_at` en próximos N días |
+| `GET /api/household/:kind` | Query: `includeCompleted`, `upcomingOnly`, `limit` |
+| `POST /api/household/:kind` | Body `{ title, data, dateAt, alertDaysBefore }` |
+| `PATCH /api/household/:kind/:id` | Update parcial |
+| `DELETE /api/household/:kind/:id` | Borra |
+| `POST /api/household/:kind/:id/complete` | Marca `completed_at = now` |
+| `POST /api/household/:kind/:id/uncomplete` | Resetea `completed_at = NULL` |
+
+---
 
 ---
 

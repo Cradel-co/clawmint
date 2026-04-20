@@ -26,7 +26,7 @@
   justify-content: space-between;
   padding: 10px 14px;
   border-bottom: 1px solid var(--border-primary);
-  background: linear-gradient(90deg, rgba(79,195,247,0.07) 0%, var(--bg-secondary) 50%);
+  background: linear-gradient(90deg, rgba(251, 191, 36,0.07) 0%, var(--bg-secondary) 50%);
 }
 
 .headerTitle {
@@ -75,7 +75,7 @@
 }
 .agentRow:hover {
   background: var(--bg-hover);
-  border-color: rgba(79,195,247,0.30);
+  border-color: rgba(251, 191, 36,0.30);
   border-left-color: var(--accent-cyan);
 }
 
@@ -248,7 +248,7 @@
   transition: all 0.15s;
   margin-top: 4px;
 }
-.btnAdd:hover { background: rgba(79,195,247,0.10); border-color: var(--accent-blue); }
+.btnAdd:hover { background: rgba(251, 191, 36,0.10); border-color: var(--accent-blue); }
 
 /* ─── Empty state ─── */
 

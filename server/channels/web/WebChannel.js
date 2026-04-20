@@ -185,6 +185,13 @@ class WebChannel extends BaseChannel {
     // Cargar historial de mensajes de SQLite
     const savedMessages = this.messagesRepo?.load(sessionId) || [];
 
+    // Resolver userId del sistema unificado
+    let sysUserId = authUser ? authUser.id : null;
+    if (!sysUserId && this._usersRepo) {
+      const sysUser = this._usersRepo.findByIdentity('web', sessionId);
+      if (sysUser) sysUserId = sysUser.id;
+    }
+
     const state = {
       provider: saved?.provider || opts.provider || this.providerConfig?.getConfig()?.default || 'anthropic',
       agent: opts.agent || null,
@@ -194,6 +201,7 @@ class WebChannel extends BaseChannel {
       claudeMode: saved?.claude_mode || 'auto',
       cwd: saved?.cwd || process.env.HOME || '~',
       processing: false,
+      userId: sysUserId,
     };
 
     this.sessions.set(sessionId, { ws, state });
@@ -765,6 +773,7 @@ class WebChannel extends BaseChannel {
         shellId: sessionId,
         botKey: WebChannel.BOT_KEY,
         channel: 'web',
+        userId: state.userId || null,
       });
 
       if (result.history) state.history = result.history;

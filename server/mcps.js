@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-const MCPS_DIR = path.join(__dirname, 'mcps');
+const { MCPS_DIR } = require('./paths');
 
 // Asegurar directorio
 if (!fs.existsSync(MCPS_DIR)) fs.mkdirSync(MCPS_DIR, { recursive: true });
@@ -327,7 +327,8 @@ function generateConfigFile() {
   const port = process.env.PORT || 3001;
   config.mcpServers.clawmint = { type: 'http', url: `http://localhost:${port}/mcp` };
 
-  const configPath = path.join(__dirname, 'mcp-config.json');
+  const { CONFIG_FILES } = require('./paths');
+  const configPath = CONFIG_FILES.mcpConfig;
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
   return configPath;
 }

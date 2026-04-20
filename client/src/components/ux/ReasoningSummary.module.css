@@ -1,0 +1,81 @@
+.root {
+  border: 1px dashed var(--oc2-border-weak, var(--border-primary));
+  border-radius: var(--radius-md, 6px);
+  background: var(--oc2-surface-base, var(--bg-panel));
+  margin: var(--space-2, 8px) 0;
+  transition: background var(--t-fast, 0.15s ease);
+}
+
+[data-open="true"].root {
+  background: var(--oc2-surface-raised, var(--bg-card));
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  width: 100%;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: var(--font-sm, 12px);
+  color: var(--oc2-text-weak, var(--text-muted));
+  text-align: left;
+}
+
+.header:hover {
+  color: var(--oc2-text-base, var(--text-secondary));
+}
+
+.caret {
+  font-size: 10px;
+  transition: transform var(--t-fast, 0.15s ease);
+  color: var(--oc2-text-weaker, var(--text-hint));
+}
+
+[data-open="true"] .caret {
+  transform: rotate(90deg);
+}
+
+.icon {
+  font-size: 14px;
+  filter: grayscale(0.6);
+  opacity: 0.8;
+}
+
+.title {
+  flex: 1;
+  font-weight: var(--weight-medium, 500);
+  font-style: italic;
+}
+
+.meta {
+  font-family: var(--font-mono);
+  font-size: var(--font-xs, 11px);
+  color: var(--oc2-text-weaker, var(--text-hint));
+  font-variant-numeric: tabular-nums;
+}
+
+.body {
+  padding: 0 var(--space-3, 12px) var(--space-3, 12px) var(--space-3, 12px);
+  border-top: 1px dashed var(--oc2-border-weaker, var(--border-subtle));
+}
+
+.content {
+  margin: var(--space-2, 8px) 0 0 0;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  font-family: var(--font-mono);
+  font-size: var(--font-sm, 12px);
+  line-height: var(--lh-relaxed, 1.6);
+  color: var(--oc2-text-weak, var(--text-muted));
+  font-style: italic;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 400px;
+  overflow-y: auto;
+  background: var(--oc2-surface-base, var(--bg-panel));
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid var(--oc2-border-weaker, var(--border-subtle));
+}

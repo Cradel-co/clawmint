@@ -17,16 +17,39 @@ const { Client } = require('@modelcontextprotocol/sdk/client');
 const { StdioClientTransport } = require('@modelcontextprotocol/sdk/client/stdio.js');
 const { SSEClientTransport } = require('@modelcontextprotocol/sdk/client/sse.js');
 
+// Notification schemas (Fase 12.3) — cargados lazy para no romper si el SDK cambia shape
+let _notifSchemas = null;
+function _loadNotifSchemas() {
+  if (_notifSchemas !== null) return _notifSchemas;
+  try {
+    const types = require('@modelcontextprotocol/sdk/types.js');
+    _notifSchemas = {
+      toolList:     types.ToolListChangedNotificationSchema,
+      resourceList: types.ResourceListChangedNotificationSchema,
+      promptList:   types.PromptListChangedNotificationSchema,
+    };
+  } catch {
+    _notifSchemas = {};
+  }
+  return _notifSchemas;
+}
+
 let mcps = null;
 function _getMcps() {
   if (!mcps) try { mcps = require('./mcps'); } catch {}
   return mcps;
 }
 
+// EventBus opcional inyectado via setEventBus — emite mcp:tools_changed cuando un MCP externo
+// notifica list_changed. Fase 12.3.
+let _eventBus = null;
+function setEventBus(bus) { _eventBus = bus; }
+
 const SEP = '__';
 const RECONNECT_DELAY = 3000; // ms
+const SUBSCRIPTIONS_ENABLED = process.env.MCP_SSE_SUBSCRIPTIONS_ENABLED === 'true';
 
-// Map<mcpName, { client, transport, connected: boolean, reconnecting: boolean }>
+// Map<mcpName, { client, transport, connected: boolean }>
 const _connections = new Map();
 
 // Map<prefixedName, { mcpName, originalName, def }>
@@ -38,6 +61,11 @@ const _registered = new Set();
 
 // Map<mcpName, string[]> — tool names por MCP (para cleanup en unregister)
 const _mcpToolNames = new Map();
+
+// Map<mcpName, Promise> — reconexiones en vuelo. Coalesce llamadas concurrentes a
+// _reconnect(name) — si ya hay una en curso, todos los callers esperan la misma promise.
+// Fixea race condition previa con flag booleano `conn.reconnecting` no-atómico.
+const _reconnectInFlight = new Map();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -101,6 +129,14 @@ async function _connect(name) {
 
   await client.connect(transport);
 
+  // Fase 12.3 — registrar notification handlers ANTES de cualquier listTools para
+  // no perder notifications tempranas. Si SUBSCRIPTIONS_ENABLED=false, se omite.
+  if (SUBSCRIPTIONS_ENABLED) {
+    try { _wireNotifications(client, name); } catch (err) {
+      process.stderr.write(`[mcp-client-pool] "${name}" wire notifications falló: ${err.message}\n`);
+    }
+  }
+
   // Listener para reconexión automática al perder conexión
   client.onclose = () => {
     const conn = _connections.get(name);
@@ -112,28 +148,90 @@ async function _connect(name) {
     }
   };
 
-  _connections.set(name, { client, transport, connected: true, reconnecting: false });
+  _connections.set(name, { client, transport, connected: true });
   return client;
+}
+
+/**
+ * Fase 12.3 — Registra handlers MCP estándar para notifications de cambios.
+ * Cuando un MCP externo emite `notifications/tools/list_changed`, hacemos refetch
+ * via connectMcp(name) (que limpia + recachea). También emite eventBus `mcp:tools_changed`
+ * para que ToolCatalog pueda refrescar su índice lazy (Fase 7).
+ */
+function _wireNotifications(client, name) {
+  const schemas = _loadNotifSchemas();
+  if (!schemas.toolList) return; // SDK no expone los schemas
+
+  if (typeof client.setNotificationHandler === 'function') {
+    client.setNotificationHandler(schemas.toolList, async () => {
+      process.stdout.write(`[mcp-client-pool] "${name}" tools/list_changed → refetching\n`);
+      try {
+        // Re-listar y recachear sin tocar la conexión
+        const { tools } = await client.listTools();
+        const prevTools = _mcpToolNames.get(name) || [];
+        for (const tn of prevTools) _toolRegistry.delete(tn);
+        const newNames = [];
+        for (const tool of tools) {
+          const prefixed = _prefixName(name, tool.name);
+          newNames.push(prefixed);
+          _toolRegistry.set(prefixed, {
+            mcpName: name,
+            originalName: tool.name,
+            def: {
+              name: prefixed,
+              description: `[${name}] ${tool.description || tool.name}`,
+              inputSchema: tool.inputSchema || { type: 'object', properties: {}, required: [] },
+            },
+          });
+        }
+        _mcpToolNames.set(name, newNames);
+        if (_eventBus && typeof _eventBus.emit === 'function') {
+          _eventBus.emit('mcp:tools_changed', { mcpName: name, toolCount: tools.length });
+        }
+      } catch (err) {
+        process.stderr.write(`[mcp-client-pool] "${name}" refetch falló: ${err.message}\n`);
+      }
+    });
+
+    if (schemas.resourceList) {
+      client.setNotificationHandler(schemas.resourceList, () => {
+        if (_eventBus) _eventBus.emit('mcp:resources_changed', { mcpName: name });
+      });
+    }
+    if (schemas.promptList) {
+      client.setNotificationHandler(schemas.promptList, () => {
+        if (_eventBus) _eventBus.emit('mcp:prompts_changed', { mcpName: name });
+      });
+    }
+  }
 }
 
 async function _reconnect(name) {
   if (!_registered.has(name)) return;
   const conn = _connections.get(name);
   if (conn && conn.connected) return; // ya reconectó
-  if (conn && conn.reconnecting) return; // ya en proceso
 
-  if (conn) conn.reconnecting = true;
+  // Coalesce: si hay reconexión en vuelo para este name, esperar esa misma promise.
+  const existing = _reconnectInFlight.get(name);
+  if (existing) return existing;
 
-  try {
-    await _connect(name);
-    process.stdout.write(`[mcp-client-pool] "${name}" reconectado\n`);
-  } catch (err) {
-    process.stderr.write(`[mcp-client-pool] Reconexión de "${name}" falló: ${err.message}\n`);
-    // Reintentar con backoff
-    if (_registered.has(name)) {
-      setTimeout(() => _reconnect(name), RECONNECT_DELAY * 3);
+  const p = (async () => {
+    try {
+      await _connect(name);
+      process.stdout.write(`[mcp-client-pool] "${name}" reconectado\n`);
+    } catch (err) {
+      process.stderr.write(`[mcp-client-pool] Reconexión de "${name}" falló: ${err.message}\n`);
+      // Reintentar con backoff
+      if (_registered.has(name)) {
+        setTimeout(() => _reconnect(name), RECONNECT_DELAY * 3);
+      }
+    } finally {
+      _reconnectInFlight.delete(name);
     }
-  }
+  })();
+
+  _reconnectInFlight.set(name, p);
+  return p;
 }
 
 /** Asegura que la conexión está activa, reconecta si no */
@@ -303,4 +401,5 @@ function status() {
   return result;
 }
 
-module.exports = { initialize, connectMcp, disconnectMcp, getExternalToolDefs, isExternalTool, callTool, status };
+module.exports = { initialize, connectMcp, disconnectMcp, getExternalToolDefs, isExternalTool, callTool, status, setEventBus };
+module.exports._internal = { _wireNotifications, _loadNotifSchemas };

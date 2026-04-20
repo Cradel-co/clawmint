@@ -2,15 +2,22 @@
 
 const fs   = require('fs');
 const path = require('path');
+const { EventEmitter } = require('events');
+const { LOG_FILES } = require('../paths');
 
 /**
  * Logger con configuración hot-reload desde logs.json.
  * Extraído de index.js para reutilización.
+ *
+ * Extiende EventEmitter: emite `line` por cada log escrito, para que el WS
+ * `/ws/logs` (admin) pueda streamear en vivo.
  */
-class Logger {
+class Logger extends EventEmitter {
   constructor({ logFile, configFile } = {}) {
-    this._logFile    = logFile    || path.join(__dirname, '..', 'server.log');
-    this._configFile = configFile || path.join(__dirname, '..', 'logs.json');
+    super();
+    this.setMaxListeners(50);
+    this._logFile    = logFile    || LOG_FILES.serverLog;
+    this._configFile = configFile || LOG_FILES.logsJson;
     if (!fs.existsSync(this._configFile)) this._saveConfig({ enabled: true });
     this._logConfig = this._loadConfig();
     this._logCount = 0;
@@ -45,12 +52,16 @@ class Logger {
     const isError = level.trim() === 'ERROR';
     if (!this._logConfig.enabled && !isError) return;
     const ts   = new Date().toISOString();
-    const line = `[${ts}] [${level}] ${args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')}\n`;
+    const msg  = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+    const line = `[${ts}] [${level}] ${msg}\n`;
     process.stdout.write(line);
     try {
       if (++this._logCount % 1000 === 0) this._rotate();
       fs.appendFileSync(this._logFile, line);
     } catch {}
+    // Emit event para suscriptores (WS /ws/logs, hooks, etc)
+    // No-op si no hay listeners; swallow errors para no romper logging.
+    try { this.emit('line', { ts, level: level.trim(), message: msg, raw: line.trimEnd() }); } catch {}
   }
 
   info(...a)  { this._log('INFO ', ...a); }

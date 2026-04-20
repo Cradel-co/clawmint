@@ -8,98 +8,27 @@
  * Soporta dos formatos de tool definition:
  * - Internas: { name, description, params: { key: 'type' } }
  * - Externas MCP: { name, description, inputSchema: { type: 'object', properties, required } }
+ *
+ * Desde la fase 0 del refactor, la conversión se delega a `providers/base/ToolConverter.js`
+ * para ganar soporte nativo de enum, oneOf/anyOf, objetos anidados y pattern.
+ * El output es BYTE-IDENTICAL al anterior para todas las tools existentes (cubierto por tests).
  */
 
 const { executeTool: mcpExecute, getToolDefs } = require('./mcp');
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-/** Construye input_schema desde el formato simplificado params */
-function _schemaFromParams(params) {
-  return {
-    type: 'object',
-    properties: Object.fromEntries(
-      Object.entries(params || {}).map(([k]) => [k.replace('?', ''), { type: 'string', description: k.replace('?', '') }])
-    ),
-    required: Object.entries(params || {})
-      .filter(([, v]) => !String(v).startsWith('?'))
-      .map(([k]) => k),
-  };
-}
-
-/** Convierte tipos JSON Schema estándar a formato Gemini (uppercase) */
-function _toGeminiType(type) {
-  const map = { string: 'STRING', number: 'NUMBER', integer: 'INTEGER', boolean: 'BOOLEAN', array: 'ARRAY', object: 'OBJECT' };
-  return map[(type || 'string').toLowerCase()] || 'STRING';
-}
-
-/** Convierte una propiedad JSON Schema a formato Gemini (recursivo) */
-function _propToGemini(v) {
-  const out = { type: _toGeminiType(v.type) };
-  if (v.description) out.description = v.description;
-
-  // Arrays: convertir items
-  if (v.type === 'array' && v.items) {
-    out.items = _propToGemini(v.items);
-  }
-
-  // Objetos anidados: convertir properties
-  if (v.type === 'object' && v.properties) {
-    out.properties = {};
-    for (const [pk, pv] of Object.entries(v.properties)) {
-      out.properties[pk] = _propToGemini(pv);
-    }
-    if (v.required) out.required = v.required;
-  }
-
-  return out;
-}
-
-/** Convierte inputSchema completo a formato Gemini */
-function _inputSchemaToGemini(schema) {
-  const props = {};
-  for (const [k, v] of Object.entries(schema.properties || {})) {
-    props[k] = _propToGemini(v);
-  }
-  return { type: 'OBJECT', properties: props, required: schema.required || [] };
-}
+const ToolConverter = require('./providers/base/ToolConverter');
 
 // ── Formateadores de schema para cada provider ────────────────────────────────
 
 function toAnthropicFormat(opts) {
-  return getToolDefs(opts).map(t => ({
-    name:         t.name,
-    description:  t.description,
-    input_schema: t.inputSchema || _schemaFromParams(t.params),
-  }));
+  return ToolConverter.toAnthropicBatch(getToolDefs(opts));
 }
 
 function toGeminiFormat(opts) {
-  return getToolDefs(opts).map(t => {
-    const parameters = t.inputSchema
-      ? _inputSchemaToGemini(t.inputSchema)
-      : {
-          type: 'OBJECT',
-          properties: Object.fromEntries(
-            Object.entries(t.params || {}).map(([k]) => [k.replace('?', ''), { type: 'STRING', description: k.replace('?', '') }])
-          ),
-          required: Object.entries(t.params || {})
-            .filter(([, v]) => !String(v).startsWith('?'))
-            .map(([k]) => k.replace('?', '')),
-        };
-    return { name: t.name, description: t.description, parameters };
-  });
+  return ToolConverter.toGeminiBatch(getToolDefs(opts));
 }
 
 function toOpenAIFormat(opts) {
-  return getToolDefs(opts).map(t => ({
-    type: 'function',
-    function: {
-      name:        t.name,
-      description: t.description,
-      parameters:  t.inputSchema || _schemaFromParams(t.params),
-    },
-  }));
+  return ToolConverter.toOpenAIBatch(getToolDefs(opts));
 }
 
 /**

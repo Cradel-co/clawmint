@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { UserCircle, X } from 'lucide-react';
 import { useProfile, useChangePassword } from '../api/profile';
+import UserLocationSection from './UserLocationSection.jsx';
+import UserRoutinesSection from './UserRoutinesSection.jsx';
 import styles from './ProfilePanel.module.css';
 import apStyles from './AgentsPanel.module.css';
 
@@ -52,7 +54,10 @@ export default function ProfilePanel({ onClose }) {
           </>
         )}
 
-        <div className={styles.sectionTitle} style={{ marginTop: 16 }}>Cambiar contraseña</div>
+        <UserLocationSection />
+        <UserRoutinesSection />
+
+        <div className={styles.sectionTitle} style={{ marginTop: 18 }}>Cambiar contraseña</div>
         <form onSubmit={handleChangePassword}>
           <label className={styles.fieldLabel}>Contraseña actual</label>
           <input className={styles.input} type="password" value={currentPw} onChange={e => setCurrentPw(e.target.value)} autoComplete="current-password" />

@@ -659,3 +659,154 @@ Inicializa SQLite una sola vez y comparte la instancia. Actualmente no se usa de
 dbProvider.init(schema)                // → better-sqlite3 instance
 dbProvider.getDB()                     // → instance | null
 ```
+
+---
+
+## InvitationsRepository
+
+**Archivo:** `server/storage/InvitationsRepository.js`
+
+Invitaciones de un solo uso para onboarding familiar (Fase A). Códigos hex random 32 chars con TTL configurable, soft-revoke, cleanup automático.
+
+**Constructor:** `(db)`
+
+**API pública:**
+```javascript
+invitationsRepo.init()                                    // CREATE TABLE
+invitationsRepo.create(createdBy, { ttlMs, role, familyRole })
+                                                          // → { code, ... }
+invitationsRepo.get(code)                                 // → row | null
+invitationsRepo.getStatus(invitation)                     // 'valid'|'used'|'expired'|'revoked'
+invitationsRepo.markUsed(code, userId)                    // → bool atómico
+invitationsRepo.revoke(code)                              // soft-revoke
+invitationsRepo.list({ createdBy? })                      // con `status` derivado
+invitationsRepo.cleanup()                                 // borra usadas >30d, expiradas >7d
+```
+
+**Tabla:** `invitations` — ver [database/schema.md](../database/schema.md).
+
+Consumido por `AuthService.register()` cuando recibe `inviteCode` en `opts`.
+
+---
+
+## HouseholdDataRepository
+
+**Archivo:** `server/storage/HouseholdDataRepository.js`
+
+Datos compartidos del hogar (Fase B): mercadería, eventos familiares, notas, servicios, inventario. Tabla flexible con `kind` discriminado.
+
+**Constructor:** `(db)`
+
+**API pública:**
+```javascript
+householdRepo.init()                                                 // CREATE TABLE + 3 índices
+householdRepo.create({ kind, title, data, dateAt, alertDaysBefore, createdBy })
+                                                                     // → row con id uuid
+householdRepo.get(id)                                                // → row hidratada (data parseada)
+householdRepo.update(id, fields, updatedBy)                          // bool. allowed: title, date_at, alert_days_before, completed_at, data
+householdRepo.complete(id, updatedBy)                                // shortcut: marca completed_at = now
+householdRepo.uncomplete(id, updatedBy)                              // resetea completed_at
+householdRepo.remove(id)                                             // hard delete
+householdRepo.list(kind, { includeCompleted, upcomingOnly, limit })  // ordenada por COALESCE(date_at, created_at)
+householdRepo.upcomingAlerts(daysWindow=7)                           // items con date_at en ventana
+householdRepo.counts()                                               // { kind: { total, pending } }
+```
+
+**Tabla:** `household_data` — ver [database/schema.md](../database/schema.md).
+
+Consumido por:
+- 18 MCP tools en `mcp/tools/household.js` (`grocery_*`, `family_event_*`, `house_note_*`, `service_*`, `inventory_*`, `household_summary`).
+- REST `routes/household.js` (`/api/household/:kind` CRUD + complete/uncomplete + summary + upcoming).
+
+---
+
+## SystemConfigRepository
+
+**Archivo:** `server/storage/SystemConfigRepository.js`
+
+Key/value global persistente para config sin `.env`. Soporta cifrado opcional via `TokenCrypto` para secrets.
+
+**Constructor:** `({ db, tokenCrypto?, logger? })`
+
+**API pública:**
+```javascript
+systemConfigRepo.init()                            // CREATE TABLE
+systemConfigRepo.get(key)                          // → string | null (plain)
+systemConfigRepo.set(key, value)                   // value plano
+systemConfigRepo.setSecret(key, plaintext)         // cifrado con TokenCrypto
+systemConfigRepo.getSecret(key)                    // descifrado
+systemConfigRepo.remove(key)
+systemConfigRepo.listKeys()                        // [{ key, is_secret, updated_at }]
+systemConfigRepo.listByPrefix('oauth:google:')     // dict { key: value } (descifra secrets)
+```
+
+**Tabla:** `system_config` — ver [database/schema.md](../database/schema.md).
+
+Consumido por:
+- `mcp-oauth-providers/{google,github,spotify}.js` para leer credentials con fallback a env vars.
+- `LocationService` para override manual de coords.
+- `routes/system-config.js` REST admin para CRUD desde UI.
+
+---
+
+## LocationService
+
+**Archivo:** `server/services/LocationService.js`
+
+Combina 4 fuentes de ubicación del server:
+
+1. **LAN local** — `os.networkInterfaces()` filtrando IPv4 no internas.
+2. **Tailscale** — IPs en rango CGNAT 100.64.0.0/10 (filter automático del LAN).
+3. **IP pública + geo** — fetch a `ipwho.is` (free, sin key, ~10k req/mes anónimas). Cache 24h.
+4. **Override manual** — coords lat/lon ingresadas por admin via UI, persistidas en `SystemConfigRepository`.
+
+**Constructor:** `({ systemConfigRepo?, logger?, publicIpTtlMs? })`
+
+**API pública:**
+```javascript
+locationService.getLanInterfaces()                       // [{ interface, address, mac, isTailscale }]
+locationService.getTailscaleInterfaces()                 // subset de LAN con isTailscale=true
+locationService.getPublicGeo(force=false)                // { ip, country, city, latitude, longitude, timezone, source }
+locationService.getManualLocation()                      // { latitude, longitude, name } | null
+locationService.setManualLocation({ latitude, longitude, name })
+locationService.getLocation({ includePublic, forcePublic })  // snapshot completo con `resolved` (preferred: manual > public-ip)
+```
+
+Consumido por:
+- Tools MCP `server_info`, `server_location`, `weather_get`, `air_quality_get`, `sun_get`, `uv_index_get`, `holiday_check`.
+- REST `routes/system.js` (`/api/system/location`, `/api/system/lan-addresses`).
+
+---
+
+## mcp-oauth-providers/
+
+**Carpeta:** `server/mcp-oauth-providers/`
+
+Handlers OAuth2 que se auto-registran en `McpAuthService` si detectan credenciales en `SystemConfigRepository` o env vars. Incluye:
+
+- **`google.js`** — Calendar, Gmail, Drive, Tasks (un solo par client_id/secret cubre los 4). Scopes según `mcp_name` (calendar/gmail/drive/tasks).
+- **`github.js`** — repos, issues, PRs.
+- **`spotify.js`** — control de reproducción + búsqueda (requiere Premium para playback).
+
+**API pública:**
+```javascript
+require('./mcp-oauth-providers').registerAll({ mcpAuthService, systemConfigRepo, logger })
+// → registra los 6 callback handlers en mcpAuthService:
+//   ['google-calendar', 'google-gmail', 'google-drive', 'google-tasks', 'github', 'spotify']
+```
+
+Cada handler exporta `{ buildAuthUrl({ state, redirectUri }), exchange({ code, req }) }` que `McpAuthService` invoca al recibir el callback HTTP.
+
+**Lectura dinámica de credenciales** — los handlers leen `getCreds()` en cada request, no al boot. El admin puede actualizar las credenciales desde el UI sin restart del server.
+
+---
+
+## AuthService (extendido para multi-user con aprobación)
+
+Ver doc previa en este archivo. Agregado en v1.5.0:
+
+- `register(email, password, name, opts)` ahora detecta `opts.inviteCode` y bypassa el `status='pending'` si el código es válido.
+- `login()` valida `user.status` además de password — lanza error con `code: 'PENDING_APPROVAL'` o `'ACCOUNT_DISABLED'`.
+- Métodos nuevos: `approveUser(id, byAdminId)`, `rejectUser(id, byAdminId)` (revoca tokens), `reactivateUser(id, byAdminId)`.
+- Métodos invitations: `createInvitation/listInvitations/revokeInvitation/inspectInvitation` (delegan al repo).
+- `init()` auto-genera y persiste `JWT_SECRET` en `${CONFIG_DIR}/.jwt-secret.key` si no hay env var (instalable sin `.env`).

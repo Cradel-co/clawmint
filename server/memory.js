@@ -2,8 +2,7 @@
 
 const fs   = require('fs');
 const path = require('path');
-
-const MEMORY_DIR = path.join(__dirname, 'memory');
+const { MEMORY_DIR } = require('./paths');
 
 // ─── Debug logger ────────────────────────────────────────────────────────────
 // Activar con: DEBUG_MEMORY=1 (env) o "settings": { "debug": true } en defaults.json

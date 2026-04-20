@@ -1,23 +1,41 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+
+const INITIAL_GRACE_MS = 1500;
 
 export default function ReconnectBanner({ connected }) {
   const [visible, setVisible] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [graceOver, setGraceOver] = useState(false);
+  const everConnected = useRef(false);
+
+  // Grace inicial: durante los primeros 1.5s del mount, no mostramos el banner
+  // de "Reconectando" para no parpadear durante el bootstrap del WS.
+  // Si llega el primer connected=true antes, también cancela el grace.
+  useEffect(() => {
+    const t = setTimeout(() => setGraceOver(true), INITIAL_GRACE_MS);
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
-    if (!connected) {
-      setVisible(true);
-      setShowSuccess(false);
-    } else if (visible) {
-      // Was disconnected, now reconnected — show success briefly
-      setShowSuccess(true);
-      const t = setTimeout(() => {
-        setVisible(false);
+    if (connected) {
+      everConnected.current = true;
+      if (visible) {
+        // Estaba desconectado y volvió → mostrar "✓ Conexión restablecida" 2s.
+        setShowSuccess(true);
+        const t = setTimeout(() => {
+          setVisible(false);
+          setShowSuccess(false);
+        }, 2000);
+        return () => clearTimeout(t);
+      }
+    } else {
+      // No conectado: solo mostrar si pasó el grace inicial O si ya estuvimos conectados antes.
+      if (graceOver || everConnected.current) {
+        setVisible(true);
         setShowSuccess(false);
-      }, 2000);
-      return () => clearTimeout(t);
+      }
     }
-  }, [connected]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [connected, graceOver]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!visible) return null;
 
@@ -28,7 +46,7 @@ export default function ReconnectBanner({ connected }) {
       ) : (
         <>
           <span className="reconnect-spinner" />
-          <span>Reconectando...</span>
+          <span>Reconectando…</span>
         </>
       )}
     </div>
