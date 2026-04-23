@@ -321,10 +321,17 @@ function _extractNewTopics(text) {
 
 function _runHaiku(prompt, agentKey) {
   return new Promise((resolve, reject) => {
+    // Fase 7.5.4: resolver modelo del tier 'cheap' vía modelTiers. Fallback a Haiku hardcoded.
+    let cheapModel = 'claude-haiku-4-5-20251001';
+    try {
+      const { resolveModelForTier } = require('./providers/modelTiers');
+      cheapModel = resolveModelForTier('anthropic', 'cheap') || cheapModel;
+    } catch { /* no-op — usa fallback */ }
+
     const claudeArgs = [
       '--dangerously-skip-permissions',
       '-p',
-      '--model', 'claude-haiku-4-5-20251001',
+      '--model', cheapModel,
       '--output-format', 'text',
     ];
 

@@ -46,7 +46,7 @@ function _toolToMcp(tool) {
  * Crea un Express Router que implementa el protocolo MCP sobre HTTP (JSON-RPC 2.0).
  * Compatible con: claude mcp add-json clawmint '{"type":"http","url":"http://localhost:3001/mcp"}'
  */
-function createMcpRouter({ sessionManager, memory, scheduler, usersRepo } = {}) {
+function createMcpRouter({ sessionManager, memory, scheduler, usersRepo, locationService, userPreferencesRepo, reminders, tasksRepo, householdRepo } = {}) {
   const router = express.Router();
   router.use(express.json());
 
@@ -99,11 +99,12 @@ function createMcpRouter({ sessionManager, memory, scheduler, usersRepo } = {}) 
             });
           }
           const shellId = req.headers['x-shell-id'] || `mcp-${id || 'global'}`;
-          const ctx     = { shellId, sessionManager, memory, scheduler, usersRepo };
+          const ctx     = { shellId, sessionManager, memory, scheduler, usersRepo, locationService, userPreferencesRepo, reminders, tasksRepo, householdRepo };
           // Contexto de canal opcional (headers inyectados por system prompt)
           if (req.headers['x-chat-id'])  ctx.chatId  = req.headers['x-chat-id'];
           if (req.headers['x-channel'])  ctx.channel = req.headers['x-channel'];
           if (req.headers['x-bot-key'])  ctx.botKey  = req.headers['x-bot-key'];
+          if (req.headers['x-user-id'])  ctx.userId  = req.headers['x-user-id'];
           const output  = await toolsIndex.execute(name, args || {}, ctx);
           result = { content: [{ type: 'text', text: output }] };
           break;

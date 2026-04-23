@@ -80,7 +80,8 @@ async function _loadLocal() {
       } catch (importErr) {
         throw new Error(`@huggingface/transformers no instalado: ${importErr.message}`);
       }
-      env.cacheDir = path.join(__dirname, 'models-cache');
+      const { MODELS_DIR } = require('./paths');
+      env.cacheDir = MODELS_DIR;
 
       _localPipeline = await pipeline('feature-extraction', LOCAL_MODEL, {
         dtype: 'q8',

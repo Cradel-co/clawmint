@@ -2,9 +2,12 @@
 
 const path = require('path');
 const fs = require('fs');
+const { CONFIG_FILES } = require('../paths');
 
+// mcp-system-prompt.txt es asset bundleado con el código (read-only).
+// mcp-config.json es user-data (se regenera runtime, va a CONFIG_DIR).
 const MCP_SYSTEM_PROMPT_PATH = path.join(__dirname, '..', 'mcp-system-prompt.txt');
-const MCP_CONFIG_PATH = path.join(__dirname, '..', 'mcp-config.json');
+const MCP_CONFIG_PATH = CONFIG_FILES.mcpConfig;
 let _mcpSystemPrompt = null;
 function getMcpSystemPrompt() {
   if (_mcpSystemPrompt === null) {
@@ -45,6 +48,25 @@ class ConversationService {
     GeminiCliSession = null,
     consolidator   = null,
     limitsRepo     = null,
+    tasksRepo      = null,
+    permissionService = null,
+    hookRegistry   = null,
+    compactorPipeline = null,
+    toolCatalog    = null,
+    typedMemoryService = null,
+    planModeService = null,
+    jobQuotaService = null,
+    mcpAuthService  = null,
+    lspServerManager = null,
+    resumableSessionsRepo = null,
+    workspaceRegistry = null,
+    loopRunner     = null,
+    eventBus       = null,
+    locationService = null,
+    userPreferencesRepo = null,
+    reminders      = null,
+    householdRepo  = null,
+    instructionsLoader = null,
     logger         = console,
   }) {
     this._sessionManager     = sessionManager;
@@ -63,6 +85,27 @@ class ConversationService {
     this._agents             = agents;
     this._skills             = skills;
     this._limitsRepo         = limitsRepo;
+    this._tasksRepo          = tasksRepo;
+    this._permissionService  = permissionService;
+    this._hookRegistry       = hookRegistry;
+    this._compactorPipeline  = compactorPipeline;
+    this._toolCatalog        = toolCatalog;
+    this._typedMemoryService = typedMemoryService;
+    this._planModeService    = planModeService;
+    this._jobQuotaService    = jobQuotaService;
+    this._mcpAuthService     = mcpAuthService;
+    this._lspServerManager   = lspServerManager;
+    this._resumableSessionsRepo = resumableSessionsRepo;
+    this._workspaceRegistry  = workspaceRegistry;
+    this._eventBus           = eventBus;
+    this._locationService    = locationService;
+    this._userPreferencesRepo = userPreferencesRepo;
+    this._reminders          = reminders;
+    this._householdRepo      = householdRepo;
+    this._instructionsLoader = instructionsLoader;
+    // LoopRunner opcional: si no se inyecta, fallback a path legacy
+    this._loopRunner         = loopRunner;
+    this._useLoopRunner      = loopRunner && process.env.USE_LOOP_RUNNER !== 'false';
     this._ClaudePrintSession = ClaudePrintSession;
     this._GeminiCliSession   = GeminiCliSession || (() => {
       try { return require('../core/GeminiCliSession'); } catch { return null; }
@@ -300,10 +343,53 @@ class ConversationService {
     shellId       = null,
     botKey        = null,
     channel       = null,
-  }) {
+    userId        = null,
+    // Delegación (Fase 5): cuando este mensaje viene de AgentOrchestrator
+    _isDelegated     = false,
+    _delegationDepth = 0,
+    _subagentConfig  = null,
+    _parentPrefix    = null,   // Fase 7.5.7 — system prompt del coordinador para cache share
+    _workspace       = null,   // Fase 8.4 — handle del workspace acquired por el orchestrator
+  } = {}) {
+    // Bloquear delegaciones que exceden la profundidad permitida. Tope = 3 (MAX_DELEGATION_DEPTH)
+    if (_isDelegated && _delegationDepth > 3) {
+      return { text: `Error: profundidad de delegación excedida (${_delegationDepth}). Sintetizá con lo que tenés.`, history };
+    }
+    // Un subagente con maxDelegationDepth=0 no puede re-delegar.
+    if (_isDelegated && _subagentConfig && _subagentConfig.maxDelegationDepth === 0 && _delegationDepth > 1) {
+      return { text: `Error: subagente de tipo "${_subagentConfig.type}" no puede re-delegar.`, history };
+    }
     // Procesar archivos no-imagen: extraer contenido como texto y adjuntarlo al mensaje
     if (files && files.length > 0) {
       text = await this._processFiles(text, files);
+    }
+
+    // Fase 4 extra — si hay un suspended prompt pendiente para este chat, el
+    // próximo mensaje se interpreta como respuesta a esa pregunta. El tool
+    // `ask_user_question` que originó el suspend recibe el texto y el loop
+    // que lo invocó continúa.
+    if (chatId && this._loopRunner && typeof this._loopRunner.hasSuspended === 'function'
+        && this._loopRunner.hasSuspended(String(chatId)) && !_isDelegated) {
+      const resumed = this._loopRunner.resume(String(chatId), text);
+      if (resumed) {
+        csdbg('suspend', `resumed suspended prompt for chat=${chatId}`);
+        return { text: '(respuesta entregada al loop pausado)', history, _resumed: true };
+      }
+    }
+
+    // Fase 11.2 — slash commands: detectar "/slug [resto]" y resolver contra skills.
+    // Una sola impl para todos los canales. No toca CommandHandler de telegram (que maneja /help etc).
+    if (this._skills && typeof text === 'string' && text.trimStart().startsWith('/')) {
+      try {
+        const { parseSlashCommand } = require('../core/slashCommandParser');
+        const parsed = parseSlashCommand(text, { skills: this._skills });
+        if (parsed.slug) {
+          csdbg('slash', `slug=${parsed.slug} resolved → injecting system-reminder`);
+          text = parsed.injected + '\n\n' + parsed.text;
+        }
+      } catch (err) {
+        csdbg('slash', `parse falló: ${err.message}`);
+      }
     }
 
     const resolvedShellId = shellId || String(chatId);
@@ -331,9 +417,11 @@ class ConversationService {
     }
 
     if (!CLI_PROVIDERS.has(provider) && this._providers) {
-      csdbg('msg', `→ _processApiProvider mode=${claudeMode}`);
+      csdbg('msg', `→ _processApiProvider mode=${claudeMode} delegated=${_isDelegated} depth=${_delegationDepth}`);
       return this._processApiProvider({
-        chatId, agentKey, provider, model, text, images, history, onChunk, onStatus, onAskPermission, claudeMode, shellId: resolvedShellId, botKey, channel,
+        chatId, agentKey, provider, model, text, images, history, onChunk, onStatus, onAskPermission,
+        claudeMode, shellId: resolvedShellId, botKey, channel, userId,
+        _isDelegated, _delegationDepth, _subagentConfig, _parentPrefix, _workspace,
       });
     }
 
@@ -697,9 +785,48 @@ class ConversationService {
 
     csdbg('claude', `→ session.sendMessage() textLen=${messageText.length}`);
     const t0 = Date.now();
+    // D4 — capturar eventos estructurados del CLI (tool_call, tool_result, usage).
+    // Permite observabilidad + hooks pre/post_tool_use (observacionales, el CLI ejecuta internamente).
+    let cliUsage = null;
+    const hookCtx = { chatId, userId: null, agentKey, channel: channel || 'telegram', botKey };
+    const onEvent = (ev) => {
+      try {
+        if (ev.type === 'usage') {
+          cliUsage = {
+            promptTokens: ev.promptTokens,
+            completionTokens: ev.completionTokens,
+            cacheCreation: ev.cacheCreation,
+            cacheRead: ev.cacheRead,
+            costUsd: ev.costUsd,
+          };
+        }
+        // Emitir al eventBus para UI/metrics (no bloquea)
+        if (this._eventBus) {
+          if (ev.type === 'tool_call') {
+            this._eventBus.emit('cli:tool_call', { chatId, agentKey, name: ev.name, args: ev.args });
+          } else if (ev.type === 'tool_result') {
+            this._eventBus.emit('cli:tool_result', { chatId, agentKey, tool_use_id: ev.tool_use_id, isError: ev.isError });
+          }
+        }
+        // Hooks observacionales (no pueden bloquear porque el CLI ya ejecutó)
+        if (this._hookRegistry && this._hookRegistry.enabled && ev.type === 'tool_call') {
+          this._hookRegistry.emit('pre_tool_use',
+            { name: ev.name, args: ev.args || {}, agentKey, userId: null, _observational: true },
+            hookCtx
+          ).catch(() => {});
+        }
+        if (this._hookRegistry && this._hookRegistry.enabled && ev.type === 'tool_result') {
+          this._hookRegistry.emit('post_tool_use',
+            { name: ev.tool_use_id, result: ev.content, agentKey, userId: null, _observational: true, isError: ev.isError },
+            hookCtx
+          ).catch(() => {});
+        }
+      } catch { /* fire-and-forget */ }
+    };
+
     let result;
     try {
-      result = await session.sendMessage(messageText, onChunk, onStatus);
+      result = await session.sendMessage(messageText, onChunk, onStatus, onEvent);
     } catch (err) {
       // Si falló con --resume (session_id viejo/inválido), reintentar como nueva sesión
       if (session.claudeSessionId && session.messageCount > 0) {
@@ -708,7 +835,7 @@ class ConversationService {
         session.claudeSessionId = null;
         session.messageCount = 0;
         isNewSession = true;
-        result = await session.sendMessage(messageText, onChunk, onStatus);
+        result = await session.sendMessage(messageText, onChunk, onStatus, onEvent);
       } else {
         throw err;
       }
@@ -717,7 +844,7 @@ class ConversationService {
     // sendMessage ahora devuelve { text, usedMcpTools } o string (backward compat)
     const rawResponse = typeof result === 'string' ? result : (result?.text || '');
     const usedMcpTools = typeof result === 'object' ? result.usedMcpTools : false;
-    csdbg('claude', `← session.sendMessage() ${Date.now() - t0}ms responseLen=${rawResponse.length} usedMcpTools=${usedMcpTools}`);
+    csdbg('claude', `← session.sendMessage() ${Date.now() - t0}ms responseLen=${rawResponse.length} usedMcpTools=${usedMcpTools} usage=${cliUsage ? 'yes' : 'no'}`);
 
     // Extraer y aplicar operaciones de memoria
     let response = rawResponse;
@@ -745,13 +872,14 @@ class ConversationService {
       text: response || '',
       usedMcpTools,
       savedMemoryFiles,
+      usage: cliUsage, // D4 — usage del CLI disponible (antes siempre null)
       ...(isNewSession ? { newSession: session } : {}),
     };
   }
 
   // ── Proveedores API (Anthropic, Gemini, OpenAI, …) ───────────────────────
 
-  async _processApiProvider({ chatId, agentKey, provider, model, text, images, history, onChunk, onStatus, onAskPermission, claudeMode, shellId, botKey, channel }) {
+  async _processApiProvider({ chatId, agentKey, provider, model, text, images, history, onChunk, onStatus, onAskPermission, claudeMode, shellId, botKey, channel, userId, _isDelegated = false, _delegationDepth = 0, _subagentConfig = null, _parentPrefix = null, _workspace = null }) {
     const provObj   = this._providers.get(provider);
     const apiKey    = this._providerConfig ? this._providerConfig.getApiKey(provider) : '';
     const cfg       = this._providerConfig ? this._providerConfig.getConfig() : {};
@@ -771,32 +899,123 @@ class ConversationService {
           scheduler: this._scheduler,
           usersRepo: this._usersRepo,
           orchestrator: this._orchestrator,
+          limitsRepo: this._limitsRepo,
+          tasksRepo: this._tasksRepo,
+          permissionService: this._permissionService,
+          toolCatalog: this._toolCatalog,
+          typedMemoryService: this._typedMemoryService,
+          planModeService: this._planModeService,
+          jobQuotaService: this._jobQuotaService,
+          mcpAuthService: this._mcpAuthService,
+          lspServerManager: this._lspServerManager,
+          resumableSessionsRepo: this._resumableSessionsRepo,
+          workspaceRegistry: this._workspaceRegistry,
+          loopRunner: this._loopRunner,
+          eventBus: this._eventBus,
+          locationService: this._locationService,
+          userPreferencesRepo: this._userPreferencesRepo,
+          reminders: this._reminders,
+          householdRepo: this._householdRepo,
+          hookRegistry: this._hookRegistry,
           _convSvc: this,
           agents: this._agents,
           chatId,
           channel: channel || 'telegram',
           agentKey,
           botKey,
+          userId,
+          _isDelegated,
+          _delegationDepth,
+          _subagentConfig,
+          allowedToolPatterns: _subagentConfig ? _subagentConfig.allowedToolPatterns : null,
         })
       : undefined;
 
-    // Wrappear execToolFn según modo
+    // Wrappear execToolFn: hooks → permission → mode → execute
     const mode = claudeMode || 'auto';
     let execToolFn = rawExecFn;
-    if (mode === 'plan' && rawExecFn) {
+
+    const hookCtx = { chatId, userId, channel: channel || 'telegram', agentKey, botKey };
+    const hookRegistry = this._hookRegistry;
+    const permSvc = this._permissionService;
+    const permCtx = { chatId, userId, channel: channel || 'telegram', usersRepo: this._usersRepo };
+
+    if (rawExecFn) {
+      const innerExec = rawExecFn;
+      execToolFn = async (name, args) => {
+        // 1. pre_tool_use hook
+        let currentArgs = args;
+        if (hookRegistry && hookRegistry.enabled) {
+          const preResult = await hookRegistry.emit('pre_tool_use',
+            { name, args: currentArgs, agentKey, userId },
+            hookCtx
+          );
+          if (preResult.block) {
+            return `Herramienta "${name}" bloqueada por hook: ${preResult.block}`;
+          }
+          currentArgs = preResult.args;
+        }
+
+        // 2. permission gate (palabra final sobre hooks)
+        if (permSvc) {
+          const action = permSvc.resolve(name, permCtx);
+          if (action === 'deny') {
+            return `Herramienta "${name}" rechazada por política de permisos.`;
+          }
+          if (action === 'ask') {
+            if (!onAskPermission) return `Herramienta "${name}" requiere aprobación del usuario (canal no soporta prompts).`;
+            const ok = await onAskPermission(name, currentArgs);
+            if (!ok) return 'Herramienta rechazada por el usuario.';
+          }
+        }
+
+        // 3. ejecutar
+        const result = await innerExec(name, currentArgs);
+
+        // 4. post_tool_use hook (observación; no muta result)
+        if (hookRegistry && hookRegistry.enabled) {
+          try {
+            await hookRegistry.emit('post_tool_use',
+              { name, args: currentArgs, result, agentKey, userId },
+              hookCtx
+            );
+          } catch { /* post hook errors no rompen el result */ }
+        }
+
+        return result;
+      };
+    }
+
+    // Mode wrapper se aplica al final (por encima de hooks+permission)
+    if (mode === 'plan' && execToolFn) {
       execToolFn = async (name, args) =>
         `[Modo Plan] Se ejecutaría ${name}(${JSON.stringify(args)}). No ejecutado — describí qué harías.`;
-    } else if (mode === 'ask' && rawExecFn && onAskPermission) {
+    } else if (mode === 'ask' && execToolFn && onAskPermission && !this._permissionService?.enabled) {
+      // Solo aplicar modo ask legacy si permissions está deshabilitado (evitar doble prompt)
+      const inner = execToolFn;
       execToolFn = async (name, args) => {
         const approved = await onAskPermission(name, args);
         if (!approved) return 'Herramienta rechazada por el usuario.';
-        return rawExecFn(name, args);
+        return inner(name, args);
       };
     }
 
     // System prompt con instrucciones de herramientas según canal
     const toolPrompt = this._buildToolSystemPrompt(channel, botKey, chatId, agentKey);
+    // A2 — instrucciones desde CLAUDE.md/GLOBAL.md/AGENTS.md (si el loader está inyectado y habilitado)
+    let instructionsBlock = '';
+    if (this._instructionsLoader && this._instructionsLoader.enabled) {
+      try {
+        instructionsBlock = this._instructionsLoader.build({
+          cwd: shellId ? undefined : undefined, // cwd del chat se podría inferir de ShellSession
+          chatId, userId, agentKey, channel: channel || 'telegram',
+        });
+      } catch (err) {
+        this._logger.warn && this._logger.warn(`[ConversationService] InstructionsLoader falló: ${err.message}`);
+      }
+    }
     let basePrompt = toolPrompt || 'Sos un asistente útil. Respondé de forma concisa y clara.';
+    if (instructionsBlock) basePrompt = `${instructionsBlock}\n\n${basePrompt}`;
     if (mode === 'plan') {
       basePrompt += '\n\n## MODO PLAN\nEstás en modo planificación. Las herramientas NO se ejecutan realmente — retornan descripciones simuladas. Describí paso a paso qué harías para resolver el pedido del usuario, qué herramientas usarías y con qué argumentos. No ejecutes, solo planificá.';
     }
@@ -812,7 +1031,40 @@ class ConversationService {
       : { shouldNudge: false, signals: [] };
 
     const toolInstr    = (agentKey && shouldNudge && this._memory) ? this._memory.TOOL_INSTRUCTIONS : '';
-    const systemPrompt = [basePrompt, memoryCtx, toolInstr].filter(Boolean).join('\n\n');
+
+    // D3 — Cache-optimized system prompt: bloques estables (toolPrompt + InstructionsLoader)
+    // llevan el cache breakpoint; bloques dinámicos (memoryCtx cambia por spreading activation,
+    // toolInstr depende de signals) van DESPUÉS y no rompen el cache prefix.
+    // Si el provider soporta cache (Anthropic), emitimos array; si no, join-eamos a string.
+    const providerSupportsArraySystem = (provObj && provObj.name === 'anthropic');
+    let systemPrompt;
+    if (providerSupportsArraySystem && basePrompt) {
+      const blocks = [{ type: 'text', text: basePrompt, _cacheable: true }];
+      if (memoryCtx) blocks.push({ type: 'text', text: memoryCtx });
+      if (toolInstr) blocks.push({ type: 'text', text: toolInstr });
+      systemPrompt = blocks;
+    } else {
+      systemPrompt = [basePrompt, memoryCtx, toolInstr].filter(Boolean).join('\n\n');
+    }
+
+    // Fase 7.5.7 — prefix cache share: si el orchestrator pasó el system prompt
+    // del coordinador, lo usamos para que el provider haga cache hit. Solo aplica
+    // cuando el subagente comparte cache (skipCacheWrite=false).
+    if (_parentPrefix && _parentPrefix.systemPrompt && _isDelegated
+        && (!_subagentConfig || _subagentConfig.skipCacheWrite === false)) {
+      systemPrompt = _parentPrefix.systemPrompt;
+      const len = typeof systemPrompt === 'string' ? systemPrompt.length : JSON.stringify(systemPrompt).length;
+      csdbg('prefix-share', `usando system prompt del coordinador (len=${len})`);
+    } else if (this._orchestrator && !_isDelegated && chatId) {
+      // Capturar el system prompt del coordinador para futuras delegaciones del workflow.
+      // workflowId se infiere desde el orchestrator's chat→workflow map si existe.
+      try {
+        const wfId = this._orchestrator.getActiveWorkflowId && this._orchestrator.getActiveWorkflowId(chatId);
+        if (wfId && typeof this._orchestrator.captureCoordinatorPrefix === 'function') {
+          this._orchestrator.captureCoordinatorPrefix(wfId, { systemPrompt, provider, model });
+        }
+      } catch { /* no-op */ }
+    }
     const userText = (shouldNudge && this._memory) ? text + this._memory.buildNudge(signals) : text;
 
     // Construir content con imágenes según el provider
@@ -840,8 +1092,38 @@ class ConversationService {
       userContent = userText;
     }
 
-    // Compactar historial si excede el límite
-    const compactedHistory = await this._compactHistory(history, provider, apiKey, useModel);
+    // Compactar historial vía CompactorPipeline (Fase 7). Si no está inyectado, fallback legacy.
+    let compactedHistory;
+    if (this._compactorPipeline && this._compactorPipeline.enabled) {
+      let piped = null;
+      let circuitOpen = false;
+      try {
+        piped = await this._compactorPipeline.maybeCompact(history, {
+          turnCount:    history.length,
+          historySize:  history.length,
+          ctx: { chatId, agentKey, provider, apiKey, model: useModel, hookRegistry: this._hookRegistry },
+        });
+      } catch (err) {
+        // Fase 7.5.5: circuit breaker abierto → abortar turn con mensaje claro al usuario
+        if (err && err.name === 'CompactCircuitOpenError') {
+          csdbg('compact', `circuit breaker abierto para chat ${chatId}; abortando turn`);
+          circuitOpen = true;
+        } else {
+          csdbg('compact', `pipeline falló: ${err.message}; fallback legacy`);
+        }
+      }
+      if (circuitOpen) {
+        return {
+          text: 'Error: la compactación de contexto falló 3 veces seguidas para este chat. Empezá una conversación nueva o aumentá el contexto manualmente para continuar.',
+          history,
+        };
+      }
+      compactedHistory = piped && Array.isArray(piped.history)
+        ? piped.history
+        : await this._compactHistory(history, provider, apiKey, useModel);
+    } else {
+      compactedHistory = await this._compactHistory(history, provider, apiKey, useModel);
+    }
     const updatedHistory = [...compactedHistory, { role: 'user', content: userContent }];
 
     // Para Gemini y Ollama: adjuntar imágenes raw para conversión en el provider
@@ -853,68 +1135,99 @@ class ConversationService {
     // Detectar channel para filtrar critter tools (p2p desde shellId, o el channel del caller)
     const toolChannel = shellId?.startsWith('p2p-') ? 'p2p' : channel || undefined;
 
-    const MAX_RETRIES = 3;
-    const GLOBAL_TIMEOUT_MS = 120000;
     let accumulated = '';
-    let usedTools = false;
     let usedToolsEver = false;
     let usage = null;
+    // D2 — mensajes internos del turno preservados por el provider (array de content blocks con
+    // thinking/tool_use). Si el provider no los emite, queda null y se usa el fallback string.
+    let turnMessages = null;
 
-    if (onStatus) onStatus('thinking');
-
-    const chatArgs = { systemPrompt, history: updatedHistory, apiKey, model: useModel, executeTool: execToolFn, channel: toolChannel, agentRole, ...extraOpts };
-
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      // No reintentar si ya se ejecutaron tools (side effects no son idempotentes)
-      if (attempt > 0 && usedToolsEver) break;
-
-      accumulated = '';
-      usedTools = false;
-      usage = null;
-      let timedOut = false;
-
-      const gen = provObj.chat(chatArgs);
-      const timeoutId = setTimeout(() => { timedOut = true; }, GLOBAL_TIMEOUT_MS);
-
-      try {
-        for await (const event of gen) {
-          if (timedOut) {
-            accumulated = 'Error: timeout — el provider no respondió en 120s.';
-            break;
-          }
-          if (event.type === 'text') {
-            accumulated += event.text;
-            if (onChunk) onChunk(accumulated);
-          } else if (event.type === 'tool_call') {
-            usedTools = true;
-            usedToolsEver = true;
-            if (onStatus) onStatus('tool_use', event.name);
-          } else if (event.type === 'usage') {
-            usage = { promptTokens: event.promptTokens, completionTokens: event.completionTokens };
-          } else if (event.type === 'done') {
-            accumulated = event.fullText || accumulated;
-          }
-        }
-      } catch (err) {
-        accumulated = `Error ${provider}: ${err.message}`;
-      } finally {
-        clearTimeout(timeoutId);
+    // Ajuste 6.6: hook 'chat.params' permite mutar temperature/topP/topK/maxTokens antes del provider.
+    // Default params vacío — cada provider mantiene sus defaults si no se mutan acá.
+    let chatParams = {};
+    if (this._hookRegistry && this._hookRegistry.enabled) {
+      const paramsResult = await this._hookRegistry.emit('chat.params',
+        { params: chatParams, provider, model: useModel, agentKey },
+        { chatId, userId, channel: channel || 'telegram', agentKey }
+      );
+      if (paramsResult.block) {
+        return { text: `Error: turn bloqueado por hook chat.params: ${paramsResult.block}`, history };
       }
-
-      // Verificar si es error transitorios que amerita retry
-      const isError = accumulated.startsWith('Error');
-      const isTransient = isError && /timeout|429|500|502|503|ECONNRESET|ETIMEDOUT|rate.limit/i.test(accumulated);
-
-      if (!isError || !isTransient || attempt === MAX_RETRIES - 1) break;
-
-      // Backoff exponencial con jitter
-      const delay = Math.pow(2, attempt) * 1000 + Math.random() * 500;
-      csdbg('retry', `attempt ${attempt + 1}/${MAX_RETRIES}, waiting ${Math.round(delay)}ms — ${accumulated.slice(0, 100)}`);
-      if (onStatus) onStatus('thinking', `reintento ${attempt + 2}/${MAX_RETRIES}`);
-      await new Promise(r => setTimeout(r, delay));
+      if (paramsResult.params) chatParams = paramsResult.params;
     }
 
-    if (onStatus && usedTools) onStatus('done');
+    const chatArgs = { systemPrompt, history: updatedHistory, apiKey, model: useModel, executeTool: execToolFn, channel: toolChannel, agentRole, userId, ...chatParams, ...extraOpts };
+
+    if (this._useLoopRunner && this._loopRunner) {
+      const result = await this._loopRunner.run({
+        chatId, agentKey, provider, model: useModel,
+        chatArgs,
+        provObj,
+        onChunk, onStatus,
+        timeoutMs: 120_000,
+      });
+      accumulated   = result.text;
+      usage         = result.usage;
+      usedToolsEver = result.usedTools;
+      turnMessages  = result.turnMessages || null; // D2
+      csdbg('loop', `runner done stopReason=${result.stopReason} usedTools=${result.usedTools}`);
+    } else {
+      // ── Path legacy (rollback via USE_LOOP_RUNNER=false) ───────────────────
+      const MAX_RETRIES = 3;
+      const GLOBAL_TIMEOUT_MS = 120000;
+      let usedTools = false;
+
+      if (onStatus) onStatus('thinking');
+
+      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        if (attempt > 0 && usedToolsEver) break;
+
+        accumulated = '';
+        usedTools = false;
+        usage = null;
+        let timedOut = false;
+
+        const gen = provObj.chat(chatArgs);
+        const timeoutId = setTimeout(() => { timedOut = true; }, GLOBAL_TIMEOUT_MS);
+
+        try {
+          for await (const event of gen) {
+            if (timedOut) {
+              accumulated = 'Error: timeout — el provider no respondió en 120s.';
+              break;
+            }
+            if (event.type === 'text') {
+              accumulated += event.text;
+              if (onChunk) onChunk(accumulated);
+            } else if (event.type === 'tool_call') {
+              usedTools = true;
+              usedToolsEver = true;
+              if (onStatus) onStatus('tool_use', event.name);
+            } else if (event.type === 'usage') {
+              usage = { promptTokens: event.promptTokens, completionTokens: event.completionTokens };
+            } else if (event.type === 'done') {
+              accumulated = event.fullText || accumulated;
+              if (Array.isArray(event.turnMessages)) turnMessages = event.turnMessages; // D2
+            }
+          }
+        } catch (err) {
+          accumulated = `Error ${provider}: ${err.message}`;
+        } finally {
+          clearTimeout(timeoutId);
+        }
+
+        const isError = accumulated.startsWith('Error');
+        const isTransient = isError && /timeout|429|500|502|503|ECONNRESET|ETIMEDOUT|rate.limit/i.test(accumulated);
+        if (!isError || !isTransient || attempt === MAX_RETRIES - 1) break;
+
+        const delay = Math.pow(2, attempt) * 1000 + Math.random() * 500;
+        csdbg('retry', `attempt ${attempt + 1}/${MAX_RETRIES}, waiting ${Math.round(delay)}ms — ${accumulated.slice(0, 100)}`);
+        if (onStatus) onStatus('thinking', `reintento ${attempt + 2}/${MAX_RETRIES}`);
+        await new Promise(r => setTimeout(r, delay));
+      }
+
+      if (onStatus && usedTools) onStatus('done');
+    }
 
     // Extraer y aplicar operaciones de memoria
     let finalText = accumulated;
@@ -934,7 +1247,28 @@ class ConversationService {
       }
     }
 
-    updatedHistory.push({ role: 'assistant', content: finalText });
+    // D2 — si el provider emitió `turnMessages` (array de content blocks preservados con
+    // thinking/tool_use), lo usamos en lugar del fallback `{role:'assistant', content:finalText}`.
+    // Esto mantiene la trayectoria completa en el history persistido (SQLite `ai_history`).
+    // Providers que no lo emiten (gemini/ollama/etc.) siguen con el path string — zero breaking.
+    if (Array.isArray(turnMessages) && turnMessages.length > 0) {
+      for (const m of turnMessages) {
+        if (m && typeof m === 'object' && m.role && m.content !== undefined) {
+          updatedHistory.push(m);
+        }
+      }
+      // Si memoryOps limpió el texto (<save_memory> tags), actualizamos el último text block
+      // del último assistant para que el history persista la versión limpia.
+      if (finalText !== accumulated) {
+        const lastAssistant = [...updatedHistory].reverse().find(m => m.role === 'assistant');
+        if (lastAssistant && Array.isArray(lastAssistant.content)) {
+          const textBlock = lastAssistant.content.find(b => b && b.type === 'text');
+          if (textBlock) textBlock.text = finalText;
+        }
+      }
+    } else {
+      updatedHistory.push({ role: 'assistant', content: finalText });
+    }
 
     return {
       text:    finalText || '',

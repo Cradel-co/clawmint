@@ -1,4 +1,4 @@
-> Última actualización: 2026-03-17
+> Última actualización: 2026-04-19
 
 # Relaciones del modelo de datos
 
@@ -19,8 +19,18 @@ note_links ◄──────────── spreading activation consume 
 note_embeddings
 
 chat_settings ──────────── (bot_key relaciona con bots.json)
-
 consolidation_queue ──────── (agent_key relaciona con agents.json)
+
+users ─────┬── invitations.created_by (CASCADE)
+           ├── invitations.used_by_user_id (SET NULL)
+           ├── household_data.created_by (NOT NULL)
+           └── user_identities.user_id (CASCADE)
+
+household_data — sin FK adicionales, scope global del hogar
+                 (todos los users.status='active' leen/escriben)
+
+system_config — sin FK, key/value global de la instalación
+                (admin-only escritura, secrets cifrados via TokenCrypto)
 ```
 
 ---
@@ -93,6 +103,43 @@ La columna `bot_key` en `chat_settings` referencia el campo `key` en `bots.json`
 ### `consolidation_queue` → `notes`
 
 La cola solo referencia `agent_key` (string). Los registros `done` pueden contener en `turns` el texto que eventualmente generó notas, pero no hay FK directa. La trazabilidad es via `agent_key` + `processed_at`.
+
+---
+
+### `invitations` → `users` (multi-FK)
+
+```sql
+-- Invitaciones que un admin ha generado
+SELECT * FROM invitations WHERE created_by = ?;
+
+-- Quién consumió una invitación específica
+SELECT u.name, u.email FROM users u
+JOIN invitations i ON i.used_by_user_id = u.id
+WHERE i.code = ?;
+```
+
+- `invitations.created_by → users.id` (CASCADE) — si se borra el admin, se borran sus invitaciones huérfanas.
+- `invitations.used_by_user_id → users.id` (SET NULL) — si se borra el invitado, la invitación queda en histórico sin user asociado.
+
+---
+
+### `household_data` → `users.created_by`
+
+```sql
+-- Items pendientes del hogar agregados por un usuario específico
+SELECT * FROM household_data
+WHERE created_by = ? AND completed_at IS NULL
+ORDER BY created_at DESC;
+
+-- Próximos eventos familiares en N días
+SELECT * FROM household_data
+WHERE kind = 'family_event'
+  AND date_at BETWEEN ? AND ?
+  AND completed_at IS NULL
+ORDER BY date_at ASC;
+```
+
+`household_data` no tiene FK estricta a `users` (usa SET NULL implícito al borrar) — los datos del hogar persisten incluso si su creador deja la familia.
 
 ---
 

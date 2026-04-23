@@ -1,18 +1,22 @@
-> Última actualización: 2026-03-17
+> Última actualización: 2026-03-29
 
 # Clawmint — Documentación
 
-Terminal en tiempo real accesible desde el navegador y Telegram. Combina PTY virtual, WebSocket, REST API y un bot de Telegram como frontend alternativo para Claude Code y otros agentes de IA.
+Agente familiar doméstico: asistente IA que corre en el hogar, accesible para todos los miembros de la familia a través de Telegram, web o voz. Gestiona correos, calendario, recordatorios, tareas y más.
 
 ---
 
-## Primeros pasos
+## Visión y primeros pasos
 
 | Documento | Descripción |
 |-----------|-------------|
+| [vision.md](./vision.md) | Visión del proyecto, principios, integraciones objetivo |
 | [setup.md](./setup.md) | Instalación, configuración y comandos de desarrollo |
 | [architecture.md](./architecture.md) | Arquitectura del sistema, módulos y flujo de datos |
-| [roadmap.md](./roadmap.md) | Estado actual y próximos pasos |
+| [roadmap.md](./roadmap.md) | Estado actual y próximas fases |
+| [philosophy.md](./philosophy.md) | Principios del proyecto y porqué de las decisiones arquitectónicas |
+| [development-rules.md](./development-rules.md) | Reglas concretas de código, commits, docs, testing, seguridad |
+| [engineering-craftsmanship.md](./engineering-craftsmanship.md) | Mentalidad, técnicas y estrategias de ingeniería senior (extraídas de Claude Code) |
 
 ---
 

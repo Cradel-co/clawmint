@@ -6,10 +6,19 @@
  * Expone: memory_list, memory_read, memory_write, memory_append, memory_delete
  * Usa ctx.memory (server/memory.js) pasado desde el router MCP.
  * El agentKey se resuelve desde ctx.agentKey o args.agent (default: 'default').
+ * Usuarios no-admin tienen namespace aislado: user:<userId>:<agentKey>
  */
 
+const { isAdmin, resolveUserId } = require('./user-sandbox');
+
 function _agent(args, ctx) {
-  return args.agent || ctx.agentKey || 'default';
+  const base = args.agent || ctx.agentKey || 'default';
+  // Non-admin users get a namespaced agent key for isolation
+  if (!isAdmin(ctx)) {
+    const userId = resolveUserId(ctx);
+    if (userId) return `user:${userId}:${base}`;
+  }
+  return base;
 }
 
 function _requireMemory(ctx) {

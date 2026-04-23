@@ -2,8 +2,9 @@
 
 const fs = require('fs');
 const path = require('path');
+const { CONFIG_FILES } = require('./paths');
 
-const REMINDERS_FILE = path.join(__dirname, 'reminders.json');
+const REMINDERS_FILE = CONFIG_FILES.reminders;
 
 /** @type {Array<{id: string, chatId: number, botKey: string, text: string, createdAt: number, triggerAt: number}>} */
 let reminders = [];

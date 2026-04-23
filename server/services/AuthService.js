@@ -56,20 +56,43 @@ class AuthService {
     `ALTER TABLE users ADD COLUMN avatar_url TEXT`,
   ];
 
-  constructor({ db, usersRepo, logger }) {
+  constructor({ db, usersRepo, invitationsRepo = null, logger }) {
     this._db        = db;
     this._usersRepo = usersRepo;
+    this._invitationsRepo = invitationsRepo;
     this._logger    = logger;
     this._jwtSecret = process.env.JWT_SECRET || null;
   }
 
+  /** Setter para inyectar invitationsRepo después de la construcción si hace falta. */
+  setInvitationsRepo(repo) { this._invitationsRepo = repo; }
+
   init() {
     if (!this._db) return;
 
-    // Generar secret aleatorio si no hay env var (warn)
+    // Auto-persistir JWT secret: env var → archivo en CONFIG_DIR → auto-generar.
+    // Patrón idéntico al de TokenCrypto para que la app sea instalable sin .env.
     if (!this._jwtSecret) {
-      this._jwtSecret = crypto.randomBytes(64).toString('hex');
-      this._logger.warn('[AuthService] JWT_SECRET no configurado — usando secret aleatorio (no persistente entre reinicios)');
+      const fs = require('fs');
+      const { CONFIG_FILES } = require('../paths');
+      const keyPath = CONFIG_FILES.jwtSecret;
+      try {
+        if (fs.existsSync(keyPath)) {
+          this._jwtSecret = fs.readFileSync(keyPath, 'utf8').trim();
+          this._logger.info(`[AuthService] JWT secret cargado desde ${keyPath}`);
+        }
+      } catch (err) {
+        this._logger.warn(`[AuthService] no pude leer JWT secret: ${err.message}`);
+      }
+      if (!this._jwtSecret) {
+        this._jwtSecret = crypto.randomBytes(64).toString('hex');
+        try {
+          fs.writeFileSync(keyPath, this._jwtSecret, { mode: 0o600 });
+          this._logger.info(`[AuthService] JWT secret auto-generado → ${keyPath}`);
+        } catch (err) {
+          this._logger.warn(`[AuthService] no pude persistir JWT secret: ${err.message}. Tokens se invalidarán al reiniciar.`);
+        }
+      }
     }
 
     // Migrar columnas nuevas en users
@@ -93,7 +116,7 @@ class AuthService {
     const original = this._usersRepo.update.bind(this._usersRepo);
     this._usersRepo.update = (id, fields) => {
       if (!this._usersRepo._db) return false;
-      const allowed = ['name', 'role', 'email', 'password_hash', 'email_verified', 'avatar_url'];
+      const allowed = ['name', 'role', 'status', 'email', 'password_hash', 'email_verified', 'avatar_url'];
       const sets = [];
       const vals = [];
       for (const key of allowed) {
@@ -115,9 +138,15 @@ class AuthService {
 
   /**
    * Registra un usuario con email y contraseña.
-   * @returns {{ user, accessToken, refreshToken }} o lanza error.
+   *
+   * Comportamiento:
+   *   - Primer usuario en DB vacía → role='admin', status='active', emite tokens.
+   *   - Subsiguientes              → role='user',  status='pending', NO emite tokens.
+   *
+   * @returns {{ user, accessToken, refreshToken }} para el primer admin
+   *       o {{ user, pending: true, message }}    para los demás (esperan aprobación).
    */
-  async register(email, password, name) {
+  async register(email, password, name, opts = {}) {
     if (!email || !password) throw new Error('Email y contraseña son requeridos');
     email = email.toLowerCase().trim();
 
@@ -130,19 +159,115 @@ class AuthService {
     const existing = this._findByEmail(email);
     if (existing) throw new Error('El email ya está registrado');
 
+    // First-user detection: si la DB está vacía, este user es el admin inicial.
+    // Ignoramos opts.firstAdmin si ya hay users (previene escalada).
+    const userCount = typeof this._usersRepo.count === 'function'
+      ? this._usersRepo.count()
+      : this._usersRepo.listAll().length;
+    const isFirst = userCount === 0;
+
+    // Invitation flow: si pasaron inviteCode válido, bypassa el status='pending'.
+    let invitationUsed = null;
+    if (!isFirst && opts.inviteCode && this._invitationsRepo) {
+      const inv = this._invitationsRepo.get(opts.inviteCode);
+      const invStatus = this._invitationsRepo.getStatus(inv);
+      if (!inv) throw new Error('Código de invitación inválido');
+      if (invStatus === 'expired') throw new Error('La invitación expiró');
+      if (invStatus === 'used')    throw new Error('La invitación ya fue usada');
+      if (invStatus === 'revoked') throw new Error('La invitación fue revocada');
+      invitationUsed = inv;
+    }
+
+    let role, status;
+    if (isFirst) {
+      role = 'admin';
+      status = 'active';
+    } else if (invitationUsed) {
+      role = invitationUsed.role || 'user';
+      status = invitationUsed.auto_approve ? 'active' : 'pending';
+    } else {
+      role = 'user';
+      status = 'pending';
+    }
+
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-    const user = this._usersRepo.create(name || email.split('@')[0], 'user');
+    const user = this._usersRepo.create(name || email.split('@')[0], { role, status });
     this._usersRepo.update(user.id, { email, password_hash: passwordHash });
 
     user.email = email;
-    const tokens = this._issueTokens(user.id);
-    return { user, ...tokens };
+    user.role = role;
+    user.status = status;
+
+    // Marcar invitación como usada (si vino con una válida)
+    if (invitationUsed) {
+      try {
+        this._invitationsRepo.markUsed(invitationUsed.code, user.id);
+        this._logger.info(`[AuthService] Invitación ${invitationUsed.code.slice(0, 8)}… consumida por ${email} (familia: ${invitationUsed.family_role || '—'})`);
+      } catch (e) {
+        this._logger.warn(`[AuthService] no pude marcar invite como usada: ${e.message}`);
+      }
+    }
+
+    if (status === 'active') {
+      const reason = isFirst ? 'primer usuario admin' : 'invitación válida';
+      this._logger.info(`[AuthService] Usuario registrado y activo (${reason}): ${email}`);
+      const tokens = this._issueTokens(user.id);
+      return { user, ...tokens };
+    }
+
+    this._logger.info(`[AuthService] User pending de aprobación: ${email}`);
+    return {
+      user,
+      pending: true,
+      message: 'Tu cuenta espera aprobación del administrador. Recibirás acceso una vez aprobada.',
+    };
+  }
+
+  // ── Invitations API (delega al repo, expuesto para que los routes no toquen el repo directo) ──
+
+  /** Admin crea invitación. */
+  createInvitation(adminUserId, opts = {}) {
+    if (!this._invitationsRepo) throw new Error('Invitations no disponible');
+    const inv = this._invitationsRepo.create(adminUserId, opts);
+    if (inv) this._logger.info(`[AuthService] Invitación creada por ${adminUserId} (rol=${inv.role}, familia=${inv.family_role || '—'})`);
+    return inv;
+  }
+
+  /** Lista invitaciones (admin). */
+  listInvitations(opts = {}) {
+    if (!this._invitationsRepo) return [];
+    return this._invitationsRepo.list(opts);
+  }
+
+  /** Revoca invitación. */
+  revokeInvitation(code) {
+    if (!this._invitationsRepo) throw new Error('Invitations no disponible');
+    return this._invitationsRepo.revoke(code);
+  }
+
+  /** Lookup público de status de invitación (no expone datos sensibles). */
+  inspectInvitation(code) {
+    if (!this._invitationsRepo) return null;
+    const inv = this._invitationsRepo.get(code);
+    if (!inv) return { valid: false, reason: 'not_found' };
+    const status = this._invitationsRepo.getStatus(inv);
+    return {
+      valid: status === 'valid',
+      status,
+      family_role: inv.family_role,
+      role: inv.role,
+      expires_at: inv.expires_at,
+    };
   }
 
   // ── Login ─────────────────────────────────────────────────────────────────────
 
   /**
    * Login con email y contraseña.
+   *
+   * Si user.status no es 'active', lanza error con `code` para que la ruta lo
+   * traduzca a 403 con mensaje específico ('pending' / 'disabled').
+   *
    * @returns {{ user, accessToken, refreshToken }} o lanza error.
    */
   async login(email, password) {
@@ -156,8 +281,60 @@ class AuthService {
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) throw new Error('Credenciales inválidas');
 
+    // Validar status — pending/disabled no pueden loguear.
+    const status = user.status || 'active'; // defensivo: usuarios legacy sin status
+    if (status === 'pending') {
+      const err = new Error('Tu cuenta está pendiente de aprobación del administrador.');
+      err.code = 'PENDING_APPROVAL';
+      throw err;
+    }
+    if (status === 'disabled') {
+      const err = new Error('Tu cuenta fue deshabilitada. Contactá al administrador.');
+      err.code = 'ACCOUNT_DISABLED';
+      throw err;
+    }
+
     const tokens = this._issueTokens(user.id);
     return { user: this._sanitizeUser(user), ...tokens };
+  }
+
+  // ── Aprobación admin ──────────────────────────────────────────────────────
+
+  /**
+   * Aprueba un user pending → status='active'.
+   * El user puede loguear desde la próxima request.
+   */
+  approveUser(userId, byAdminId = null) {
+    const user = this._usersRepo.getById(userId);
+    if (!user) throw new Error('Usuario no encontrado');
+    const ok = this._usersRepo.setStatus(userId, 'active');
+    if (ok) this._logger.info(`[AuthService] User ${user.name} (${userId}) aprobado por admin ${byAdminId || '?'}`);
+    return ok;
+  }
+
+  /**
+   * Rechaza/deshabilita un user → status='disabled'.
+   * Soft-delete: el row queda en DB para auditoría, email no recyclable.
+   * Revoca todos los refresh tokens del user para forzar logout inmediato.
+   */
+  rejectUser(userId, byAdminId = null) {
+    const user = this._usersRepo.getById(userId);
+    if (!user) throw new Error('Usuario no encontrado');
+    if (user.role === 'admin') {
+      const adminCount = this._usersRepo.countByRole('admin');
+      if (adminCount <= 1) throw new Error('No podés deshabilitar al único admin del sistema');
+    }
+    const ok = this._usersRepo.setStatus(userId, 'disabled');
+    if (ok) {
+      this.revokeAllTokens(userId);
+      this._logger.info(`[AuthService] User ${user.name} (${userId}) deshabilitado por admin ${byAdminId || '?'}`);
+    }
+    return ok;
+  }
+
+  /** Reactiva un user disabled → status='active'. Alias semántico de approveUser. */
+  reactivateUser(userId, byAdminId = null) {
+    return this.approveUser(userId, byAdminId);
   }
 
   // ── JWT ───────────────────────────────────────────────────────────────────────

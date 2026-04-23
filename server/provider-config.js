@@ -2,8 +2,12 @@
 
 const fs = require('fs');
 const path = require('path');
+const { CONFIG_FILES } = require('./paths');
 
-const CONFIG_FILE = path.join(__dirname, 'provider-config.json');
+const CONFIG_FILE = CONFIG_FILES.providerConfig;
+
+// Tracking para no spamear warnings: un warning por provider por proceso
+const _warnedPlaintext = new Set();
 
 const DEFAULT_CONFIG = {
   default: 'claude-code',
@@ -14,6 +18,7 @@ const DEFAULT_CONFIG = {
     grok:      { apiKey: '', model: 'grok-3-fast' },
     deepseek:  { apiKey: '', model: 'deepseek-chat' },
     ollama:    { apiKey: '', model: 'llama3.2' },
+    opencode:  { model: '', apiKeys: {} },  // apiKeys: { anthropic, openai, google, ... }
   },
 };
 
@@ -38,6 +43,12 @@ if (!fs.existsSync(CONFIG_FILE)) {
 /**
  * Obtiene la API key para un provider.
  * Las env vars tienen prioridad sobre lo guardado en archivo.
+ *
+ * SEGURIDAD: `provider-config.json` puede contener API keys en plaintext.
+ * Recomendado:
+ *   - Agregar `provider-config.json` a `.gitignore`
+ *   - Usar SIEMPRE env vars en producción (ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.)
+ *   - No commitear keys reales al repo
  */
 function getApiKey(name) {
   const envMap = {
@@ -52,7 +63,13 @@ function getApiKey(name) {
   if (envKey && process.env[envKey]) return process.env[envKey];
 
   const cfg = getConfig();
-  return cfg.providers?.[name]?.apiKey || '';
+  const fileKey = cfg.providers?.[name]?.apiKey || '';
+  // Warning una sola vez por provider si la key está en el archivo en vez de env
+  if (fileKey && !_warnedPlaintext.has(name) && name !== 'ollama') {
+    process.stderr.write(`[provider-config] ⚠️  ${name} API key en provider-config.json (plaintext). Migrar a env var ${envKey} recomendado.\n`);
+    _warnedPlaintext.add(name);
+  }
+  return fileKey;
 }
 
 function setProvider(name, { apiKey, model } = {}) {
@@ -69,4 +86,23 @@ function setDefault(name) {
   saveConfig(cfg);
 }
 
-module.exports = { getConfig, getApiKey, setProvider, setDefault };
+/** Devuelve las API keys configuradas para los sub-proveedores de opencode. */
+function getOpenCodeKeys() {
+  const cfg = getConfig();
+  return cfg.providers?.opencode?.apiKeys || {};
+}
+
+/** Guarda o borra la API key de un sub-proveedor de opencode. */
+function setOpenCodeKey(provider, key) {
+  const cfg = getConfig();
+  if (!cfg.providers.opencode) cfg.providers.opencode = { model: '', apiKeys: {} };
+  if (!cfg.providers.opencode.apiKeys) cfg.providers.opencode.apiKeys = {};
+  if (key) {
+    cfg.providers.opencode.apiKeys[provider] = key;
+  } else {
+    delete cfg.providers.opencode.apiKeys[provider];
+  }
+  saveConfig(cfg);
+}
+
+module.exports = { getConfig, getApiKey, setProvider, setDefault, getOpenCodeKeys, setOpenCodeKey };

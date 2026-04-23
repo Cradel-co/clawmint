@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { LogIn, UserPlus, Mail, Lock, User, Eye, EyeOff } from 'lucide-react';
+import { LogIn, UserPlus, Mail, Lock, User, Eye, EyeOff, Clock, Ban, Gift } from 'lucide-react';
 import { API_BASE } from '../config';
 import { login, register, setStoredTokens, setStoredUser } from '../authUtils';
+import { invitations as inviteApi } from '../api/admin';
 import styles from './AuthPanel.module.css';
 
 export default function AuthPanel({ onAuth, onSkip }) {
@@ -11,8 +12,22 @@ export default function AuthPanel({ onAuth, onSkip }) {
   const [name, setName] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState(null);
+  const [errorCode, setErrorCode] = useState(null); // 'pending' | 'disabled' | null
+  const [pendingMsg, setPendingMsg] = useState(null); // string | null — set tras register pending
   const [loading, setLoading] = useState(false);
   const [oauthProviders, setOauthProviders] = useState({ google: false, github: false });
+  const [inviteCode, setInviteCode] = useState(null);
+  const [inviteInfo, setInviteInfo] = useState(null); // { valid, status, family_role, role, expires_at }
+
+  // Detectar ?invite=XXX en URL y validar contra el server
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('invite');
+    if (!code) return;
+    setInviteCode(code);
+    setMode('register'); // forzar tab register
+    inviteApi.inspect(code).then(setInviteInfo).catch(() => setInviteInfo({ valid: false, status: 'unknown' }));
+  }, []);
 
   // Cargar providers OAuth disponibles
   useEffect(() => {
@@ -65,22 +80,69 @@ export default function AuthPanel({ onAuth, onSkip }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
+    setErrorCode(null);
     setLoading(true);
 
     try {
-      let result;
       if (mode === 'login') {
-        result = await login(email, password);
+        const result = await login(email, password);
+        onAuth(result);
       } else {
-        result = await register(email, password, name || undefined);
+        const result = await register(email, password, name || undefined, { inviteCode: inviteCode || undefined });
+        if (result.pending) {
+          // Quedó pendiente de aprobación — mostrar pantalla informativa, no autenticar.
+          setPendingMsg(result.message || 'Tu cuenta espera aprobación del administrador.');
+        } else {
+          // Si se usó una invitación, limpiar URL para no dejar el código visible.
+          if (inviteCode && window.history?.replaceState) {
+            window.history.replaceState({}, '', window.location.pathname);
+          }
+          onAuth(result);
+        }
       }
-      onAuth(result);
     } catch (err) {
       setError(err.message);
+      setErrorCode(err.code || null);
     } finally {
       setLoading(false);
     }
   };
+
+  // Pantalla "esperando aprobación" — gateada por pendingMsg, anula el form.
+  if (pendingMsg) {
+    return (
+      <div className={styles.overlay}>
+        <div className={styles.brand}>
+          <div className={styles.brandLogo}>Claw<span>mint</span></div>
+          <div className={styles.brandTagline}>Cuenta creada</div>
+          <div className={styles.brandDesc}>
+            Tu cuenta fue registrada exitosamente. Ahora necesita aprobación del administrador antes de poder usar Clawmint.
+          </div>
+        </div>
+        <div className={styles.panel}>
+          <div className={styles.panelTitle}>
+            <Clock size={20} style={{ marginRight: 8, verticalAlign: -4, color: 'var(--accent-orange)' }} />
+            Esperando aprobación
+          </div>
+          <div className={styles.panelSubtitle} style={{ marginTop: 16 }}>
+            {pendingMsg}
+          </div>
+          <div style={{ marginTop: 24, padding: 12, background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+            <strong>{email}</strong>
+            <br /><br />
+            Cuando el admin apruebe tu cuenta vas a poder iniciar sesión normalmente. No es necesario registrarse de nuevo.
+          </div>
+          <button
+            className={styles.submit}
+            style={{ marginTop: 20 }}
+            onClick={() => { setPendingMsg(null); setMode('login'); setPassword(''); setError(null); }}
+          >
+            Volver al login
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const openOAuth = (provider) => {
     const url = `${API_BASE}/api/auth/oauth/${provider}`;
@@ -158,6 +220,36 @@ export default function AuthPanel({ onAuth, onSkip }) {
           </div>
         )}
 
+        {inviteCode && inviteInfo && (
+          <div style={{
+            padding: 12, marginBottom: 12, borderRadius: 8,
+            background: inviteInfo.valid ? 'rgba(16, 185, 129, 0.10)' : 'rgba(239, 68, 68, 0.10)',
+            border: `1px solid ${inviteInfo.valid ? 'rgba(16, 185, 129, 0.30)' : 'rgba(239, 68, 68, 0.30)'}`,
+            color: inviteInfo.valid ? 'var(--accent-green)' : 'var(--accent-red)',
+            fontSize: 12.5, lineHeight: 1.5,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, marginBottom: 4 }}>
+              <Gift size={14} /> {inviteInfo.valid ? 'Te invitaron a Clawmint' : 'Invitación inválida'}
+            </div>
+            {inviteInfo.valid ? (
+              <>
+                {inviteInfo.family_role && <div>Rol: <strong>{inviteInfo.family_role}</strong></div>}
+                <div style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>
+                  Vas a quedar activo automáticamente al registrarte (sin esperar aprobación).
+                </div>
+              </>
+            ) : (
+              <div style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>
+                {inviteInfo.status === 'expired' && 'La invitación expiró.'}
+                {inviteInfo.status === 'used' && 'La invitación ya fue usada.'}
+                {inviteInfo.status === 'revoked' && 'La invitación fue revocada.'}
+                {inviteInfo.status === 'not_found' && 'El código no existe.'}
+                {' '}Pedí una nueva al administrador o registrate normal (vas a quedar pendiente de aprobación).
+              </div>
+            )}
+          </div>
+        )}
+
         <form className={styles.form} onSubmit={handleSubmit}>
           {mode === 'register' && (
             <div className={styles.field}>
@@ -205,7 +297,13 @@ export default function AuthPanel({ onAuth, onSkip }) {
             </button>
           </div>
 
-          {error && <div className={styles.error}>{error}</div>}
+          {error && (
+            <div className={`${styles.error} ${errorCode === 'pending' ? styles.errorPending : ''} ${errorCode === 'disabled' ? styles.errorDisabled : ''}`}>
+              {errorCode === 'pending' && <Clock size={14} style={{ marginRight: 6, verticalAlign: -2 }} />}
+              {errorCode === 'disabled' && <Ban size={14} style={{ marginRight: 6, verticalAlign: -2 }} />}
+              {error}
+            </div>
+          )}
 
           <button className={styles.submit} type="submit" disabled={loading}>
             {loading ? 'Cargando...' : mode === 'login' ? 'Entrar' : 'Crear cuenta'}

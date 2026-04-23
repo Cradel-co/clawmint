@@ -1,0 +1,108 @@
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 28px;
+  padding: 0 14px;
+  background: var(--bg-header);
+  border-top: 1px solid var(--border-primary);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  user-select: none;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.metric,
+.metricSimple {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-secondary);
+}
+
+.metric .label,
+.metricSimple .label {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.metric .value,
+.metricSimple .value {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 11px;
+}
+
+/* progress bar */
+.bar {
+  width: 48px;
+  height: 4px;
+  background: var(--border-subtle);
+  border-radius: 999px;
+  overflow: hidden;
+  display: inline-block;
+}
+.barFill {
+  display: block;
+  height: 100%;
+  background: var(--status-ok);
+  border-radius: 999px;
+  transition: width 0.4s ease, background-color 0.3s;
+}
+
+.metric.ok    .barFill { background: var(--status-ok); }
+.metric.warn  .barFill { background: var(--status-warn); }
+.metric.error .barFill { background: var(--status-error); }
+
+.metric.warn  .value { color: var(--status-warn); }
+.metric.error .value { color: var(--status-error); }
+
+.divider {
+  width: 1px;
+  height: 14px;
+  background: var(--border-primary);
+}
+
+.spacer { flex: 1; }
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.10);
+  border: 1px solid rgba(16, 185, 129, 0.30);
+  color: var(--status-ok);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+}
+
+.status.error {
+  background: rgba(239, 68, 68, 0.10);
+  border-color: rgba(239, 68, 68, 0.30);
+  color: var(--status-error);
+}
+
+.metricSimple.ok    { color: var(--status-ok); }
+.metricSimple.error { color: var(--status-error); }
+
+@media (max-width: 768px) {
+  .footer { font-size: 10px; gap: 8px; padding: 0 8px; }
+  .bar { width: 32px; }
+  .divider { display: none; }
+}
+
+@media (max-width: 480px) {
+  .metric .label,
+  .metricSimple .label { display: none; }
+  .bar { display: none; }
+}

@@ -11,7 +11,7 @@
  * @param {Function} deps.startAISession
  * @param {Object} deps.events
  */
-function setupPtyHandler({ wss, sessionManager, webChannel, allWebClients, startAISession, events }) {
+function setupPtyHandler({ wss, sessionManager, webChannel, allWebClients, startAISession, events, sharedSessionsBroker, logger, authService, usersRepo }) {
 
   wss.on('connection', (ws) => {
     console.log('Cliente WS conectado');
@@ -39,6 +39,57 @@ function setupPtyHandler({ wss, sessionManager, webChannel, allWebClients, start
 
           // Listener puro: solo recibe broadcasts, sin PTY
           if (msg.sessionType === 'listener') {
+            return;
+          }
+
+          // Logs streaming (Fase D.6) — admin-only. Requiere JWT en msg.token.
+          // Suscribe el ws a eventos 'line' del Logger y emite cada uno como {type:'log', ...}.
+          if (msg.sessionType === 'logs') {
+            if (!logger || !authService || !usersRepo) {
+              ws.send(JSON.stringify({ type: 'logs_error', error: 'logs streaming no habilitado' }));
+              return;
+            }
+            const token = msg.token || '';
+            const payload = authService.verifyAccessToken ? authService.verifyAccessToken(token) : null;
+            if (!payload || !payload.sub) {
+              ws.send(JSON.stringify({ type: 'logs_error', error: 'token inválido' }));
+              return;
+            }
+            let user;
+            try { user = usersRepo.getById(payload.sub); } catch {}
+            if (!user || user.role !== 'admin') {
+              ws.send(JSON.stringify({ type: 'logs_error', error: 'admin only' }));
+              return;
+            }
+            // Opcional: envío de tail inicial (últimas 50 líneas) para contexto.
+            try {
+              const tail = (typeof logger.tail === 'function' ? logger.tail(50) : []).map(raw => ({ raw, ts: null, level: null, message: raw }));
+              for (const line of tail) ws.send(JSON.stringify({ type: 'log', ...line, historical: true }));
+            } catch {}
+            // Suscribir a eventos live
+            const handler = (ev) => {
+              if (ws.readyState !== 1) return;
+              try { ws.send(JSON.stringify({ type: 'log', ...ev })); } catch {}
+            };
+            logger.on('line', handler);
+            ws.send(JSON.stringify({ type: 'logs_ready' }));
+            // Cleanup al cerrar
+            const cleanup = () => { try { logger.off('line', handler); } catch {} };
+            ws.on('close', cleanup);
+            ws.on('error', cleanup);
+            return;
+          }
+
+          // Shared session (Fase 12.4) — suscribir WS a broadcast por token
+          if (msg.sessionType === 'shared') {
+            if (!sharedSessionsBroker) {
+              ws.send(JSON.stringify({ type: 'share_error', error: 'session sharing no habilitado' }));
+              return;
+            }
+            const ok = sharedSessionsBroker.subscribe(ws, msg.token);
+            if (!ok) {
+              // Broker ya envió share_error al ws
+            }
             return;
           }
 

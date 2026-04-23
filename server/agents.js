@@ -2,8 +2,9 @@
 
 const fs = require('fs');
 const path = require('path');
+const { CONFIG_FILES } = require('./paths');
 
-const AGENTS_FILE = path.join(__dirname, 'agents.json');
+const AGENTS_FILE = CONFIG_FILES.agents;
 
 // Agentes por defecto al inicializar
 const DEFAULT_AGENTS = [

@@ -4,8 +4,9 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const { CONFIG_FILES } = require('../paths');
 
-const DEFAULT_MCP_CONFIG = path.join(__dirname, '..', 'mcp-config.json');
+const DEFAULT_MCP_CONFIG = CONFIG_FILES.mcpConfig;
 
 function _cpDbg() { return process.env.DEBUG_TELEGRAM === '1'; }
 function cpdbg(scope, ...args) { if (_cpDbg()) console.log(`[CPS:DBG:${scope}]`, ...args); }
@@ -31,7 +32,17 @@ class ClaudePrintSession {
     this.appendSystemPrompt = appendSystemPrompt || null;  // prompt adicional de sistema
   }
 
-  async sendMessage(text, onChunk = null, onStatus = null) {
+  /**
+   * @param {string} text
+   * @param {Function|null} onChunk  — (fullText) => void, stream parcial
+   * @param {Function|null} onStatus — (status, detail) => void
+   * @param {Function|null} onEvent  — (event) => void, D4: eventos estructurados
+   *   {type:'tool_call', name, args?, id?}
+   *   {type:'tool_result', name, tool_use_id, content, isError}
+   *   {type:'thinking', text}
+   *   {type:'usage', promptTokens, completionTokens, costUsd}
+   */
+  async sendMessage(text, onChunk = null, onStatus = null, onEvent = null) {
     const isWin = process.platform === 'win32';
     // En Windows: texto por stdin (cmd.exe rompe args largos con saltos de línea)
     // En Linux:   texto como argumento -p (comportamiento original, probado)
@@ -101,6 +112,15 @@ class ClaudePrintSession {
       const emitStatus = (status, detail = null) => {
         if (onStatus) onStatus(status, detail);
       };
+      // D4 — emit helper para eventos estructurados (tool_call, tool_result, usage, thinking).
+      const emitEvent = (ev) => {
+        if (onEvent) {
+          try { onEvent(ev); } catch { /* no bloquear por caller */ }
+        }
+      };
+
+      // D4 — buffer de tool_use blocks por index del stream (input se fragmenta como input_json_delta).
+      const pendingToolUses = new Map(); // index → {id, name, inputStr}
 
       emitStatus('thinking');
 
@@ -122,32 +142,64 @@ class ClaudePrintSession {
             const raw = event.event;
             const inner = typeof raw === 'string' ? JSON.parse(raw) : raw;
 
-            // Detectar inicio de tool_use para status
+            // Detectar inicio de tool_use para status + buffer input fragmentado
             if (inner.type === 'content_block_start' && inner.content_block?.type === 'tool_use') {
               const toolName = inner.content_block.name || 'herramienta';
+              const toolId = inner.content_block.id || null;
               if (isCommTool(toolName)) usedMcpTools = true;
-              cpdbg('event', `#${eventCount} tool_use start: ${toolName} isCommTool=${isCommTool(toolName)}`);
+              cpdbg('event', `#${eventCount} tool_use start: ${toolName} id=${toolId} isCommTool=${isCommTool(toolName)}`);
               emitStatus('tool_use', toolName);
+              // D4 — buffer para acumular input JSON fragmentado por delta
+              if (inner.index !== undefined) {
+                pendingToolUses.set(inner.index, { id: toolId, name: toolName, inputStr: '' });
+              }
             }
             // Detectar inicio de bloque de texto
             else if (inner.type === 'content_block_start' && inner.content_block?.type === 'text') {
               emitStatus('thinking');
             }
-            // Detectar fin de tool_use
+            // Detectar inicio de thinking block
+            else if (inner.type === 'content_block_start' && inner.content_block?.type === 'thinking') {
+              cpdbg('event', `#${eventCount} thinking start`);
+            }
+            // Detectar fin de bloque: si es tool_use, parsear input acumulado y emitir evento
             else if (inner.type === 'content_block_stop') {
-              cpdbg('event', `#${eventCount} content_block_stop`);
+              cpdbg('event', `#${eventCount} content_block_stop index=${inner.index}`);
+              if (inner.index !== undefined && pendingToolUses.has(inner.index)) {
+                const pend = pendingToolUses.get(inner.index);
+                let args = null;
+                try { args = pend.inputStr ? JSON.parse(pend.inputStr) : {}; } catch { args = { _raw: pend.inputStr }; }
+                emitEvent({ type: 'tool_call', name: pend.name, id: pend.id, args });
+                pendingToolUses.delete(inner.index);
+              }
             }
 
+            // Deltas: text, input_json (tool args fragmentados), thinking
             if (inner.type === 'content_block_delta' && inner.delta?.type === 'text_delta') {
               fullText += inner.delta.text;
               cpdbg('delta', `#${eventCount} +${inner.delta.text.length}chars total=${fullText.length}`);
               if (onChunk) onChunk(fullText);
-            } else {
+            } else if (inner.type === 'content_block_delta' && inner.delta?.type === 'input_json_delta') {
+              // D4 — acumular input fragmentado en el buffer del pendingToolUse
+              if (inner.index !== undefined && pendingToolUses.has(inner.index)) {
+                pendingToolUses.get(inner.index).inputStr += inner.delta.partial_json || '';
+              }
+            } else if (inner.type === 'content_block_delta' && inner.delta?.type === 'thinking_delta') {
+              // D4 — emitir thinking delta si hay buffer
+              emitEvent({ type: 'thinking', text: inner.delta.thinking || '' });
+            } else if (inner.type !== 'content_block_delta') {
               cpdbg('event', `#${eventCount} stream_event inner.type=${inner.type}`);
+            }
+
+            // D4 — message_delta trae usage + stop_reason
+            if (inner.type === 'message_delta' && inner.usage) {
+              // Nota: en stream-json del CLI, el usage final llega agregado.
+              // Lo emitimos al finalizar en el event 'result' que ya trae cost.
             }
           }
           else if (event.type === 'assistant') {
             const content = event.message?.content;
+            const usage = event.message?.usage;
             cpdbg('event', `#${eventCount} assistant content=${Array.isArray(content) ? content.length + ' blocks' : 'none'} fullText=${fullText.length}`);
             if (Array.isArray(content)) {
               // Detectar tool_use de telegram en bloques de assistant
@@ -159,6 +211,40 @@ class ClaudePrintSession {
                 fullText = textBlock.text;
                 cpdbg('event', `#${eventCount} assistant fallback text=${fullText.length} chars`);
                 if (onChunk) onChunk(fullText);
+              }
+              // D4 — si stream_event no emitió tool_calls (versiones viejas del CLI),
+              // emitirlos ahora desde el content bundle.
+              for (const b of content) {
+                if (b.type === 'tool_use' && !pendingToolUses.has(b.index)) {
+                  emitEvent({ type: 'tool_call', name: b.name, id: b.id, args: b.input || {} });
+                }
+              }
+            }
+            // D4 — emit usage incremental por turn (el CLI agrega por assistant message)
+            if (usage) {
+              emitEvent({
+                type: 'usage',
+                promptTokens: usage.input_tokens || 0,
+                completionTokens: usage.output_tokens || 0,
+                cacheCreation: usage.cache_creation_input_tokens || 0,
+                cacheRead: usage.cache_read_input_tokens || 0,
+              });
+            }
+          }
+          // D4 — user events traen tool_results tras ejecución del CLI
+          else if (event.type === 'user') {
+            const content = event.message?.content;
+            if (Array.isArray(content)) {
+              for (const b of content) {
+                if (b.type === 'tool_result') {
+                  const preview = typeof b.content === 'string' ? b.content : JSON.stringify(b.content).slice(0, 500);
+                  emitEvent({
+                    type: 'tool_result',
+                    tool_use_id: b.tool_use_id,
+                    content: preview,
+                    isError: b.is_error === true,
+                  });
+                }
               }
             }
           }
@@ -175,6 +261,17 @@ class ClaudePrintSession {
             if (event.total_cost_usd != null) {
               this.lastCostUsd = event.total_cost_usd - this.totalCostUsd;
               this.totalCostUsd = event.total_cost_usd;
+            }
+            // D4 — emit usage agregado al final con cost real
+            if (event.usage || event.total_cost_usd != null) {
+              emitEvent({
+                type: 'usage',
+                promptTokens: event.usage?.input_tokens || 0,
+                completionTokens: event.usage?.output_tokens || 0,
+                cacheCreation: event.usage?.cache_creation_input_tokens || 0,
+                cacheRead: event.usage?.cache_read_input_tokens || 0,
+                costUsd: this.lastCostUsd || 0,
+              });
             }
             emitStatus('done');
           } else {

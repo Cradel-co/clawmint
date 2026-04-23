@@ -1,10 +1,12 @@
-> Última actualización: 2026-03-17
+> Última actualización: 2026-03-29
 
 # Arquitectura del sistema
 
 ## Visión general
 
-Clawmint es un terminal full-stack en tiempo real. El servidor expone un PTY virtual mediante WebSocket y una REST API; el bot de Telegram actúa como frontend alternativo que redirige mensajes al mismo núcleo de IA.
+Clawmint es un agente familiar doméstico que corre en el hogar. El servidor orquesta conversaciones con IA, gestiona integraciones (calendario, correo, tareas) y expone múltiples canales de acceso: Telegram, WebChat, P2P y una terminal PTY para administración. Cada miembro de la familia se identifica mediante un sistema de autenticación por invitación y accede a su propio contexto.
+
+> Ver [vision.md](./vision.md) para los principios y el roadmap de integraciones.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -172,3 +174,94 @@ El parámetro `executeTool` es opcional; si se pasa, se usa en lugar del default
 | MCP HTTP sin SDK | `@modelcontextprotocol/sdk` | El SDK usa ESM; el proyecto es CJS. JSON-RPC manual es más simple y confiable |
 | ShellSession por chatId | Shell global compartida | Aislamiento natural por conversación; cd/env de un usuario no afectan a otros |
 | executeTool inyectado en providers | `require('../tools')` global | Permite pasar shellId como contexto sin romper la interfaz existente |
+| Multi-user con `status` en lugar de tablas separadas | Tabla `pending_users`, `active_users` | Una sola tabla, ALTER TABLE idempotente, queries simples |
+| Invitaciones soft-revoke (no delete) | Hard delete al revocar | Auditoría: queda histórico de quién generó qué para quién |
+| `household_data` flexible con `kind` + `data_json` | 5 tablas separadas | Una sola tabla, queries unificadas, fácil agregar nuevos `kind` |
+| OAuth credentials cifradas en DB | `.env` o keychain del OS | Instalable sin tocar archivos. AES-256-GCM via TokenCrypto |
+| JWT auto-persistido en archivo | `.env` o variable runtime | App empaquetada (Tauri) corre sin shell — primer arranque genera y persiste |
+| `routine_*` tools como wrappers de scheduler | Pedirle al user que escriba cron expressions | UX: time picker HH:MM se traduce a cron internamente |
+
+---
+
+## Multi-user lifecycle
+
+```
+[register email/password] ──┬─→ DB vacía → role=admin, status=active → tokens
+                            │
+                            ├─→ inviteCode válido → status=active → tokens
+                            │
+                            └─→ ningún caso anterior → status=pending → 202 sin tokens
+
+[login] ─→ valida password ─→ chequea status:
+              · active   → emite access + refresh tokens
+              · pending  → 403 { code: 'pending', message }
+              · disabled → 403 { code: 'disabled', message }
+
+[admin approve/reject/reactivate]
+              · approve   → setStatus(id, 'active')
+              · reject    → setStatus(id, 'disabled') + revokeAllTokens(id)
+              · reactivate→ setStatus(id, 'active')
+
+[admin invite] ─→ InvitationsRepository.create({ ttlMs, role, familyRole, auto_approve: 1 })
+              ─→ link http://host:3001/?invite=CODE
+              ─→ AuthPanel detecta ?invite= → GET /api/auth/invitations/:code
+              ─→ register con inviteCode → status=active inmediato
+```
+
+---
+
+## OAuth credentials sin .env
+
+Patrón "instalable sin configuración manual":
+
+1. **Primer arranque**: `AuthService.init()` busca `JWT_SECRET` en env → file `.jwt-secret.key` (mode 0600). Si no existe, lo genera (`crypto.randomBytes(64).hex`) y persiste.
+
+2. **Admin pega credentials en UI**: `OAuthCredentialsPanel` → `PUT /api/system-config/oauth/google` body `{ client_id, client_secret }`. El secret se cifra con `TokenCrypto.encrypt` antes de persistir.
+
+3. **mcp-oauth-providers se auto-registran al boot**: `registerAll({ mcpAuthService, systemConfigRepo })` itera google/github/spotify y registra los handlers. Cada handler tiene `getCreds()` que lee dinámicamente de `systemConfigRepo` con fallback a env vars.
+
+4. **Flow OAuth**: `POST /api/mcp-auth/start/google-calendar` → handler.buildAuthUrl genera URL de Google con scope. Google redirige al callback `/api/mcp-auth/callback/google-calendar` → handler.exchange intercambia code por token → cifrado y guardado en `mcp_auth` table.
+
+No requiere restart del server cuando admin actualiza credentials — la lectura es lazy en cada request.
+
+---
+
+## Datos compartidos del hogar (Fase B)
+
+Tabla `household_data` con scope global del hogar. Cualquier `users.status='active'` puede leer/escribir. Tipos discriminados por `kind`:
+
+```
+[user dice "anotá manteca"] ─→ agente llama grocery_add({ item: "manteca" })
+                              ─→ HouseholdDataRepository.create({ kind: 'grocery_item', ... })
+                              ─→ visible para toda la familia desde Telegram, WebChat o panel "Hogar"
+
+[admin carga "Cumple Tomás 15-jun"] ─→ family_event_add({ title, date, alertDaysBefore: 3 })
+                                     ─→ family_event_upcoming({ days: 7 }) lo retorna automáticamente
+```
+
+REST `routes/household.js` espeja la API para el cliente. Middleware verifica `users.status='active'` antes de permitir acceso.
+
+---
+
+## Pro-actividad (Fase C)
+
+Wrapper user-friendly sobre `Scheduler`:
+
+```
+[user pide "morning brief 7am"] ─→ agente llama routine_morning_set({ time: "07:00" })
+                                  ─→ wrapper deriva cron "0 7 * * *" + payload natural language
+                                  ─→ ScheduledActionsRepository.create({
+                                       action_type: 'ai_task',
+                                       trigger_type: 'cron',
+                                       cron_expr: '0 7 * * *',
+                                       target_type: 'self',
+                                       payload: <prompt para que el agente ejecute morning_brief>
+                                     })
+                                  ─→ guarda action_id en userPreferences (key: routine:morning:action_id)
+
+[Scheduler tick cada 30s] ─→ getTriggered(now) detecta cron vencido
+                            ─→ _executeAiTask(action) despacha al agente con el payload
+                            ─→ agente ejecuta morning_brief() + telegram_send_message()
+```
+
+Tools: `routine_morning_set`, `routine_bedtime_set`, `routine_weather_alert`, `routine_disable`, `routine_list`. Idempotentes: si ya existe la rutina, la borran y recrean.

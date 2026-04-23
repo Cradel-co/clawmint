@@ -27,7 +27,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  background: linear-gradient(90deg, rgba(91,141,240,0.07) 0%, var(--bg-card) 50%);
+  background: linear-gradient(90deg, rgba(251, 146, 60,0.07) 0%, var(--bg-card) 50%);
   border-bottom: 1px solid var(--border-primary);
   flex-shrink: 0;
 }
@@ -193,7 +193,7 @@
 }
 .chatRow:hover {
   background: var(--bg-hover);
-  border-color: rgba(91,141,240,0.35);
+  border-color: rgba(251, 146, 60,0.35);
   border-left-color: var(--accent-blue);
 }
 
@@ -365,7 +365,7 @@
 }
 .btnAdd:hover {
   color: var(--accent-blue);
-  border-color: rgba(91,141,240,0.4);
+  border-color: rgba(251, 146, 60,0.4);
 }
 
 /* ─── Status dot ──────────────────────────────────────────────────────────── */
@@ -428,11 +428,11 @@
 }
 .agentChip:hover { background: var(--border-secondary); color: var(--text-secondary); border-color: var(--border-primary); }
 .cc {
-  background: rgba(79,195,247,0.10);
+  background: rgba(251, 191, 36,0.10);
   color: var(--accent-cyan);
-  border-color: rgba(79,195,247,0.27);
+  border-color: rgba(251, 191, 36,0.27);
 }
-.cc:hover { background: rgba(79,195,247,0.16); }
+.cc:hover { background: rgba(251, 191, 36,0.16); }
 
 /* ─── Session picker ──────────────────────────────────────────────────────── */
 
@@ -464,7 +464,7 @@
   transition: background 0.1s, border-color 0.1s;
   gap: 8px;
 }
-.sessionOption:hover { background: var(--bg-hover); border-color: rgba(79,195,247,0.33); }
+.sessionOption:hover { background: var(--bg-hover); border-color: rgba(251, 191, 36,0.33); }
 
 .sessionTitle {
   font-size: 11px;
@@ -487,11 +487,11 @@
 /* ─── Link active button ──────────────────────────────────────────────────── */
 
 .btnLinkActive {
-  background: rgba(79,195,247,0.10);
+  background: rgba(251, 191, 36,0.10);
   color: var(--accent-cyan);
-  border: 1px solid rgba(79,195,247,0.27);
+  border: 1px solid rgba(251, 191, 36,0.27);
 }
-.btnLinkActive:hover:not(:disabled) { background: rgba(79,195,247,0.16); }
+.btnLinkActive:hover:not(:disabled) { background: rgba(251, 191, 36,0.16); }
 
 /* ─── Access config ───────────────────────────────────────────────────────── */
 

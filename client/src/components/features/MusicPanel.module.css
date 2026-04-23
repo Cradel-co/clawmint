@@ -1,0 +1,273 @@
+.panel {
+  flex: 1;
+  overflow-y: auto;
+  padding: clamp(16px, 2.4vw, 28px);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+.title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 20px;
+  font-weight: 800;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+.title svg { color: #1DB954; } /* Spotify green */
+.subtitle {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.btnGhost, .btnPrimary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  font-size: 12.5px;
+  font-family: var(--font-ui);
+  font-weight: 600;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: all 0.15s;
+  text-decoration: none;
+}
+.btnGhost {
+  background: var(--bg-card);
+  border: 1px solid var(--border-primary);
+  color: var(--text-secondary);
+}
+.btnGhost:hover { border-color: var(--border-accent); color: var(--text-primary); }
+.btnPrimary {
+  background: var(--btn-primary-bg);
+  border: none;
+  color: var(--btn-primary-text);
+}
+.btnPrimary:hover { background: var(--btn-primary-hover); }
+
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.errorBanner {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.30);
+  color: var(--status-error);
+  font-size: 12.5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.setupCard {
+  background: var(--bg-card);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  padding: 20px;
+}
+.setupHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.setupHead h3 {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0;
+}
+.setupBadge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  background: rgba(239, 68, 68, 0.10);
+  color: var(--status-error);
+}
+.setupDesc {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 4px 0 14px;
+}
+.setupDesc strong { color: var(--text-primary); }
+.steps {
+  margin: 0 0 16px 20px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.steps em { color: var(--accent-orange); font-style: normal; }
+.steps a {
+  color: #1DB954;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.steps code {
+  font-family: var(--font-mono);
+  background: var(--bg-secondary);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 11.5px;
+}
+.code {
+  margin-top: 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.45;
+  overflow-x: auto;
+  white-space: pre;
+  color: var(--text-primary);
+}
+.setupActions, .connectedActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Player card */
+.playerCard {
+  background: linear-gradient(135deg, #1DB95422 0%, var(--bg-card) 60%);
+  border: 1px solid rgba(29, 185, 84, 0.30);
+  border-radius: var(--radius-md);
+  padding: 18px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.playerLeft {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.albumArt {
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, #1DB954, #191414);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,0.8);
+}
+.trackInfo { display: flex; flex-direction: column; gap: 4px; }
+.trackTitle { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.trackArtist { font-size: 12px; color: var(--text-secondary); }
+
+.playerControls { display: flex; align-items: center; gap: 10px; }
+.playerBtn, .playerBtnPrimary {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+.playerBtn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.playerBtnPrimary {
+  width: 52px;
+  height: 52px;
+  background: #1DB954;
+  color: #000;
+}
+.playerBtnPrimary:hover { background: #1ed760; transform: scale(1.05); }
+
+.exampleGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+  margin: 0 0 14px;
+}
+.example {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+.exampleIcon {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(29, 185, 84, 0.14);
+  color: #1DB954;
+  flex-shrink: 0;
+}
+.exampleLabel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.exampleText {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  font-style: italic;
+  margin-top: 2px;
+}
+
+.toolsDetails { margin-top: 14px; }
+.toolsDetails summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 6px 0;
+}
+.toolsDetails summary:hover { color: var(--text-primary); }
+.toolList {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.toolList li { font-size: 11.5px; padding: 3px 0; color: var(--text-secondary); }
+.toolList code {
+  font-family: var(--font-mono);
+  color: #1DB954;
+  margin-right: 6px;
+}

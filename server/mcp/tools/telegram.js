@@ -86,6 +86,21 @@ function apiPost(path, body, contentType = 'application/json') {
   });
 }
 
+const { isAdmin } = require('./user-sandbox');
+
+/**
+ * Verifica que un non-admin solo opere sobre su propio chat.
+ * Retorna string de error si no está permitido, o null si OK.
+ */
+function _checkChatAccess(chatId, ctx) {
+  if (isAdmin(ctx)) return null;
+  if (!ctx.chatId) return 'Error: no se pudo identificar tu chat. Acceso denegado.';
+  if (String(chatId) !== String(ctx.chatId)) {
+    return 'Error: solo podés enviar mensajes a tu propio chat.';
+  }
+  return null;
+}
+
 // ── Tools ────────────────────────────────────────────────────────────────────
 
 const telegramListBots = {
@@ -123,8 +138,10 @@ const telegramSendMessage = {
       'ttl: ms de vida (default 300000=5min). once: true para single-use.',
   },
 
-  async execute({ bot, chat_id, text, parse_mode, reply_markup, callbacks }) {
+  async execute({ bot, chat_id, text, parse_mode, reply_markup, callbacks }, ctx = {}) {
     if (!bot || !chat_id || !text) return 'Error: bot, chat_id y text son requeridos.';
+    const denied = _checkChatAccess(chat_id, ctx);
+    if (denied) return denied;
     if (_isNoiseText(text)) return 'Mensaje filtrado (meta-text interno).';
     const bots = await apiGet('/api/telegram/bots');
     const botInfo = Array.isArray(bots) && bots.find(b => b.key === bot);
@@ -155,8 +172,10 @@ const telegramSendPhoto = {
     'caption?': '?string — texto debajo de la imagen (opcional)',
   },
 
-  async execute({ bot, chat_id, file_path, caption }) {
+  async execute({ bot, chat_id, file_path, caption }, ctx = {}) {
     if (!bot || !chat_id || !file_path) return 'Error: bot, chat_id y file_path son requeridos.';
+    const denied = _checkChatAccess(chat_id, ctx);
+    if (denied) return denied;
 
     if (!fs.existsSync(file_path)) return `Error: archivo no encontrado: ${file_path}`;
     const buffer = fs.readFileSync(file_path);
@@ -189,8 +208,10 @@ const telegramSendDocument = {
     'caption?': '?string — texto debajo del archivo (opcional)',
   },
 
-  async execute({ bot, chat_id, file_path, caption }) {
+  async execute({ bot, chat_id, file_path, caption }, ctx = {}) {
     if (!bot || !chat_id || !file_path) return 'Error: bot, chat_id y file_path son requeridos.';
+    const denied = _checkChatAccess(chat_id, ctx);
+    if (denied) return denied;
 
     if (!fs.existsSync(file_path)) return `Error: archivo no encontrado: ${file_path}`;
     const buffer = fs.readFileSync(file_path);
@@ -219,8 +240,10 @@ const telegramSendVoice = {
     file_path: 'string — ruta absoluta del archivo de audio en disco',
   },
 
-  async execute({ bot, chat_id, file_path }) {
+  async execute({ bot, chat_id, file_path }, ctx = {}) {
     if (!bot || !chat_id || !file_path) return 'Error: bot, chat_id y file_path son requeridos.';
+    const denied = _checkChatAccess(chat_id, ctx);
+    if (denied) return denied;
 
     if (!fs.existsSync(file_path)) return `Error: archivo no encontrado: ${file_path}`;
     const buffer = fs.readFileSync(file_path);
@@ -245,8 +268,10 @@ const telegramSendVideo = {
     'caption?': '?string — texto debajo del video (opcional)',
   },
 
-  async execute({ bot, chat_id, file_path, caption }) {
+  async execute({ bot, chat_id, file_path, caption }, ctx = {}) {
     if (!bot || !chat_id || !file_path) return 'Error: bot, chat_id y file_path son requeridos.';
+    const denied = _checkChatAccess(chat_id, ctx);
+    if (denied) return denied;
 
     if (!fs.existsSync(file_path)) return `Error: archivo no encontrado: ${file_path}`;
     const buffer = fs.readFileSync(file_path);
@@ -277,8 +302,10 @@ const telegramEditMessage = {
     'parse_mode?': '?string — HTML, Markdown o MarkdownV2 (opcional)',
   },
 
-  async execute({ bot, chat_id, message_id, text, parse_mode }) {
+  async execute({ bot, chat_id, message_id, text, parse_mode }, ctx = {}) {
     if (!bot || !chat_id || !message_id || !text) return 'Error: bot, chat_id, message_id y text son requeridos.';
+    const denied = _checkChatAccess(chat_id, ctx);
+    if (denied) return denied;
 
     const body = { message_id: Number(message_id), text };
     if (parse_mode) body.parse_mode = parse_mode;
@@ -297,8 +324,10 @@ const telegramDeleteMessage = {
     message_id: 'string — ID del mensaje a borrar',
   },
 
-  async execute({ bot, chat_id, message_id }) {
+  async execute({ bot, chat_id, message_id }, ctx = {}) {
     if (!bot || !chat_id || !message_id) return 'Error: bot, chat_id y message_id son requeridos.';
+    const denied = _checkChatAccess(chat_id, ctx);
+    if (denied) return denied;
 
     const result = await apiPost(`/api/telegram/bots/${bot}/chats/${chat_id}/delete`, { message_id: Number(message_id) });
     if (result.error) return `Error: ${result.error}`;

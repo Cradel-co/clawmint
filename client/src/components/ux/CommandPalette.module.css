@@ -1,0 +1,192 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 10vh;
+  z-index: 9999;
+  animation: cmdk-fade-in 0.15s ease;
+}
+
+@keyframes cmdk-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.palette {
+  width: min(640px, 92vw);
+  max-height: 70vh;
+  background: var(--oc2-surface-raised, var(--bg-card));
+  border: 1px solid var(--oc2-border-weak, var(--border-primary));
+  border-radius: var(--radius-xl, 12px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: cmdk-slide-in 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes cmdk-slide-in {
+  from { transform: translateY(-20px) scale(0.98); opacity: 0; }
+  to   { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+.inputWrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  padding: var(--space-3, 12px) var(--space-4, 16px);
+  border-bottom: 1px solid var(--oc2-border-weaker, var(--border-subtle));
+}
+
+.kbd {
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-size: var(--font-xs, 11px);
+  border: 1px solid var(--oc2-border-weak, var(--border-primary));
+  border-radius: var(--radius-sm, 4px);
+  color: var(--oc2-text-weak, var(--text-muted));
+  background: var(--oc2-surface-base, var(--bg-panel));
+}
+
+.input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-family: var(--font-ui);
+  font-size: var(--font-lg, 16px);
+  color: var(--oc2-text-strong, var(--text-primary));
+}
+
+.input::placeholder {
+  color: var(--oc2-text-weaker, var(--text-hint));
+}
+
+.count {
+  font-size: var(--font-xs, 11px);
+  color: var(--oc2-text-weak, var(--text-muted));
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1, 4px);
+  overflow-y: auto;
+  min-height: 100px;
+}
+
+.empty {
+  padding: var(--space-8, 32px);
+  text-align: center;
+  color: var(--oc2-text-weak, var(--text-muted));
+  font-size: var(--font-sm, 12px);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  cursor: pointer;
+  border-radius: var(--radius-md, 6px);
+  transition: background var(--t-fast, 0.15s ease);
+}
+
+.itemActive {
+  background: var(--oc2-interactive, var(--accent-cyan));
+  color: #fff;
+}
+
+.itemActive .itemHint,
+.itemActive .itemGroup {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.itemIcon {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  flex-shrink: 0;
+}
+
+.itemBody {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.itemTitle {
+  color: inherit;
+  font-size: var(--font-md, 14px);
+  font-weight: var(--weight-medium, 500);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemHint {
+  color: var(--oc2-text-weak, var(--text-muted));
+  font-size: var(--font-xs, 11px);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemGroup {
+  color: var(--oc2-text-weak, var(--text-muted));
+  font-size: var(--font-xs, 11px);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide, 0.02em);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm, 4px);
+  background: var(--oc2-surface-base, var(--bg-panel));
+  flex-shrink: 0;
+}
+
+.itemActive .itemGroup {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.mark {
+  background: var(--oc2-warning, var(--accent-yellow));
+  color: #000;
+  padding: 0 1px;
+  border-radius: 2px;
+}
+
+.itemActive .mark {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+.footer {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-4, 16px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border-top: 1px solid var(--oc2-border-weaker, var(--border-subtle));
+  font-size: var(--font-xs, 11px);
+  color: var(--oc2-text-weak, var(--text-muted));
+  background: var(--oc2-surface-base, var(--bg-panel));
+}
+
+.footer kbd {
+  padding: 1px 4px;
+  font-family: var(--font-mono);
+  font-size: var(--font-xs, 11px);
+  border: 1px solid var(--oc2-border-weak, var(--border-primary));
+  border-radius: var(--radius-xs, 2px);
+  margin-right: 2px;
+  background: var(--oc2-surface-raised, var(--bg-card));
+}

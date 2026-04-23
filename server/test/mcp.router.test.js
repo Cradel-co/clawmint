@@ -7,6 +7,14 @@ const { destroy: destroyShell, destroyAll }          = require('../mcp/ShellSess
 
 afterAll(() => destroyAll());
 
+const ADMIN_CTX = {
+  userId: 'admin-test',
+  usersRepo: {
+    findByIdentity: () => ({ id: 'admin-test', role: 'admin' }),
+    getById: () => ({ id: 'admin-test', role: 'admin' }),
+  },
+};
+
 // ── getToolDefs ───────────────────────────────────────────────────────────────
 
 describe('getToolDefs()', () => {
@@ -31,7 +39,7 @@ describe('getToolDefs()', () => {
 describe('executeTool() en-proceso', () => {
   test('ejecuta bash directamente y retorna string', async () => {
     const id = 'mcp-exec-' + Date.now();
-    const r  = await executeTool('bash', { command: 'echo mcp_ok' }, { shellId: id });
+    const r  = await executeTool('bash', { command: 'echo mcp_ok' }, { shellId: id, ...ADMIN_CTX });
     expect(r).toContain('mcp_ok');
     destroyShell(id);
   });
@@ -48,7 +56,12 @@ describe('executeTool() en-proceso', () => {
 /** Crea un servidor Express efímero para tests HTTP. Retorna { server, port, close }. */
 async function createTestServer() {
   const app    = express();
-  const router = createMcpRouter({});
+  const router = createMcpRouter({
+    usersRepo: {
+      findByIdentity: () => ({ id: 'admin-test', role: 'admin' }),
+      getById: () => ({ id: 'admin-test', role: 'admin' }),
+    },
+  });
   app.use('/mcp', router);
 
   return new Promise((resolve, reject) => {
@@ -159,7 +172,7 @@ describe('MCP HTTP router', () => {
     const { body } = await post(
       port,
       { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'bash', arguments: { command: 'echo http_ok' } } },
-      { 'x-shell-id': id },
+      { 'x-shell-id': id, 'x-user-id': 'admin-test' },
     );
     expect(body.result.content[0].type).toBe('text');
     expect(body.result.content[0].text).toContain('http_ok');

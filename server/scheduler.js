@@ -3,10 +3,11 @@
 const fs   = require('fs');
 const path = require('path');
 const cronParser = require('./utils/cron-parser');
+const { CONFIG_FILES } = require('./paths');
 
 const TICK_INTERVAL_MS    = 30_000; // 30 segundos
 const MAX_ACTIONS_PER_TICK = 10;   // límite de acciones por tick para evitar bloqueo
-const REMINDERS_FILE      = path.join(__dirname, 'reminders.json');
+const REMINDERS_FILE      = CONFIG_FILES.reminders;
 
 /**
  * Scheduler — motor de ejecución de acciones programadas.
@@ -16,7 +17,7 @@ const REMINDERS_FILE      = path.join(__dirname, 'reminders.json');
  * Entrega cross-channel con cola de pending para canales desconectados.
  */
 class Scheduler {
-  constructor({ actionsRepo, pendingRepo, usersRepo, convSvc, chatSettingsRepo, botsRepo, agents, logger }) {
+  constructor({ actionsRepo, pendingRepo, usersRepo, convSvc, chatSettingsRepo, botsRepo, agents, resumableSessionsRepo, logger }) {
     this._actionsRepo  = actionsRepo;
     this._pendingRepo  = pendingRepo;
     this._usersRepo    = usersRepo;
@@ -24,6 +25,7 @@ class Scheduler {
     this._chatSettings = chatSettingsRepo || null;
     this._botsRepo     = botsRepo || null;
     this._agents       = agents || null;
+    this._resumables   = resumableSessionsRepo || null;
     this._logger       = logger || console;
 
     this._telegramChannel = null;
@@ -135,6 +137,20 @@ class Scheduler {
         } catch (err) {
           this._logger.error(`[Scheduler] Error ejecutando acción ${action.id}:`, err.message);
           this._actionsRepo.markFailed(action.id, err.message);
+        }
+      }
+
+      // Fase 4 extra — resumable sessions listos para disparar
+      if (this._resumables) {
+        const ready = this._resumables.listReady(now).slice(0, MAX_ACTIONS_PER_TICK);
+        for (const rs of ready) {
+          try {
+            await this._executeResumable(rs);
+            this._resumables.markFired(rs.id);
+          } catch (err) {
+            this._logger.error(`[Scheduler] Error ejecutando resumable ${rs.id}:`, err.message);
+            this._resumables.cancel(rs.id);
+          }
         }
       }
 
@@ -290,6 +306,24 @@ class Scheduler {
           `❌ Error ejecutando tarea programada "${action.label}": ${err.message}`);
       }
     }
+  }
+
+  // Fase 4 extra — dispara una resumable_session: re-abre el chat con el history
+  // serializado + resume_prompt como input del usuario.
+  async _executeResumable(rs) {
+    if (!this._convSvc) throw new Error('convSvc no configurado en scheduler');
+    this._logger.info(`[Scheduler] Disparando resumable ${rs.id} para chat ${rs.chat_id}`);
+    await this._convSvc.processMessage({
+      chatId:   rs.chat_id,
+      agentKey: rs.agent_key || this.getDefaultAgent(),
+      provider: rs.provider || 'anthropic',
+      model:    rs.model || null,
+      text:     rs.resume_prompt,
+      botKey:   (rs.context && rs.context.botKey) || 'web',
+      channel:  rs.channel || 'web',
+      claudeMode: 'auto',
+      _resumedHistory: rs.history,  // ConversationService puede usar esto si soporta inyección
+    });
   }
 
   // ── Entrega a identidades ─────────────────────────────────────────────────

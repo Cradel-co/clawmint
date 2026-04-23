@@ -1,7 +1,14 @@
 'use strict';
 
+/**
+ * DeepSeek provider v2 — streaming + cancelación.
+ * API-compatible con OpenAI; delega la lógica a `base/openaiCompatChat.js`.
+ */
+
 const OpenAI = require('openai');
-const tools = require('../tools');
+const { openaiCompatChat } = require('./base/openaiCompatChat');
+
+const DEEPSEEK_TIMEOUT_MS = 60_000;
 
 module.exports = {
   name: 'deepseek',
@@ -9,84 +16,13 @@ module.exports = {
   defaultModel: 'deepseek-chat',
   models: ['deepseek-chat', 'deepseek-reasoner'],
 
-  async *chat({ systemPrompt, history, apiKey, model, executeTool: execToolFn, channel, agentRole }) {
-    if (!apiKey) {
-      yield { type: 'done', fullText: 'Error: API key de DeepSeek no configurada. Configurala en el panel ⚙️.' };
-      return;
-    }
-
-    const client = new OpenAI({ apiKey, baseURL: 'https://api.deepseek.com', timeout: 60000 });
-    const usedModel = model || this.defaultModel;
-    const toolDefs  = tools.toOpenAIFormat({ channel, agentRole });
-    const execTool  = execToolFn || tools.executeTool;
-
-    const messages = [];
-    if (systemPrompt) {
-      messages.push({ role: 'system', content: systemPrompt });
-    }
-    for (const m of history) {
-      messages.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: Array.isArray(m.content) ? m.content : (m.content || '') });
-    }
-
-    let fullText = '';
-    let totalPromptTokens = 0, totalCompletionTokens = 0;
-
-    while (true) {
-      let response;
-      try {
-        response = await client.chat.completions.create({
-          model: usedModel,
-          messages,
-          tools: toolDefs,
-          tool_choice: 'auto',
-        });
-      } catch (err) {
-        yield { type: 'done', fullText: `Error DeepSeek: ${err.message}` };
-        return;
-      }
-
-      const u = response.usage;
-      if (u) { totalPromptTokens += u.prompt_tokens || 0; totalCompletionTokens += u.completion_tokens || 0; }
-
-      const choice = response.choices?.[0];
-      const msg = choice?.message;
-
-      if (!msg) {
-        yield { type: 'usage', promptTokens: totalPromptTokens, completionTokens: totalCompletionTokens };
-        yield { type: 'done', fullText };
-        return;
-      }
-
-      if (msg.content) {
-        fullText += msg.content;
-        yield { type: 'text', text: msg.content };
-      }
-
-      const toolCalls = msg.tool_calls || [];
-
-      if (toolCalls.length === 0 || choice.finish_reason === 'stop') {
-        yield { type: 'usage', promptTokens: totalPromptTokens, completionTokens: totalCompletionTokens };
-        yield { type: 'done', fullText };
-        return;
-      }
-
-      messages.push(msg);
-
-      for (const tc of toolCalls) {
-        const fnName = tc.function.name;
-        let fnArgs = {};
-        try { fnArgs = JSON.parse(tc.function.arguments || '{}'); } catch {}
-
-        yield { type: 'tool_call', name: fnName, args: fnArgs };
-        const result = await execTool(fnName, fnArgs);
-        yield { type: 'tool_result', name: fnName, result };
-
-        messages.push({
-          role: 'tool',
-          tool_call_id: tc.id,
-          content: String(result),
-        });
-      }
-    }
+  async *chat({ systemPrompt, history, apiKey, model, executeTool, channel, agentRole, signal }) {
+    yield* openaiCompatChat({
+      OpenAI,
+      clientConfig: { apiKey, baseURL: 'https://api.deepseek.com', timeout: DEEPSEEK_TIMEOUT_MS },
+      providerLabel: 'DeepSeek',
+      defaultModel: this.defaultModel,
+      systemPrompt, history, model, executeTool, channel, agentRole, signal,
+    });
   },
 };

@@ -1,21 +1,37 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useMemo } from 'react';
 import { useUIStore } from '../../stores/uiStore';
-import { SECTION_META, NAV_TOP, NAV_MID } from './sectionMeta';
+import { SECTION_META, NAV_GROUPS, SECTION_FLAGS } from './sectionMeta';
+import { isFeature } from '../../hooks/useFeatureFlag';
 import styles from '../../App.module.css';
 
 const ITEM_CLASS = {
-  terminal: styles.sidebarItemTerminal,
-  chat: styles.sidebarItemChat,
-  telegram: styles.sidebarItemTelegram,
-  contacts: styles.sidebarItemContacts,
-  config: styles.sidebarItemConfig,
+  dashboard:    styles.sidebarItemDashboard,
+  terminal:     styles.sidebarItemTerminal,
+  chat:         styles.sidebarItemChat,
+  telegram:     styles.sidebarItemTelegram,
+  contacts:     styles.sidebarItemContacts,
+  household:    styles.sidebarItemHousehold,
+  tasks:        styles.sidebarItemTasks,
+  scheduler:    styles.sidebarItemScheduler,
+  skills:       styles.sidebarItemSkills,
+  integrations: styles.sidebarItemIntegrations,
+  devices:      styles.sidebarItemDevices,
+  music:        styles.sidebarItemMusic,
+  config:       styles.sidebarItemConfig,
 };
 
 export default function Sidebar() {
   const { section, setSection, chatBadge, telegramBadge, sidebarExpanded, toggleSidebar } = useUIStore();
 
+  const visibleGroups = useMemo(() => NAV_GROUPS
+    .map(g => ({ ...g, keys: g.keys.filter(k => !SECTION_FLAGS[k] || isFeature(SECTION_FLAGS[k])) }))
+    .filter(g => g.keys.length > 0), []);
+
   const renderItem = (key) => {
-    const { Icon, label } = SECTION_META[key];
+    const meta = SECTION_META[key];
+    if (!meta) return null;
+    const { Icon, label } = meta;
     const badge = key === 'telegram' ? telegramBadge : key === 'chat' ? chatBadge : 0;
     return (
       <button
@@ -38,14 +54,16 @@ export default function Sidebar() {
   return (
     <aside className={`${styles.appSidebar}${sidebarExpanded ? ` ${styles.sidebarExpanded}` : ''}`} aria-label="Navegación principal">
       <nav className={styles.sidebarNav}>
-        {NAV_TOP.map(renderItem)}
-        <div className={styles.sidebarDivider} aria-hidden="true" />
-        {NAV_MID.map(renderItem)}
+        {visibleGroups.map((group, idx) => (
+          <div key={group.label} className={styles.sidebarGroup}>
+            {sidebarExpanded && <div className={styles.sidebarGroupLabel}>{group.label}</div>}
+            {!sidebarExpanded && idx > 0 && <div className={styles.sidebarDivider} aria-hidden="true" />}
+            {group.keys.map(renderItem)}
+          </div>
+        ))}
       </nav>
 
       <div className={styles.sidebarBottom}>
-        <div className={styles.sidebarDivider} aria-hidden="true" />
-        {renderItem('config')}
         <button
           className={`${styles.sidebarItem} ${styles.sidebarToggleBtn}`}
           onClick={toggleSidebar}
@@ -55,6 +73,7 @@ export default function Sidebar() {
           {sidebarExpanded
             ? <ChevronLeft  size={16} aria-hidden="true" />
             : <ChevronRight size={16} aria-hidden="true" />}
+          {sidebarExpanded && <span className={styles.sidebarLabel}>Colapsar</span>}
         </button>
       </div>
     </aside>

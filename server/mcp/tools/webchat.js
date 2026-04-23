@@ -86,6 +86,20 @@ function apiPost(path, body, contentType = 'application/json') {
   });
 }
 
+const { isAdmin } = require('./user-sandbox');
+
+/**
+ * Verifica que un non-admin solo opere sobre su propia sesión.
+ */
+function _checkSessionAccess(sessionId, ctx) {
+  if (isAdmin(ctx)) return null;
+  if (!ctx.chatId) return 'Error: no se pudo identificar tu sesión. Acceso denegado.';
+  if (String(sessionId) !== String(ctx.chatId)) {
+    return 'Error: solo podés operar en tu propia sesión.';
+  }
+  return null;
+}
+
 // ── Tools ────────────────────────────────────────────────────────────────────
 
 const webchatListSessions = {
@@ -93,15 +107,20 @@ const webchatListSessions = {
   description: 'Lista las sesiones WebChat activas con su sessionId, provider y agente.',
   params: {},
 
-  async execute() {
-    const sessions = await apiGet('/api/webchat/sessions');
-    if (!Array.isArray(sessions) || sessions.length === 0) return 'No hay sesiones WebChat activas.';
-    const lines = sessions.map(s =>
-      `  ${s.sessionId} — provider: ${s.provider}, agente: ${s.agent || '(ninguno)'}, msgs: ${s.messages}, cwd: ${s.cwd}`
-    );
-    return `Sesiones activas (${sessions.length}):\n${lines.join('\n')}`;
+  async execute(_args, ctx = {}) {
+    if (!isAdmin(ctx)) return 'Error: solo administradores pueden listar todas las sesiones.';
+    return _webchatListSessionsImpl();
   },
 };
+
+async function _webchatListSessionsImpl() {
+  const sessions = await apiGet('/api/webchat/sessions');
+  if (!Array.isArray(sessions) || sessions.length === 0) return 'No hay sesiones WebChat activas.';
+  const lines = sessions.map(s =>
+    `  ${s.sessionId} — provider: ${s.provider}, agente: ${s.agent || '(ninguno)'}, msgs: ${s.messages}, cwd: ${s.cwd}`
+  );
+  return `Sesiones activas (${sessions.length}):\n${lines.join('\n')}`;
+}
 
 const webchatSendMessage = {
   name: 'webchat_send_message',
@@ -117,8 +136,10 @@ const webchatSendMessage = {
       'ttl: ms de vida (default 300000=5min). once: true para single-use.',
   },
 
-  async execute({ session_id, text, buttons, callbacks }) {
+  async execute({ session_id, text, buttons, callbacks }, ctx = {}) {
     if (!session_id || !text) return 'Error: session_id y text son requeridos.';
+    const denied = _checkSessionAccess(session_id, ctx);
+    if (denied) return denied;
     if (_isNoiseText(text)) return 'Mensaje filtrado (meta-text interno).';
 
     const parseIfString = (v) => {
@@ -144,8 +165,10 @@ const webchatSendPhoto = {
     'caption?': '?string — texto debajo de la imagen (opcional)',
   },
 
-  async execute({ session_id, file_path, caption }) {
+  async execute({ session_id, file_path, caption }, ctx = {}) {
     if (!session_id || !file_path) return 'Error: session_id y file_path son requeridos.';
+    const denied = _checkSessionAccess(session_id, ctx);
+    if (denied) return denied;
 
     if (!fs.existsSync(file_path)) return `Error: archivo no encontrado: ${file_path}`;
     const buffer = fs.readFileSync(file_path);
@@ -177,8 +200,10 @@ const webchatSendDocument = {
     'caption?': '?string — texto debajo del archivo (opcional)',
   },
 
-  async execute({ session_id, file_path, caption }) {
+  async execute({ session_id, file_path, caption }, ctx = {}) {
     if (!session_id || !file_path) return 'Error: session_id y file_path son requeridos.';
+    const denied = _checkSessionAccess(session_id, ctx);
+    if (denied) return denied;
 
     if (!fs.existsSync(file_path)) return `Error: archivo no encontrado: ${file_path}`;
     const buffer = fs.readFileSync(file_path);
@@ -207,8 +232,10 @@ const webchatEditMessage = {
     text: 'string — nuevo texto del mensaje',
   },
 
-  async execute({ session_id, msg_id, text }) {
+  async execute({ session_id, msg_id, text }, ctx = {}) {
     if (!session_id || !msg_id || !text) return 'Error: session_id, msg_id y text son requeridos.';
+    const denied = _checkSessionAccess(session_id, ctx);
+    if (denied) return denied;
 
     const result = await apiPost(`/api/webchat/sessions/${session_id}/edit`, { msg_id, text });
     if (result.error) return `Error: ${result.error}`;
@@ -224,8 +251,10 @@ const webchatDeleteMessage = {
     msg_id: 'string — ID del mensaje a borrar',
   },
 
-  async execute({ session_id, msg_id }) {
+  async execute({ session_id, msg_id }, ctx = {}) {
     if (!session_id || !msg_id) return 'Error: session_id y msg_id son requeridos.';
+    const denied = _checkSessionAccess(session_id, ctx);
+    if (denied) return denied;
 
     const result = await apiPost(`/api/webchat/sessions/${session_id}/delete`, { msg_id });
     if (result.error) return `Error: ${result.error}`;
@@ -242,8 +271,10 @@ const webchatSendVoice = {
     'caption?': '?string — texto descriptivo (opcional)',
   },
 
-  async execute({ session_id, file_path, caption }) {
+  async execute({ session_id, file_path, caption }, ctx = {}) {
     if (!session_id || !file_path) return 'Error: session_id y file_path son requeridos.';
+    const denied = _checkSessionAccess(session_id, ctx);
+    if (denied) return denied;
 
     if (!fs.existsSync(file_path)) return `Error: archivo no encontrado: ${file_path}`;
     const buffer = fs.readFileSync(file_path);
@@ -275,8 +306,10 @@ const webchatSendVideo = {
     'caption?': '?string — texto debajo del video (opcional)',
   },
 
-  async execute({ session_id, file_path, caption }) {
+  async execute({ session_id, file_path, caption }, ctx = {}) {
     if (!session_id || !file_path) return 'Error: session_id y file_path son requeridos.';
+    const denied = _checkSessionAccess(session_id, ctx);
+    if (denied) return denied;
 
     if (!fs.existsSync(file_path)) return `Error: archivo no encontrado: ${file_path}`;
     const buffer = fs.readFileSync(file_path);
