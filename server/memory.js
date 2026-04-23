@@ -91,9 +91,14 @@ function append(agentKey, filename, content) {
 }
 
 function remove(agentKey, filename) {
-  const filepath = path.join(_agentDir(agentKey), _safeName(filename));
+  const safeFn   = _safeName(filename);
+  const filepath = path.join(_agentDir(agentKey), safeFn);
   if (!fs.existsSync(filepath)) return false;
   fs.unlinkSync(filepath);
+  // Eliminar de SQLite — ON DELETE CASCADE limpia note_links, note_tags y note_embeddings
+  if (db) {
+    db.prepare('DELETE FROM notes WHERE agent_key = ? AND filename = ?').run(agentKey, safeFn);
+  }
   return true;
 }
 
@@ -1281,6 +1286,31 @@ function buildGraph(agentKey) {
   return { nodes, links };
 }
 
+// ─── Búsqueda global (todos los agentes) ─────────────────────────────────────
+
+function globalSearch(q, limit = 60) {
+  if (!db || !q) return [];
+  const like = `%${q.toLowerCase()}%`;
+  const rows = db.prepare(`
+    SELECT n.id, n.agent_key, n.filename, n.title, n.importance, n.access_count,
+           substr(n.content, 1, 200) as preview
+    FROM notes n
+    WHERE lower(n.title) LIKE ? OR lower(n.content) LIKE ?
+    ORDER BY n.importance DESC, n.access_count DESC
+    LIMIT ?
+  `).all(like, like, limit);
+
+  return rows.map(r => ({
+    id:          r.id,
+    agentKey:    r.agent_key,
+    filename:    r.filename,
+    title:       r.title,
+    importance:  r.importance,
+    accessCount: r.access_count,
+    preview:     r.preview,
+  }));
+}
+
 // ─── Inicializar DB al cargar el módulo ──────────────────────────────────────
 
 initDB();
@@ -1301,6 +1331,7 @@ module.exports = {
   MEMORY_DIR,
   DB_SCHEMA,
   listFiles,
+  globalSearch,
   read,
   write,
   append,

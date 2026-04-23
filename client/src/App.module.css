@@ -658,7 +658,8 @@
 .sectionChat     .sectionBarIcon { color: var(--accent-cyan); }
 .sectionTelegram .sectionBarIcon { color: var(--accent-blue); }
 .sectionContacts .sectionBarIcon { color: var(--accent-purple); }
-.sectionConfig  .sectionBarIcon { color: var(--accent-yellow); }
+.sectionConfig    .sectionBarIcon { color: var(--accent-yellow); }
+.sectionKnowledge .sectionBarIcon { color: var(--accent-orange); }
 
 .sectionBarTitle {
   font-size: 13px;

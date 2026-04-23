@@ -39,6 +39,7 @@ const SECTION_CLASS = {
   integrations: styles.sectionIntegrations,
   devices: styles.sectionDevices,
   music: styles.sectionMusic,
+  knowledge: styles.sectionKnowledge,
   config: styles.sectionConfig,
 };
 
@@ -54,6 +55,7 @@ const SkillsPanel       = lazy(() => import('./components/features/SkillsPanel.j
 const IntegrationsPanel = lazy(() => import('./components/features/IntegrationsPanel.jsx'));
 const DevicesPanel      = lazy(() => import('./components/features/DevicesPanel.jsx'));
 const MusicPanel        = lazy(() => import('./components/features/MusicPanel.jsx'));
+const MemoryGraphPanel  = lazy(() => import('./components/MemoryGraphPanel.jsx'));
 
 // ── App principal ─────────────────────────────────────────────────────────────
 
@@ -323,6 +325,15 @@ function AppContent() {
               <SectionBar section="music" />
               <ErrorBoundary><Suspense fallback={<Skeleton lines={6} style={{ padding: '24px' }} />}>
                 <MusicPanel accessToken={accessToken} />
+              </Suspense></ErrorBoundary>
+            </div>
+          )}
+
+          {mounted.knowledge && (
+            <div className={`${styles.section} ${styles.sectionFull} ${SECTION_CLASS.knowledge} ${section === 'knowledge' ? styles.sectionActive : ''}`} aria-hidden={section !== 'knowledge'}>
+              <SectionBar section="knowledge" />
+              <ErrorBoundary><Suspense fallback={<Skeleton lines={6} style={{ padding: '24px' }} />}>
+                <MemoryGraphPanel />
               </Suspense></ErrorBoundary>
             </div>
           )}

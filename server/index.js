@@ -288,6 +288,11 @@ _modulesReady.then(() => {
   // Montar MCP router si está disponible
   if (mcpRouter) app.use('/mcp', mcpRouter);
 
+  // MCP de administración — requiere JWT admin
+  app.use('/mcp-admin', requireAuth, requireAdmin, require('./routes/mcp-admin')({
+    memory, agents, usersRepo, locationService, providerConfig, householdRepo,
+  }));
+
   // Broadcast de eventos Telegram a clientes WS
   if (events) {
     events.on('telegram:session', (data) => {

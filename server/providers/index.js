@@ -6,6 +6,7 @@ const legacyShim = require('./base/legacyShim');
 const providers = {
   'claude-code': require('./claude-code'),
   'gemini-cli':  require('./gemini-cli'),
+  'opencode':    require('./opencode'),
   'anthropic':   require('./anthropic'),
   'gemini':      require('./gemini'),
   'openai':      require('./openai'),

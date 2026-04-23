@@ -26,6 +26,7 @@ export const SECTION_META = {
   integrations: { Icon: Plug,            label: 'Integraciones'   },
   devices:      { Icon: Cpu,             label: 'Dispositivos'    },
   music:        { Icon: Volume2,         label: 'Música'          },
+  knowledge:    { Icon: Network,         label: 'Knowledge'       },
   config:       { Icon: Settings,        label: 'Configuración'   },
 };
 
@@ -41,7 +42,7 @@ export const NAV_GROUPS = [
   { label: 'Control',       keys: ['terminal', 'chat'] },
   { label: 'Comms',         keys: ['telegram', 'contacts'] },
   { label: 'Familia',       keys: ['household'] },
-  { label: 'Productividad', keys: ['tasks', 'scheduler', 'skills'] },
+  { label: 'Productividad', keys: ['tasks', 'scheduler', 'skills', 'knowledge'] },
   { label: 'Servicios',     keys: ['integrations', 'devices', 'music'] },
   { label: 'Settings',      keys: ['config'] },
 ];
@@ -56,6 +57,7 @@ export const SECTION_FLAGS = {
   integrations: 'INTEGRATIONS_PANEL',
   devices:      'DEVICES_PANEL',
   music:        'MUSIC_PANEL',
+  knowledge:    'KNOWLEDGE_GRAPH',
 };
 
 // Legacy export (sin grupos) — retenido por si algo externo lo usa.

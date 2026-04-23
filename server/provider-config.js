@@ -18,6 +18,7 @@ const DEFAULT_CONFIG = {
     grok:      { apiKey: '', model: 'grok-3-fast' },
     deepseek:  { apiKey: '', model: 'deepseek-chat' },
     ollama:    { apiKey: '', model: 'llama3.2' },
+    opencode:  { model: '', apiKeys: {} },  // apiKeys: { anthropic, openai, google, ... }
   },
 };
 
@@ -85,4 +86,23 @@ function setDefault(name) {
   saveConfig(cfg);
 }
 
-module.exports = { getConfig, getApiKey, setProvider, setDefault };
+/** Devuelve las API keys configuradas para los sub-proveedores de opencode. */
+function getOpenCodeKeys() {
+  const cfg = getConfig();
+  return cfg.providers?.opencode?.apiKeys || {};
+}
+
+/** Guarda o borra la API key de un sub-proveedor de opencode. */
+function setOpenCodeKey(provider, key) {
+  const cfg = getConfig();
+  if (!cfg.providers.opencode) cfg.providers.opencode = { model: '', apiKeys: {} };
+  if (!cfg.providers.opencode.apiKeys) cfg.providers.opencode.apiKeys = {};
+  if (key) {
+    cfg.providers.opencode.apiKeys[provider] = key;
+  } else {
+    delete cfg.providers.opencode.apiKeys[provider];
+  }
+  saveConfig(cfg);
+}
+
+module.exports = { getConfig, getApiKey, setProvider, setDefault, getOpenCodeKeys, setOpenCodeKey };

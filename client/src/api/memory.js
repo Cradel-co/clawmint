@@ -67,7 +67,39 @@ export function useSaveMemoryFile() {
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ['memory-files', vars.agentKey] });
       qc.invalidateQueries({ queryKey: ['memory-file', vars.agentKey, vars.filename] });
+      qc.invalidateQueries({ queryKey: ['memory-graph', vars.agentKey] });
     },
+  });
+}
+
+export function useMemoryGraph(agentKey) {
+  return useQuery({
+    queryKey: ['memory-graph', agentKey ?? '__all__'],
+    queryFn: async () => {
+      const url = agentKey
+        ? `${BASE}/graph?agentKey=${encodeURIComponent(agentKey)}`
+        : `${BASE}/graph`;
+      const res = await apiFetch(url);
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || 'Error al cargar grafo');
+      return data;
+    },
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useGlobalMemorySearch(q) {
+  return useQuery({
+    queryKey: ['memory-search-global', q],
+    queryFn: async () => {
+      const res = await apiFetch(`${BASE}/search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || 'Error en búsqueda');
+      return data;
+    },
+    enabled: !!q && q.length >= 2,
+    staleTime: 15_000,
   });
 }
 
