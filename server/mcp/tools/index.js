@@ -36,6 +36,7 @@ const arFinance     = require('./arFinance');      // array [dolar_ar, feriados_
 const briefs        = require('./briefs');         // array [day_summary, morning_brief, bedtime_brief, week_ahead]
 const household     = require('./household');      // array [grocery_*, family_event_*, house_note_*, service_*, inventory_*, household_summary] — Fase B
 const routines      = require('./routines');       // array [routine_morning_set, routine_bedtime_set, routine_weather_alert, routine_disable, routine_list] — Fase C
+const openaiCompat  = require('./openaiCompat');   // array [openai_compat_status, openai_compat_set_key, openai_compat_set_model]
 const { isAdmin }   = require('./user-sandbox');
 
 const ALL_TOOLS = [
@@ -46,6 +47,7 @@ const ALL_TOOLS = [
   ...notebook, ...planMode, ...monitor, ...cronTools, ...notify, ...agenticParked,
   ...mcpAuth, ...lsp, ...workspace, ...location, ...userLocation,
   ...environment, ...arFinance, ...briefs, ...household, ...routines,
+  ...openaiCompat,
 ];
 
 /** Set de tools desactivadas vía env var `MCP_DISABLED_TOOLS` (CSV). Permite rollback sin rebuild. */

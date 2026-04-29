@@ -51,6 +51,7 @@ clawmint/
 │   │   ├── telegram.js         # Bots + chats + multimedia Telegram
 │   │   ├── webchat.js          # Sessions + multimedia WebChat
 │   │   ├── providers.js        # Config providers IA
+│   │   ├── openai-compat.js    # API compatible OpenAI — GET /v1/models, POST /v1/chat/completions
 │   │   ├── voice-providers.js  # Config TTS
 │   │   └── nodriza.js          # Config/status P2P nodriza
 │   ├── ws/                     # WebSocket handlers (extraídos de index.js)
@@ -261,6 +262,7 @@ pm2 save             # guardar estado para auto-arranque
 - **DynamicCallbackRegistry**: soporta tipos `message`, `command`, `prompt`, `url`, `func`.
 - **Config centralizada del client**: `client/.env` con `VITE_SERVER_URL`. `client/src/config.js` expone `SERVER_HOST`, `API_BASE`, `WS_URL`.
 - **PM2**: `ecosystem.config.js` con 3 perfiles: `clawmint` (dev con watch), `clawmint-client-dev` (vite HMR :5173), `clawmint-prod` (sin watch, NODE_ENV=production, autorestart, max-memory 1GB, logs separados en `server/logs/prod-*.log`). `--stack-size=65536`.
+- **API compatible OpenAI** (`server/routes/openai-compat.js`): expone `/v1/models` y `/v1/chat/completions` sin requerir el auth de Clawmint — tiene su propio middleware de API key estática. Auth: env `OPENAI_COMPAT_API_KEY` → `system_config.openai_compat_api_key` → 503 si no está configurada. Modelo por defecto: env `OPENAI_COMPAT_DEFAULT_MODEL` → `system_config.openai_compat_default_model` → `anthropic/claude-haiku-4-5-20251001`. Tools MCP deshabilitadas intencionalmente (pasa `noopExecuteTool` para prevenir el fallback al executor global). SPA catch-all en `index.js` excluye `/v1` con regex `^\/(?!api|ws|mcp|v1).*`.
 
 - **Multi-usuario con aprobación**: tabla `users` tiene columna `status` con valores `active`/`pending`/`disabled`.
   - Primer usuario en DB vacía → `role='admin'` + `status='active'` automático.
@@ -427,3 +429,85 @@ Panel de chat web (`WebChatPanel.jsx`) que usa `ConversationService` — mismo m
 - **Status**: recibe `{ type: 'chat_status', status, detail }` (pensando/tool/listo)
 - **Comandos**: `/provider`, `/agente`, `/modelo`, `/cd`, `/nueva`, `/modo`, `/estado`, `/ayuda`
 - **Streaming**: chunks via `{ type: 'chat_chunk', text }`, fin con `{ type: 'chat_done', text }`
+
+## API Compatible OpenAI (`/v1`)
+
+Gateway REST compatible con la API de OpenAI. Permite conectar Open WebUI, LM Studio, SillyTavern, scripts Python con `openai` SDK, etc. sin modificar el cliente. El provider y modelo que responden se controlan desde el servidor.
+
+**Archivo:** `server/routes/openai-compat.js` — factory `createOpenAICompatRouter({ providersModule, providerConfig, systemConfigRepo, logger })`.
+
+### Auth
+
+API key estática propia (distinta al JWT de usuarios). Resolución en orden:
+1. Env var `OPENAI_COMPAT_API_KEY`
+2. `system_config` key `openai_compat_api_key` (se setea desde ProvidersPanel → sección "API Compatible OpenAI")
+3. Si ninguna → 503 `api_key_not_set`
+
+Los clientes la envían como `Authorization: Bearer <api-key>`.
+
+### Modelo por defecto
+
+Resolución en orden:
+1. Env var `OPENAI_COMPAT_DEFAULT_MODEL`
+2. `system_config` key `openai_compat_default_model`
+3. Hardcoded: `anthropic/claude-haiku-4-5-20251001`
+
+Se configura desde ProvidersPanel con un dropdown de todos los providers/modelos disponibles. Auto-guarda al cambiar.
+
+### Endpoints
+
+```
+GET  /v1/models              → { object: 'list', data: [{id, object, created, owned_by}] }
+POST /v1/chat/completions    → OpenAI-compatible (stream true/false)
+```
+
+**`GET /v1/models`** — lista todos los providers API disponibles (excluye `claude-code` y `gemini-cli`). Cada provider aparece como shortcut (`anthropic`) y por modelo específico (`anthropic/claude-haiku-4-5-20251001`). Incluye `default` que resuelve al modelo por defecto configurado.
+
+**`POST /v1/chat/completions`** — body estándar OpenAI:
+
+```json
+{
+  "model": "anthropic/claude-haiku-4-5-20251001",
+  "messages": [
+    { "role": "system", "content": "Sos un asistente." },
+    { "role": "user",   "content": "Hola" }
+  ],
+  "stream": false,
+  "max_tokens": 1024
+}
+```
+
+### Formato del campo `model`
+
+| Valor | Resultado |
+|-------|-----------|
+| `""` / omitido / `"default"` | modelo por defecto configurado (Haiku built-in) |
+| `"anthropic"` | Anthropic con su modelo configurado en provider-config |
+| `"anthropic/claude-opus-4-6"` | Anthropic, modelo específico |
+| `"openai/gpt-4o-mini"` | OpenAI, modelo específico |
+| `"ollama/llama3.2"` | Ollama local, modelo específico |
+| `"gemini/gemini-2.5-flash"` | Google Gemini, modelo específico |
+| `"claude-code"` | ❌ 400 — CLI-only, no soportado |
+
+### Diseño interno
+
+- **Sin tools MCP**: pasa `noopExecuteTool` explícito para prevenir que los providers caigan al executor global de MCP (bash, read_file, etc.). Si el modelo intenta llamar una tool, recibe un error y responde sin ella.
+- **SPA catch-all**: `index.js` excluye `/v1` de la regex `^\/(?!api|ws|mcp|v1).*` para que el router SPA no intercepte las rutas del endpoint.
+- **Streaming**: los providers emiten `event.text` acumulado → el endpoint calcula el delta con `event.text.slice(accumulated.length)` antes de enviar cada chunk SSE.
+- **Providers soportados**: `anthropic`, `openai`, `gemini`, `grok`, `deepseek`, `ollama`, `opencode`.
+
+### Configuración en ProvidersPanel
+
+Sección "API Compatible OpenAI" al final del panel (Configuración → Providers):
+- **Proveedor / modelo por defecto**: dropdown con optgroups por provider. Muestra `⚠ sin API key` para providers no configurados. Auto-guarda en `system_config.openai_compat_default_model`.
+- **Endpoint URL**: campo read-only con copy-to-clipboard → `http://servidor:3001/v1`.
+- **API Key**: campo password para setear/cambiar/eliminar la key en `system_config.openai_compat_api_key`. Requiere rol admin.
+
+### Configurar clientes externos
+
+| Cliente | Campo "Base URL" / "API URL" | Campo "API Key" |
+|---------|------------------------------|-----------------|
+| Open WebUI | `http://servidor:3001/v1` | la key del panel |
+| LM Studio | `http://servidor:3001/v1` | la key del panel |
+| SillyTavern | `http://servidor:3001/v1` | la key del panel |
+| Python `openai` SDK | `base_url="http://servidor:3001/v1"` | `api_key="la-key"` |

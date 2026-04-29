@@ -81,7 +81,7 @@ const _modulesReady = (async function loadModules() {
     orchestrator = _c.orchestrator || null;
     try {
       const { createMcpRouter } = require('./mcp');
-      mcpRouter = createMcpRouter({ sessionManager: _c.sessionManager, memory: _c.memory, scheduler: _c.scheduler, usersRepo: _c.usersRepo, locationService: _c.locationService, userPreferencesRepo: _c.userPreferencesRepo, reminders: _c.reminders, tasksRepo: _c.tasksRepo, householdRepo: _c.householdRepo });
+      mcpRouter = createMcpRouter({ sessionManager: _c.sessionManager, memory: _c.memory, scheduler: _c.scheduler, usersRepo: _c.usersRepo, locationService: _c.locationService, userPreferencesRepo: _c.userPreferencesRepo, reminders: _c.reminders, tasksRepo: _c.tasksRepo, householdRepo: _c.householdRepo, systemConfigRepo, providersModule });
       logger.info('MCP router creado OK');
     } catch (mcpErr) {
       logger.warn('MCP router no disponible:', mcpErr.message);
@@ -165,7 +165,7 @@ ensureDirs();
 const clientDist = path.join(RESOURCES_DIR, 'client', 'dist');
 if (fs.existsSync(clientDist)) {
   app.use(express.static(clientDist));
-  app.get(/^\/(?!api|ws|mcp).*/, (_req, res) => {
+  app.get(/^\/(?!api|ws|mcp|v1).*/, (_req, res) => {
     res.sendFile(path.join(clientDist, 'index.html'));
   });
   logger.info(`Sirviendo client build desde ${clientDist}`);
@@ -197,6 +197,7 @@ _modulesReady.then(() => {
   app.use('/api/telegram',        requireAuth, require('./routes/telegram')({ telegram, sessionManager }));
   app.use('/api/webchat',         requireAuth, require('./routes/webchat')({ webChannel }));
   app.use('/api/providers',       requireAuth, require('./routes/providers')({ providerConfig, providersModule }));
+  app.use('/v1',                              require('./routes/openai-compat')({ providersModule, providerConfig, systemConfigRepo, logger }));
   app.use('/api/voice-providers', requireAuth, require('./routes/voice-providers')({}));
   app.use('/api/nodriza',         requireAuth, require('./routes/nodriza')({ nodrizaInstance, getDataChannelHandler: () => startAISessionForDataChannel }));
   app.use('/api/contacts',        requireAuth, require('./routes/contacts')({ usersRepo }));
