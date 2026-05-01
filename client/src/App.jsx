@@ -17,6 +17,7 @@ import { isFeature } from './hooks/useFeatureFlag';
 import { useKeybindings } from './hooks/useKeybindings';
 import { getStoredTokens } from './authUtils';
 import { CommandPalette } from './components/ux';
+import PWABanners from './components/PWABanners.jsx';
 
 import AppHeader from './components/layout/AppHeader';
 import Sidebar from './components/layout/Sidebar';
@@ -186,6 +187,7 @@ function AppContent() {
     <div className={styles.app}>
       <a href="#app-main" className={styles.skipLink}>Ir al contenido principal</a>
       <ReconnectBanner connected={wsConnected} />
+      <PWABanners />
       {commandPaletteEnabled && (
         <CommandPalette commands={paletteCommands} open={paletteOpen} onOpenChange={setPaletteOpen} />
       )}

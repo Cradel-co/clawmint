@@ -580,7 +580,16 @@ class ConversationService {
         session.geminiSessionId = null;
         session.messageCount    = 0;
         isNewSession = true;
-        result = await session.sendMessage(messageText, onChunk, onStatus);
+        try {
+          result = await session.sendMessage(messageText, onChunk, onStatus);
+        } catch (retryErr) {
+          if (retryErr.message.includes('ENOENT')) {
+            return { text: 'gemini CLI no está instalado o no está en el PATH. Instalalo con: `npm install -g @google/gemini-cli`' };
+          }
+          throw retryErr;
+        }
+      } else if (err.message.includes('ENOENT')) {
+        return { text: 'gemini CLI no está instalado o no está en el PATH. Instalalo con: `npm install -g @google/gemini-cli`' };
       } else {
         throw err;
       }
