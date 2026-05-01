@@ -35,7 +35,7 @@ class GeminiCliSession {
   }
 
   async sendMessage(text, onChunk = null, onStatus = null) {
-    const args = ['-p', text, '--output-format', 'stream-json'];
+    const args = ['-p', text, '--output-format', 'stream-json', '--skip-trust'];
 
     // Modo de permisos
     if (this.permissionMode === 'auto') {
@@ -68,6 +68,7 @@ class GeminiCliSession {
       });
 
       let lineBuffer  = '';
+      let stderrBuf   = '';
       let fullText    = '';
       let exited      = false;
       let initSessionId = null;
@@ -119,6 +120,10 @@ class GeminiCliSession {
         for (const line of lines) processLine(line);
       });
 
+      child.stderr.on('data', (chunk) => {
+        stderrBuf += chunk.toString();
+      });
+
       child.on('error', (err) => {
         if (exited) return;
         exited = true;
@@ -132,7 +137,8 @@ class GeminiCliSession {
         clearTimeout(killTimer);
         if (lineBuffer.trim()) processLine(lineBuffer);
         if (exitCode !== 0 && !fullText) {
-          return reject(new Error(`gemini salió con código ${exitCode}`));
+          const detail = stderrBuf.replace(/\x1B\[[0-9;]*m/g, '').trim();
+          return reject(new Error(detail || `gemini salió con código ${exitCode}`));
         }
         this.messageCount++;
         resolve({ text: fullText.trim(), usedMcpTools: false });
