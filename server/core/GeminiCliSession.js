@@ -35,7 +35,11 @@ class GeminiCliSession {
   }
 
   async sendMessage(text, onChunk = null, onStatus = null) {
-    const args = ['-p', text, '--output-format', 'stream-json', '--skip-trust'];
+    // En Windows con shell:true el texto con espacios se parte en positional+flag → error.
+    // Igual que ClaudePrintSession: en Windows texto va por stdin, no como arg de -p.
+    const args = isWin
+      ? ['-p', '--output-format', 'stream-json', '--skip-trust']
+      : ['-p', text, '--output-format', 'stream-json', '--skip-trust'];
 
     // Modo de permisos
     if (this.permissionMode === 'auto') {
@@ -62,10 +66,15 @@ class GeminiCliSession {
       const child = spawn('gemini', args, {
         cwd:  this.cwd,
         env:  process.env,
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: [isWin ? 'pipe' : 'ignore', 'pipe', 'pipe'],
         shell: isWin,
         windowsHide: true,
       });
+
+      if (isWin) {
+        child.stdin.write(text);
+        child.stdin.end();
+      }
 
       let lineBuffer  = '';
       let stderrBuf   = '';
