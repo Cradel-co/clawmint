@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const { spawn } = require('child_process');
+const isWin = process.platform === 'win32';
 
 /**
  * GeminiCliSession — modo no-interactivo via `gemini -p`.
@@ -62,6 +63,7 @@ class GeminiCliSession {
         cwd:  this.cwd,
         env:  process.env,
         stdio: ['ignore', 'pipe', 'pipe'],
+        shell: isWin,
         windowsHide: true,
       });
 

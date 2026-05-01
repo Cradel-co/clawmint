@@ -198,6 +198,7 @@ class WebChannel extends BaseChannel {
       model: saved?.model || null,
       history: savedMessages,
       claudeSession: saved?.claude_session_id || null,
+      geminiSession: null,
       claudeMode: saved?.claude_mode || 'auto',
       cwd: saved?.cwd || process.env.HOME || '~',
       processing: false,
@@ -766,6 +767,7 @@ class WebChannel extends BaseChannel {
         files,
         history: state.history,
         claudeSession: state.claudeSession,
+        geminiSession: state.geminiSession,
         claudeMode: state.claudeMode,
         onChunk,
         onStatus,
@@ -778,6 +780,7 @@ class WebChannel extends BaseChannel {
 
       if (result.history) state.history = result.history;
       if (result.newSession) state.claudeSession = result.newSession;
+      if (result.newGeminiSession) state.geminiSession = result.newGeminiSession;
 
       if (!result.history) {
         state.history.push({ role: 'user', content: text });
