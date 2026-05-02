@@ -118,6 +118,7 @@ class TelegramChannel extends BaseChannel {
       chatSettings:   this._chatSettings,
       tts:            this._tts,
       events:         this._eventBus,
+      providerConfig: this._providerConfig,
       logger:         this._logger,
     });
 

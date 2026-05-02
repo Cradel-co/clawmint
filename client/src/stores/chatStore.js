@@ -12,6 +12,8 @@ export const useChatStore = create((set, get) => ({
   provider: 'anthropic',
   agent: null,
   cwd: '~',
+  claudeMode: 'auto',
+  webSearch: false,
   statusText: null,
   connected: false,
 
@@ -24,6 +26,8 @@ export const useChatStore = create((set, get) => ({
   setInput: (v) => set({ input: v }),
   setProvider: (v) => set({ provider: v }),
   setAgent: (v) => set({ agent: v }),
+  setClaudeMode: (v) => set({ claudeMode: v }),
+  setWebSearch: (v) => set({ webSearch: v }),
   setSending: (v) => {
     set({ sending: v });
     const state = get();
@@ -78,16 +82,48 @@ export const useChatStore = create((set, get) => ({
     get()._wsManager?.reconnect();
   },
 
+  mode: 'normal',  // 'normal' | 'household' | 'incognito'
+  setMode: (m) => set({ mode: m || 'normal' }),
+
+  switchSession: (sessionId) => {
+    // Cambiar a una conversación existente: siempre modo normal
+    set({ messages: [], sending: false, statusText: null, mode: 'normal' });
+    localStorage.setItem('wc-session-id', sessionId);
+    localStorage.setItem('wc-session-mode', 'normal');
+    get()._wsManager?.reconnect();
+  },
+
+  newSession: (opts = {}) => {
+    const mode = (opts.mode === 'household' || opts.mode === 'incognito') ? opts.mode : 'normal';
+    const id = crypto.randomUUID();
+    set({ messages: [], sending: false, statusText: null, mode });
+    if (mode === 'incognito') {
+      // Incognito: sessionId efímero, no se guarda para próxima visita
+      localStorage.removeItem('wc-session-id');
+      localStorage.removeItem('wc-session-mode');
+      // Pero usamos un id en RAM via session storage para esta tab
+      sessionStorage.setItem('wc-incognito-id', id);
+    } else {
+      localStorage.setItem('wc-session-id', id);
+      localStorage.setItem('wc-session-mode', mode);
+      sessionStorage.removeItem('wc-incognito-id');
+    }
+    get()._wsManager?.reconnect();
+  },
+
   _init: () => {
     const manager = new WsManager({
       url: WS_URL,
       buildInitPayload: () => {
-        const savedSessionId = localStorage.getItem('wc-session-id');
+        const incognitoId = sessionStorage.getItem('wc-incognito-id');
+        const savedSessionId = incognitoId || localStorage.getItem('wc-session-id');
+        const mode = incognitoId ? 'incognito' : (localStorage.getItem('wc-session-mode') || 'normal');
         const authToken = localStorage.getItem('wc-auth-token') || undefined;
         const { accessToken } = getStoredTokens();
         return {
           type: 'init',
           sessionType: 'webchat',
+          mode,
           ...(savedSessionId ? { sessionId: savedSessionId } : {}),
           ...(authToken ? { authToken } : {}),
           ...(accessToken && !isTokenExpired(accessToken) ? { jwt: accessToken } : {}),
@@ -264,11 +300,21 @@ export const useChatStore = create((set, get) => ({
       set((s) => ({ messages: s.messages.map((m) => m.msgId === msg.msgId ? { ...m, content: msg.text } : m) }));
     });
 
+    manager.subscribe('session_title', (msg) => {
+      // Auto-título del backend para esta sesión — disparar evento para que el panel de
+      // historial se refresque si está abierto (no toca messages).
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('webchat:session_title', { detail: msg }));
+      }
+    });
+
     manager.subscribe('status', (msg) => {
       set({
         ...(msg.provider ? { provider: msg.provider } : {}),
         ...(msg.agent !== undefined ? { agent: msg.agent } : {}),
         ...(msg.cwd ? { cwd: msg.cwd } : {}),
+        ...(msg.claudeMode ? { claudeMode: msg.claudeMode } : {}),
+        ...(msg.mode ? { mode: msg.mode } : {}),
       });
     });
 

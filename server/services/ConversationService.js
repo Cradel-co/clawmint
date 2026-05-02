@@ -426,15 +426,15 @@ class ConversationService {
     }
 
     if (provider === 'gemini-cli') {
-      csdbg('msg', `→ _processGeminiCli mode=${claudeMode}`);
+      csdbg('msg', `→ _processGeminiCli mode=${claudeMode} model=${model}`);
       return this._processGeminiCli({
-        chatId, agentKey, text, geminiSession, claudeMode, onChunk, onStatus, botKey, channel,
+        chatId, agentKey, text, model, geminiSession, claudeMode, onChunk, onStatus, botKey, channel,
       });
     }
 
     csdbg('msg', `→ _processClaudeCode mode=${claudeMode}`);
     return this._processClaudeCode({
-      chatId, agentKey, text, images, claudeSession, claudeMode, onChunk, onStatus, botKey, channel,
+      chatId, agentKey, text, images, model, claudeSession, claudeMode, onChunk, onStatus, botKey, channel,
     });
   }
 
@@ -507,19 +507,75 @@ class ConversationService {
     return text;
   }
 
+  // ── Helper: instrucciones de canal/tools para CLI providers ──────────────
+  // Devuelve el bloque que le explica al modelo CÓMO usar las tools MCP en el
+  // canal actual (WebChat vs Telegram). Reutilizable entre _processClaudeCode
+  // y _processGeminiCli para mantener paridad de instrucciones.
+  _buildCliChannelPrompt({ isWebChannel, channel, botKey, chatId, agentKey }) {
+    const channelCtx = (botKey && chatId)
+      ? `\n\n## Contexto del canal\n- Canal: ${channel || 'telegram'}\n- Bot key: ${botKey}\n- ${isWebChannel ? 'Session ID' : 'Chat ID'}: ${chatId}\n- Agente activo: ${agentKey || 'default'}\nUsa estos valores cuando necesites enviar fotos, documentos o mensajes al usuario.${isWebChannel ? `\nPara herramientas webchat_*, usa session_id="${chatId}".` : ''}\nPara herramientas de memoria (memory_list, memory_read, memory_write, etc.), usa agent="${agentKey || 'default'}".`
+      : '';
+
+    if (isWebChannel) {
+      const webChannelPrompt =
+        'Estás respondiendo a un usuario a través del WebChat de Clawmint.\n' +
+        'Responde siempre en texto plano (se renderiza como Markdown en el cliente).\n' +
+        'NO uses herramientas de Telegram (telegram_send_message, telegram_send_photo, etc.) — usa las equivalentes de WebChat.\n' +
+        'Responde siempre en español. Sé conciso y directo.\n' +
+        'Tienes acceso a herramientas MCP de memoria (memory_list, memory_read, memory_write, memory_append, memory_delete), bash, read_file, write_file, y kheiron-tools.\n' +
+        '\n' +
+        '## Herramientas WebChat\n' +
+        'Para enviar contenido multimedia o mensajes adicionales al usuario, usa estas herramientas:\n' +
+        '- webchat_send_message(session_id, text, buttons?, callbacks?) — enviar texto adicional con botones opcionales\n' +
+        '- webchat_send_photo(session_id, file_path, caption?) — enviar una imagen al chat (OBLIGATORIO cuando generes imágenes/screenshots)\n' +
+        '- webchat_send_document(session_id, file_path, caption?) — enviar un archivo al chat\n' +
+        '- webchat_send_voice(session_id, file_path, caption?) — enviar audio al chat\n' +
+        '- webchat_send_video(session_id, file_path, caption?) — enviar video al chat\n' +
+        '- webchat_edit_message(session_id, msg_id, text) — editar un mensaje enviado\n' +
+        '- webchat_delete_message(session_id, msg_id) — borrar un mensaje\n' +
+        '- webchat_list_sessions() — listar sesiones activas (para descubrir session_id)\n' +
+        '\n' +
+        'IMPORTANTE: Cuando generes archivos (screenshots, imágenes, PDFs, audio, video, etc.), SIEMPRE usa la herramienta webchat_send_* correspondiente para enviarlos al chat. NO te limites a guardarlos en disco — el usuario necesita verlos en el chat.\n' +
+        'Para obtener el session_id, usa webchat_list_sessions o el valor del contexto del canal.\n' +
+        '\n' +
+        '## Botones Inline\n' +
+        'Podés enviar botones inline en tus respuestas usando este formato al final del mensaje:\n' +
+        '<!-- buttons: [{"text":"📋 Opción 1","callback_data":"opcion1"},{"text":"❓ Opción 2","callback_data":"opcion2"}] -->\n' +
+        'Los botones se muestran debajo de tu mensaje.\n' +
+        'callback_data es lo que se envía como mensaje cuando el usuario hace click.\n\n' +
+        'IMPORTANTE: Usá botones proactivamente en estos casos:\n' +
+        '- Cuando ofrezcas opciones o alternativas al usuario\n' +
+        '- Cuando preguntes algo con respuestas predefinidas (sí/no, elegir entre opciones)\n' +
+        '- Al finalizar una tarea, para ofrecer acciones de seguimiento\n' +
+        '- Cuando el usuario pueda necesitar ejecutar comandos comunes\n' +
+        'No abuses: no en cada mensaje, solo cuando las opciones sean claras y útiles.';
+      return webChannelPrompt + channelCtx;
+    }
+
+    // Telegram / otros canales: usar el prompt MCP de sistema (cargado de archivo)
+    const mcpPrompt = getMcpSystemPrompt();
+    return (mcpPrompt ? (mcpPrompt + channelCtx) : channelCtx);
+  }
+
   // ── Proveedor gemini-cli (GeminiCliSession) ───────────────────────────────
 
-  async _processGeminiCli({ chatId, agentKey, text, geminiSession, claudeMode, onChunk, onStatus, botKey, channel }) {
+  async _processGeminiCli({ chatId, agentKey, text, model, geminiSession, claudeMode, onChunk, onStatus, botKey, channel }) {
     const sessionRule = this._limitsRepo
       ? this._limitsRepo.resolve('session', { provider: 'gemini-cli', agentKey, botKey, channel })
       : { max_count: 10 };
     let session = geminiSession;
     let isNewSession = false;
 
+    // Si el modelo cambió respecto a la sesión existente, descartarla para que se cree una
+    // nueva con el modelo nuevo (gemini --resume con otro modelo no es seguro).
+    if (session && model && session.model !== model) {
+      csdbg('gemini', `model cambió (${session.model} → ${model}), descartando sesión`);
+      session = null;
+    }
+
     const isWebChannel = channel === 'web' || botKey === 'web';
-    const channelCtx = (botKey && chatId)
-      ? `\n\n## Contexto del canal\n- Canal: ${channel || 'telegram'}\n- Bot key: ${botKey}\n- Chat ID: ${chatId}\n- Agente activo: ${agentKey || 'default'}\nPara herramientas de memoria, usa agent="${agentKey || 'default'}".`
-      : '';
+    // Instrucciones completas de canal + tools (paridad con _processClaudeCode)
+    const fullChannelPrompt = this._buildCliChannelPrompt({ isWebChannel, channel, botKey, chatId, agentKey });
 
     // Auto-reset de sesión y guardado de resumen en memoria
     if (session && session.messageCount >= sessionRule.max_count) {
@@ -539,11 +595,14 @@ class ConversationService {
       if (!this._GeminiCliSession) {
         return { text: 'Error: GeminiCliSession no disponible. Instalá gemini CLI.' };
       }
+      const provObj = this._providers ? this._providers.get('gemini-cli') : null;
+      const effectiveModel = model || provObj?.defaultModel || null;
       session = new this._GeminiCliSession({
         permissionMode: claudeMode || 'auto',
+        model: effectiveModel,
       });
       isNewSession = true;
-      csdbg('gemini', `nueva GeminiCliSession mode=${claudeMode}`);
+      csdbg('gemini', `nueva GeminiCliSession mode=${claudeMode} model=${effectiveModel || '(default CLI)'}`);
     }
 
     // Detección de señales de memoria e inyección de contexto
@@ -552,19 +611,38 @@ class ConversationService {
       : { shouldNudge: false, signals: [] };
 
     let messageText = text;
-    if (agentKey && this._memory && (session.messageCount <= 1 || isNewSession)) {
-      let memCtxRaw = this._memory.buildMemoryContext(agentKey, text, { provider: 'local' });
-      if (memCtxRaw && typeof memCtxRaw.then === 'function') {
-        memCtxRaw = await memCtxRaw.catch(() => '');
+    // Inyección de contexto inicial: agent prompt + memoria + channel ctx (sólo en sesión nueva o primer mensaje)
+    if (isNewSession || (session.messageCount <= 1)) {
+      const agentDef = (agentKey && this._agents) ? this._agents.get(agentKey) : null;
+      let agentPrompt = '';
+      if (agentDef) {
+        try {
+          agentPrompt = this._skills && typeof this._skills.buildAgentPrompt === 'function'
+            ? this._skills.buildAgentPrompt(agentDef)
+            : (agentDef.prompt || '');
+        } catch { agentPrompt = agentDef.prompt || ''; }
       }
-      const memCtx = memCtxRaw || '';
-      const toolInstr = shouldNudge ? this._memory.TOOL_INSTRUCTIONS : '';
+
+      let memCtx = '';
+      let toolInstr = '';
       let sessionSummary = '';
-      try {
-        const summary = this._memory.read(agentKey, 'last-session-summary.md');
-        if (summary) sessionSummary = `## Resumen de sesión anterior\n${summary}`;
-      } catch {}
-      const parts = [sessionSummary, memCtx, channelCtx, toolInstr].filter(Boolean);
+      if (agentKey && this._memory) {
+        let memCtxRaw = this._memory.buildMemoryContext(agentKey, text, { provider: 'local' });
+        if (memCtxRaw && typeof memCtxRaw.then === 'function') {
+          memCtxRaw = await memCtxRaw.catch(() => '');
+        }
+        memCtx = memCtxRaw || '';
+        // En primer mensaje de sesión nueva siempre inyectar las instrucciones de memoria,
+        // así el agente conoce la sintaxis <save_memory>/<append_memory> y puede empezar
+        // a recordar. Después solo si hay señales (para no engordar cada turno).
+        toolInstr = (isNewSession || shouldNudge) ? this._memory.TOOL_INSTRUCTIONS : '';
+        try {
+          const summary = this._memory.read(agentKey, 'last-session-summary.md');
+          if (summary) sessionSummary = `## Resumen de sesión anterior\n${summary}`;
+        } catch {}
+      }
+
+      const parts = [agentPrompt, fullChannelPrompt, sessionSummary, memCtx, toolInstr].filter(Boolean);
       if (parts.length > 0) messageText = `${parts.join('\n\n')}\n\n---\n\n${text}`;
     }
     if (shouldNudge && this._memory) messageText += this._memory.buildNudge(signals);
@@ -619,7 +697,10 @@ class ConversationService {
 
   // ── Proveedor claude-code (ClaudePrintSession) ────────────────────────────
 
-  async _processClaudeCode({ chatId, agentKey, text, images, claudeSession, claudeMode, onChunk, onStatus, botKey, channel }) {
+  async _processClaudeCode({ chatId, agentKey, text, images, model, claudeSession, claudeMode, onChunk, onStatus, botKey, channel }) {
+    // Resolver modelo efectivo: explícito del chat → defaultModel del provider (haiku) → null (default del CLI)
+    const provObj = this._providers ? this._providers.get('claude-code') : null;
+    const effectiveModel = model || provObj?.defaultModel || null;
     // Claude Code CLI no soporta imágenes — extraer texto con OCR (kheiron) + fallback Ollama visión
     if (images && images.length > 0) {
       const { execSync } = require('child_process');
@@ -679,47 +760,24 @@ class ConversationService {
       : { max_count: 10 };
     let session = claudeSession;
     let isNewSession = false;
+
+    // Defensa: si llega como string (claude_session_id rehidratado de SQLite por WebChannel),
+    // construir una ClaudePrintSession real con ese ID para que `--resume` funcione y evitar
+    // el `TypeError: Cannot create property 'appendSystemPrompt' on string`.
+    if (typeof session === 'string' && session.length > 0) {
+      session = new this._ClaudePrintSession({
+        permissionMode: claudeMode || 'auto',
+        claudeSessionId: session,
+        messageCount: 1,
+        mcpConfig: MCP_CONFIG_PATH,
+        model: effectiveModel,
+      });
+      csdbg('claude', `hidratada session string → objeto (id=${session.claudeSessionId} model=${effectiveModel})`);
+    }
+
     const isWebChannel = channel === 'web' || botKey === 'web';
-    const mcpPrompt = isWebChannel ? null : getMcpSystemPrompt();
-    const channelCtx = (botKey && chatId)
-      ? `\n\n## Contexto del canal\n- Canal: ${channel || 'telegram'}\n- Bot key: ${botKey}\n- ${isWebChannel ? 'Session ID' : 'Chat ID'}: ${chatId}\n- Agente activo: ${agentKey || 'default'}\nUsa estos valores cuando necesites enviar fotos, documentos o mensajes al usuario.${isWebChannel ? `\nPara herramientas webchat_*, usa session_id="${chatId}".` : ''}\nPara herramientas de memoria (memory_list, memory_read, memory_write, etc.), usa agent="${agentKey || 'default'}".`
-      : '';
-    const webChannelPrompt = isWebChannel
-      ? 'Estás respondiendo a un usuario a través del WebChat de Clawmint.\n' +
-        'Responde siempre en texto plano (se renderiza como Markdown en el cliente).\n' +
-        'NO uses herramientas de Telegram (telegram_send_message, telegram_send_photo, etc.) — usa las equivalentes de WebChat.\n' +
-        'Responde siempre en español. Sé conciso y directo.\n' +
-        'Tienes acceso a herramientas MCP de memoria (memory_list, memory_read, memory_write, memory_append, memory_delete), bash, read_file, write_file, y kheiron-tools.\n' +
-        '\n' +
-        '## Herramientas WebChat\n' +
-        'Para enviar contenido multimedia o mensajes adicionales al usuario, usa estas herramientas:\n' +
-        '- webchat_send_message(session_id, text, buttons?, callbacks?) — enviar texto adicional con botones opcionales\n' +
-        '- webchat_send_photo(session_id, file_path, caption?) — enviar una imagen al chat (OBLIGATORIO cuando generes imágenes/screenshots)\n' +
-        '- webchat_send_document(session_id, file_path, caption?) — enviar un archivo al chat\n' +
-        '- webchat_send_voice(session_id, file_path, caption?) — enviar audio al chat\n' +
-        '- webchat_send_video(session_id, file_path, caption?) — enviar video al chat\n' +
-        '- webchat_edit_message(session_id, msg_id, text) — editar un mensaje enviado\n' +
-        '- webchat_delete_message(session_id, msg_id) — borrar un mensaje\n' +
-        '- webchat_list_sessions() — listar sesiones activas (para descubrir session_id)\n' +
-        '\n' +
-        'IMPORTANTE: Cuando generes archivos (screenshots, imágenes, PDFs, audio, video, etc.), SIEMPRE usa la herramienta webchat_send_* correspondiente para enviarlos al chat. NO te limites a guardarlos en disco — el usuario necesita verlos en el chat.\n' +
-        'Para obtener el session_id, usa webchat_list_sessions o el valor del contexto del canal.\n' +
-        '\n' +
-        '## Botones Inline\n' +
-        'Podés enviar botones inline en tus respuestas usando este formato al final del mensaje:\n' +
-        '<!-- buttons: [{"text":"📋 Opción 1","callback_data":"opcion1"},{"text":"❓ Opción 2","callback_data":"opcion2"}] -->\n' +
-        'Los botones se muestran debajo de tu mensaje.\n' +
-        'callback_data es lo que se envía como mensaje cuando el usuario hace click.\n\n' +
-        'IMPORTANTE: Usá botones proactivamente en estos casos:\n' +
-        '- Cuando ofrezcas opciones o alternativas al usuario\n' +
-        '- Cuando preguntes algo con respuestas predefinidas (sí/no, elegir entre opciones)\n' +
-        '- Al finalizar una tarea, para ofrecer acciones de seguimiento\n' +
-        '- Cuando el usuario pueda necesitar ejecutar comandos comunes\n' +
-        'No abuses: no en cada mensaje, solo cuando las opciones sean claras y útiles.'
-      : '';
-    const fullSystemPrompt = isWebChannel
-      ? (webChannelPrompt + channelCtx)
-      : (mcpPrompt ? (mcpPrompt + channelCtx) : '');
+    // Mismo bloque que usa _processGeminiCli — paridad de instrucciones de tools entre CLI providers.
+    const fullSystemPrompt = this._buildCliChannelPrompt({ isWebChannel, channel, botKey, chatId, agentKey });
 
     // Auto-reset: si la sesión tiene demasiados mensajes, crear una nueva
     // Antes de resetear, guardar resumen en memoria para continuidad
@@ -751,9 +809,10 @@ class ConversationService {
         permissionMode: claudeMode || 'auto',
         appendSystemPrompt: fullSystemPrompt || undefined,
         mcpConfig: MCP_CONFIG_PATH,
+        model: effectiveModel,
       });
       isNewSession = true;
-      csdbg('claude', `nueva ClaudePrintSession mode=${claudeMode} mcpPrompt=${!!mcpPrompt} botKey=${botKey}`);
+      csdbg('claude', `nueva ClaudePrintSession mode=${claudeMode} model=${effectiveModel} botKey=${botKey}`);
     } else {
       // Siempre actualizar el system prompt (puede haber cambiado entre reinicios)
       if (fullSystemPrompt) {

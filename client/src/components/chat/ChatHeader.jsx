@@ -1,14 +1,13 @@
-import { Trash2, X, LogIn, LogOut, User } from 'lucide-react';
+import { Trash2, X, LogIn, LogOut, User, History } from 'lucide-react';
 import styles from '../WebChatPanel.module.css';
 
 export default function ChatHeader({
   providers, provider, setProvider, agentsList, agent, setAgent,
-  authUser, onLogout, onShowAuth, onClear, onClose, onSettingsChange, embedded,
+  authUser, onLogout, onShowAuth, onClear, onClose, onSettingsChange, onOpenHistory, embedded,
 }) {
   return (
     <div className={styles.header}>
-      {!embedded && <span className={styles.headerTitle}>Chat</span>}
-      <div className={styles.headerControls}>
+      <div className={styles.headerCenter}>
         <select
           className={styles.select}
           value={provider}
@@ -38,6 +37,11 @@ export default function ChatHeader({
             <option key={a.key} value={a.key}>{a.key}</option>
           ))}
         </select>
+      </div>
+      <div className={styles.headerRight}>
+        <button className={styles.btnIcon} onClick={onOpenHistory} title="Historial de conversaciones" aria-label="Historial">
+          <History size={14} />
+        </button>
         {authUser ? (
           <button className={styles.userBadge} onClick={onLogout} title="Cerrar sesión">
             {authUser.avatar_url
@@ -52,8 +56,14 @@ export default function ChatHeader({
             <LogIn size={12} /> Login
           </button>
         )}
-        <button className={styles.btnIcon} onClick={onClear} title="Nueva conversación" aria-label="Nueva conversación"><Trash2 size={14} /></button>
-        {!embedded && <button className={styles.close} onClick={onClose} aria-label="Cerrar panel de chat"><X size={16} /></button>}
+        <button className={styles.btnIcon} onClick={onClear} title="Nueva conversación" aria-label="Nueva conversación">
+          <Trash2 size={14} />
+        </button>
+        {!embedded && (
+          <button className={styles.close} onClick={onClose} aria-label="Cerrar panel de chat">
+            <X size={16} />
+          </button>
+        )}
       </div>
     </div>
   );

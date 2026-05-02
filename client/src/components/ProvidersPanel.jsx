@@ -60,6 +60,41 @@ export default function ProvidersPanel({ onClose }) {
   const [savingDefaultModel, setSavingDefaultModel] = useState(false);
   const [copied, setCopied] = useState({});
 
+  // Channel defaults (web, telegram)
+  const [channelDefaults, setChannelDefaults] = useState({ web: '', telegram: '', openaiCompat: '' });
+  const [savingChannel, setSavingChannel]     = useState(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem('accessToken');
+    fetch(`${API_BASE}/api/providers/channel-defaults`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : {})
+      .then(d => setChannelDefaults({ web: d.web || '', telegram: d.telegram || '', openaiCompat: d.openaiCompat || '' }))
+      .catch(() => {});
+  }, []);
+
+  async function saveChannelDefault(channel, value) {
+    setSavingChannel(channel);
+    try {
+      const token = localStorage.getItem('accessToken');
+      const r = await fetch(`${API_BASE}/api/providers/channel-defaults/${channel}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ value }),
+      });
+      if (r.ok) {
+        setChannelDefaults(d => ({ ...d, [channel]: value }));
+        setMsg(`Default de ${channel}: ${value || '(global)'}`);
+      } else {
+        const d = await r.json();
+        setMsg('Error: ' + (d.error || r.status));
+      }
+    } catch (err) {
+      setMsg('Error: ' + err.message);
+    } finally {
+      setSavingChannel(null);
+    }
+  }
+
   useEffect(() => {
     const token = localStorage.getItem('accessToken');
     fetch(`${API_BASE}/api/system-config/openai_compat_api_key`, { headers: { Authorization: `Bearer ${token}` } })
@@ -254,15 +289,58 @@ export default function ProvidersPanel({ onClose }) {
       <div className={apStyles.body}>
         {(msg || loadError) && <div className={styles.msg}>{msg || 'Error cargando providers'}</div>}
 
-        {/* Provider por defecto */}
+        {/* Provider por defecto (global) */}
         <div className={apStyles.section}>
-          <div className={styles.sectionTitle}>Provider por defecto (Telegram)</div>
+          <div className={styles.sectionTitle}>Provider por defecto (global)</div>
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
+            Se usa cuando un canal no tiene su propio default configurado.
+          </p>
           <select
             className={styles.defaultSelect}
             value={defaultProvider}
             onChange={e => saveDefault(e.target.value)}
-            aria-label="Provider por defecto"
+            aria-label="Provider por defecto global"
           >
+            {providers.map(p => (
+              <option key={p.name} value={p.name}>{p.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Defaults por canal */}
+        <div className={apStyles.section}>
+          <div className={styles.sectionTitle}>Defaults por canal</div>
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
+            Cada canal puede usar un provider distinto. Si está vacío, cae al global.
+          </p>
+
+          <label className={styles.fieldLabel}>
+            WebChat
+            {savingChannel === 'web' && <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--text-muted)' }}>guardando…</span>}
+          </label>
+          <select
+            className={styles.select}
+            value={channelDefaults.web}
+            onChange={e => saveChannelDefault('web', e.target.value)}
+            disabled={savingChannel === 'web'}
+          >
+            <option value="">— usar global ({defaultProvider}) —</option>
+            {providers.map(p => (
+              <option key={p.name} value={p.name}>{p.label}</option>
+            ))}
+          </select>
+
+          <label className={styles.fieldLabel}>
+            Telegram
+            {savingChannel === 'telegram' && <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--text-muted)' }}>guardando…</span>}
+          </label>
+          <select
+            className={styles.select}
+            value={channelDefaults.telegram}
+            onChange={e => saveChannelDefault('telegram', e.target.value)}
+            disabled={savingChannel === 'telegram'}
+          >
+            <option value="">— usar global ({defaultProvider}) —</option>
             {providers.map(p => (
               <option key={p.name} value={p.name}>{p.label}</option>
             ))}

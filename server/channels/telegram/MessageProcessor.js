@@ -43,6 +43,7 @@ class MessageProcessor {
     chatSettings   = null,
     tts            = null,
     events         = null,
+    providerConfig = null,
     logger         = console,
   } = {}) {
     this._convSvc        = convSvc;
@@ -52,6 +53,7 @@ class MessageProcessor {
     this._chatSettings   = chatSettings;
     this._tts            = tts;
     this._events         = events;
+    this._providerConfig = providerConfig;
     this._logger         = logger;
   }
 
@@ -65,7 +67,8 @@ class MessageProcessor {
     chat.busy = true;
 
     // ── Ruta PTY: agentes no-claude sin provider API ─────────────────────────
-    const chatProvider = chat.provider || 'claude-code';
+    const telegramDefault = this._providerConfig?.getChannelDefault?.('telegram') || 'claude-code';
+    const chatProvider = chat.provider || telegramDefault;
     const agentKey     = chat.activeAgent?.key || chat.activeAgent || bot.defaultAgent;
     const useConvSvc   = this._convSvc && (chatProvider !== 'claude-code' || bot._isClaudeBased(agentKey));
     tdbg('send', `provider=${chatProvider} agent=${agentKey} useConvSvc=${useConvSvc} hasConvSvc=${!!this._convSvc}`);

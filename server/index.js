@@ -195,7 +195,7 @@ _modulesReady.then(() => {
   app.use('/api/memory',          requireAuth, require('./routes/memory')({ memory }));
   app.use('/api/logs',            requireAuth, require('./routes/logs')({ logger }));
   app.use('/api/telegram',        requireAuth, require('./routes/telegram')({ telegram, sessionManager }));
-  app.use('/api/webchat',         requireAuth, require('./routes/webchat')({ webChannel }));
+  app.use('/api/webchat',         requireAuth, require('./routes/webchat')({ webChannel, authService }));
   app.use('/api/providers',       requireAuth, require('./routes/providers')({ providerConfig, providersModule }));
   app.use('/v1',                              require('./routes/openai-compat')({ providersModule, providerConfig, systemConfigRepo, logger }));
   app.use('/api/voice-providers', requireAuth, require('./routes/voice-providers')({}));

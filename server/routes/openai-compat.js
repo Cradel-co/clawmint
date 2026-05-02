@@ -38,6 +38,9 @@ module.exports = function createOpenAICompatRouter({ providersModule, providerCo
       const stored = systemConfigRepo.get('openai_compat_default_model');
       if (stored) return stored;
     }
+    // provider-config.json channelDefaults.openaiCompat (unificado con otros canales)
+    const fromChannel = providerConfig?.getChannelDefault?.('openaiCompat');
+    if (fromChannel && fromChannel.includes('/')) return fromChannel;
     return DEFAULT_COMPAT_MODEL;
   }
 

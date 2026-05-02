@@ -42,6 +42,23 @@ module.exports = function createProvidersRouter({ providerConfig, providersModul
     res.json({ ok: true, default: provider });
   });
 
+  // GET /providers/channel-defaults — { web, telegram, openaiCompat }
+  router.get('/channel-defaults', (_req, res) => {
+    const cfg = providerConfig.getConfig();
+    res.json(cfg.channelDefaults || {});
+  });
+
+  // PUT /providers/channel-defaults/:channel — { value }
+  router.put('/channel-defaults/:channel', (req, res) => {
+    const { channel } = req.params;
+    const { value } = req.body || {};
+    if (!['web', 'telegram', 'openaiCompat'].includes(channel)) {
+      return res.status(400).json({ error: 'channel debe ser web, telegram u openaiCompat' });
+    }
+    providerConfig.setChannelDefault(channel, value || '');
+    res.json({ ok: true, channel, value: value || '' });
+  });
+
   // PUT /providers/:name — { apiKey?, model? }
   router.put('/:name', (req, res) => {
     const { apiKey, model } = req.body || {};

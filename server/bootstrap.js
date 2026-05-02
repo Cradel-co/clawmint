@@ -489,6 +489,9 @@ function createContainer() {
 
   // ── WebChannel ─────────────────────────────────────────────────────────────
 
+  const TitleGenerator = require('./services/TitleGenerator');
+  const titleGenerator = new TitleGenerator({ providers, providerConfig, logger });
+
   const webChannel = new WebChannel({
     convSvc,
     providers,
@@ -502,6 +505,7 @@ function createContainer() {
     tts,
     usersRepo,
     authService,
+    titleGenerator,
     // scheduler se inyecta después via setter (dependencia circular)
   });
 

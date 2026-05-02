@@ -330,7 +330,29 @@ function generateConfigFile() {
   const { CONFIG_FILES } = require('./paths');
   const configPath = CONFIG_FILES.mcpConfig;
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
+
+  // Sincronizar también a gemini (~/.gemini/settings.json) preservando otros settings.
+  try { syncToGeminiSettings(config.mcpServers); } catch { /* gemini no instalado, ignorar */ }
+
   return configPath;
+}
+
+/**
+ * Merge `mcpServers` en ~/.gemini/settings.json sin tocar otras claves.
+ * Skip silencioso si gemini no está instalado.
+ */
+function syncToGeminiSettings(mcpServers) {
+  const os = require('os');
+  const geminiDir = path.join(os.homedir(), '.gemini');
+  if (!fs.existsSync(geminiDir)) return;
+
+  const settingsPath = path.join(geminiDir, 'settings.json');
+  let settings = {};
+  if (fs.existsSync(settingsPath)) {
+    try { settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8')); } catch { settings = {}; }
+  }
+  settings.mcpServers = mcpServers;
+  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
 }
 
 module.exports = { list, get, add, update, remove, sync, unsync, syncAll, generateConfigFile, MCPS_DIR, searchSmithery, installFromRegistry };

@@ -11,6 +11,14 @@ const _warnedPlaintext = new Set();
 
 const DEFAULT_CONFIG = {
   default: 'claude-code',
+  // Default por canal. Cada canal cae a `default` si su entrada está vacía.
+  // Para `openaiCompat` el valor admite formato `provider/model` (rutea a un modelo específico).
+  // Para `web` y `telegram` el valor es solo el nombre del provider (el modelo viene de providers[name].model).
+  channelDefaults: {
+    web: '',
+    telegram: '',
+    openaiCompat: '',
+  },
   providers: {
     anthropic: { apiKey: '', model: 'claude-opus-4-6' },
     gemini:    { apiKey: '', model: 'gemini-2.0-flash' },
@@ -86,6 +94,23 @@ function setDefault(name) {
   saveConfig(cfg);
 }
 
+/**
+ * Devuelve el provider default para un canal específico ('web', 'telegram', 'openaiCompat').
+ * Si la entrada del canal está vacía, cae al `default` global.
+ */
+function getChannelDefault(channel) {
+  const cfg = getConfig();
+  const v = cfg.channelDefaults?.[channel];
+  return (v && String(v).trim()) || cfg.default || 'claude-code';
+}
+
+function setChannelDefault(channel, value) {
+  const cfg = getConfig();
+  if (!cfg.channelDefaults) cfg.channelDefaults = {};
+  cfg.channelDefaults[channel] = value || '';
+  saveConfig(cfg);
+}
+
 /** Devuelve las API keys configuradas para los sub-proveedores de opencode. */
 function getOpenCodeKeys() {
   const cfg = getConfig();
@@ -105,4 +130,8 @@ function setOpenCodeKey(provider, key) {
   saveConfig(cfg);
 }
 
-module.exports = { getConfig, getApiKey, setProvider, setDefault, getOpenCodeKeys, setOpenCodeKey };
+module.exports = {
+  getConfig, getApiKey, setProvider, setDefault,
+  getChannelDefault, setChannelDefault,
+  getOpenCodeKeys, setOpenCodeKey,
+};
