@@ -9,7 +9,12 @@ export default function MessageList({ messages, sending, connected, providerLabe
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const SUGGESTIONS = ['Escribí código para mí', 'Resumí este texto', 'Explicame algo', 'Ayudame a redactar'];
+  const SUGGESTIONS = [
+    { text: 'Escribí código para mí', emoji: '💻' },
+    { text: 'Resumí este texto', emoji: '📝' },
+    { text: 'Explicame algo', emoji: '💡' },
+    { text: 'Ayudame a redactar', emoji: '✍️' },
+  ];
 
   return (
     <div className={styles.messages}>
@@ -21,8 +26,9 @@ export default function MessageList({ messages, sending, connected, providerLabe
                 <p className={styles.emptyTitle}>¿En qué puedo ayudarte?</p>
                 <div className={styles.suggestions}>
                   {SUGGESTIONS.map(s => (
-                    <button key={s} className={styles.suggestionCard} onClick={() => onSuggestion?.(s)}>
-                      {s}
+                    <button key={s.text} className={styles.suggestionCard} onClick={() => onSuggestion?.(s.text)}>
+                      <span className={styles.suggestionEmoji}>{s.emoji}</span>
+                      <span>{s.text}</span>
                     </button>
                   ))}
                 </div>
