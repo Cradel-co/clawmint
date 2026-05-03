@@ -106,63 +106,69 @@ describe('ChatSettingsRepository', () => {
   });
 });
 
-// ── BotsRepository ────────────────────────────────────────────────────────────
+// ── BotsRepository (ahora SQLite-backed) ──────────────────────────────────────
 
 describe('BotsRepository', () => {
-  let dir;
+  let dir, db, jsonPath;
 
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claw-bots-'));
-    // Limpiar env vars para tests de BOT_TOKEN
+    jsonPath = path.join(dir, 'bots.json'); // no existe → no hay migración
+    db = new Database(path.join(dir, 'bots.db'));
     delete process.env.BOT_TOKEN;
     delete process.env.BOT_KEY;
   });
 
   afterEach(() => {
+    try { db.close?.(); } catch {}
     fs.rmSync(dir, { recursive: true, force: true });
     delete process.env.BOT_TOKEN;
     delete process.env.BOT_KEY;
   });
 
-  test('read() retorna [] si no existe el archivo y no hay BOT_TOKEN', () => {
-    const repo = new BotsRepository(path.join(dir, 'bots.json'));
+  test('read() retorna [] si la DB está vacía y no hay BOT_TOKEN', () => {
+    const repo = new BotsRepository(db, jsonPath);
+    repo.init();
     expect(repo.read()).toEqual([]);
   });
 
-  test('save() escribe el archivo; read() lo recupera', () => {
-    const filePath = path.join(dir, 'bots.json');
-    const repo = new BotsRepository(filePath);
+  test('save() persiste en DB; read() lo recupera', () => {
+    const repo = new BotsRepository(db, jsonPath);
+    repo.init();
     const bots = [{ key: 'test', token: 'abc123', whitelist: [] }];
     repo.save(bots);
-    expect(repo.read()).toEqual(bots);
+    const read = repo.read();
+    expect(read).toHaveLength(1);
+    expect(read[0].key).toBe('test');
+    expect(read[0].token).toBe('abc123');
   });
 
-  test('read() con JSON inválido retorna []', () => {
-    const filePath = path.join(dir, 'invalid.json');
-    fs.writeFileSync(filePath, 'not valid json', 'utf8');
-    const repo = new BotsRepository(filePath);
+  test('read() con bots.json inválido no rompe init() ni read()', () => {
+    fs.writeFileSync(jsonPath, 'not valid json', 'utf8');
+    const repo = new BotsRepository(db, jsonPath);
+    repo.init(); // no debería throwear aunque bots.json sea basura
     expect(repo.read()).toEqual([]);
   });
 
-  test('read() crea bots.json desde BOT_TOKEN si no existe el archivo', () => {
-    const filePath = path.join(dir, 'from-env.json');
+  test('read() crea bot desde BOT_TOKEN si la DB está vacía', () => {
     process.env.BOT_TOKEN = 'envtoken123';
     process.env.BOT_KEY   = 'envbot';
-    const repo = new BotsRepository(filePath);
+    const repo = new BotsRepository(db, jsonPath);
+    repo.init();
     const bots = repo.read();
     expect(bots).toHaveLength(1);
     expect(bots[0].token).toBe('envtoken123');
     expect(bots[0].key).toBe('envbot');
-    expect(fs.existsSync(filePath)).toBe(true);
   });
 
-  test('save() sobreescribe el archivo con la nueva lista', () => {
-    const filePath = path.join(dir, 'bots.json');
-    const repo = new BotsRepository(filePath);
-    repo.save([{ key: 'a' }]);
-    repo.save([{ key: 'b' }, { key: 'c' }]);
+  test('save() es upsert: agrega nuevos y actualiza existentes por key', () => {
+    const repo = new BotsRepository(db, jsonPath);
+    repo.init();
+    repo.save([{ key: 'a', token: 't1' }]);
+    repo.save([{ key: 'a', token: 't1-updated' }, { key: 'b', token: 't2' }]);
     const bots = repo.read();
     expect(bots).toHaveLength(2);
-    expect(bots[0].key).toBe('b');
+    const a = bots.find(b => b.key === 'a');
+    expect(a.token).toBe('t1-updated');
   });
 });

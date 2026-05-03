@@ -12,16 +12,50 @@
  */
 
 const { spawn } = require('child_process');
+const { buildSafeEnv } = require('../core/security/shellSandbox');
+const { truncateBashOutput } = require('../core/outputCaps');
 
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutos
 const IS_WIN = process.platform === 'win32';
+const MAX_BUF_BYTES = 2 * 1024 * 1024;           // 2MB máximo por stdout/stderr
+const RUNAWAY_BYTES_PER_SEC = 50 * 1024 * 1024;  // >50MB/s → kill SIGKILL
+
+/**
+ * Ring buffer de strings con FIFO drop: descarta desde el inicio para preservar el final.
+ * El final suele ser más útil para el modelo (incluye el sentinel del comando y el output reciente).
+ * `raw()` devuelve el buffer sin prefix (para búsqueda de sentinela).
+ * `value()` devuelve con prefix `[truncado N bytes — últimos 2MB]` si hubo truncado.
+ */
+function makeRingBuf() {
+  return {
+    _buf: '',
+    _truncatedBytes: 0,
+    push(str) {
+      this._buf += str;
+      if (this._buf.length > MAX_BUF_BYTES) {
+        const toDrop = this._buf.length - MAX_BUF_BYTES;
+        this._buf = this._buf.slice(toDrop);
+        this._truncatedBytes += toDrop;
+      }
+    },
+    raw() { return this._buf; },
+    value() {
+      if (this._truncatedBytes > 0) {
+        return `[truncado ${this._truncatedBytes} bytes — últimos ${MAX_BUF_BYTES} bytes]\n${this._buf}`;
+      }
+      return this._buf;
+    },
+  };
+}
 
 class ShellSession {
   constructor() {
     const shell = IS_WIN ? 'cmd.exe' : 'bash';
     const args  = IS_WIN ? ['/Q'] : ['--norc', '--noprofile'];
+    // Hardening Fase 5.75 F3: env sanitizada (allowlist) para no exponer secretos del server.
+    // Rollback legacy: SHELL_SANDBOX_STRICT=false.
     this._proc = spawn(shell, args, {
-      env: { ...process.env },
+      env: buildSafeEnv(),
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
     });
@@ -65,14 +99,16 @@ class ShellSession {
 
       const id       = ++this._cmdId;
       const SENTINEL = `__CLAWMINT_${id}__`;
-      let stdoutBuf  = '';
-      let stderrBuf  = '';
+      const stdoutBuf = makeRingBuf();
+      const stderrBuf = makeRingBuf();
       let settled    = false;
+      let runawayBytes = 0;
 
       const settle = (fn, value) => {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
+        clearInterval(runawayTimer);
         cleanup();
         fn(value);
       };
@@ -81,25 +117,51 @@ class ShellSession {
         settle(reject, new Error(`Timeout: comando no terminó en ${timeoutMs}ms`));
       }, timeoutMs);
 
+      const runawayTimer = setInterval(() => {
+        if (runawayBytes > RUNAWAY_BYTES_PER_SEC) {
+          try { this._proc.kill('SIGKILL'); } catch {}
+          // Marcar la sesión como destruida — el shell ya no existe.
+          this._destroyed = true;
+          settle(reject, new Error(`Proceso killed: >${RUNAWAY_BYTES_PER_SEC / 1024 / 1024}MB/s sostenido`));
+        }
+        runawayBytes = 0;
+      }, 1000);
+      runawayTimer.unref();
+
       const tryResolve = () => {
         const sentinelRe = new RegExp(`${SENTINEL}:(\\d+)`);
-        const match      = stdoutBuf.match(sentinelRe);
+        const raw        = stdoutBuf.raw();
+        const match      = raw.match(sentinelRe);
         if (!match) return;
 
-        const sentinelIdx = stdoutBuf.indexOf(match[0]);
+        const sentinelIdx = raw.indexOf(match[0]);
         const exitCode    = parseInt(match[1], 10);
-        const stdout      = stdoutBuf.slice(0, sentinelIdx).trimEnd();
-        const stderr      = stderrBuf.trimEnd();
+        const stdout      = stdoutBuf._truncatedBytes > 0
+          ? `[truncado ${stdoutBuf._truncatedBytes} bytes — últimos ${MAX_BUF_BYTES} bytes]\n${raw.slice(0, sentinelIdx).trimEnd()}`
+          : raw.slice(0, sentinelIdx).trimEnd();
+        const stderr      = stderrBuf.value().trimEnd();
         const combined    = [stdout, stderr].filter(Boolean).join('\n');
 
         let result = combined || '(sin output)';
         if (exitCode !== 0) result = `[exit ${exitCode}]\n${result}`;
 
+        // Fase 7.5.6: aplicar cap de tamaño antes de devolver (distinto del ring buffer de 2MB)
+        result = truncateBashOutput(result);
+
         settle(resolve, result);
       };
 
-      const onStdout = (chunk) => { stdoutBuf += chunk.toString(); tryResolve(); };
-      const onStderr = (chunk) => { stderrBuf += chunk.toString(); };
+      const onStdout = (chunk) => {
+        const s = chunk.toString();
+        runawayBytes += s.length;
+        stdoutBuf.push(s);
+        tryResolve();
+      };
+      const onStderr = (chunk) => {
+        const s = chunk.toString();
+        runawayBytes += s.length;
+        stderrBuf.push(s);
+      };
 
       const cleanup = () => {
         this._proc.stdout.removeListener('data', onStdout);

@@ -1,0 +1,503 @@
+.dashboard {
+  flex: 1;
+  overflow-y: auto;
+  padding: clamp(16px, 2.4vw, 28px) clamp(16px, 3vw, 36px);
+  background: var(--bg-primary);
+  font-family: var(--font-ui);
+  color: var(--text-primary);
+}
+
+/* ── Hero ──────────────────────────────────────────────────────────────── */
+.hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: clamp(20px, 2.2vw, 26px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.titleMark {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  background: linear-gradient(135deg, var(--accent-orange), var(--accent-red));
+  box-shadow: 0 0 12px rgba(249, 115, 22, 0.35);
+}
+
+.subtitle {
+  margin: 6px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.heroStats {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.heroStat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.heroStatError {
+  color: var(--status-error);
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.25);
+}
+
+.errorBanner {
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.30);
+  color: var(--status-error);
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.errorBanner strong {
+  font-weight: 700;
+}
+.errorBanner span {
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+/* ── Primary row: métricas + clima ──────────────────────────────────────── */
+.primaryRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+@media (max-width: 1100px) {
+  .primaryRow { grid-template-columns: 1fr; }
+}
+
+/* ── Metric grid (CPU / RAM / Disk / Server) ───────────────────────────── */
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+/* ── Weather widget ────────────────────────────────────────────────────── */
+.weatherCard {
+  background: linear-gradient(145deg, rgba(249, 115, 22, 0.08) 0%, var(--bg-card) 60%);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+}
+.weatherHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.weatherLocation {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent-orange);
+  font-weight: 700;
+}
+.weatherLoading, .weatherError {
+  padding: 12px 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+.weatherMain {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.weatherIcon {
+  font-size: 44px;
+  line-height: 1;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.35));
+}
+.weatherTemp {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+  line-height: 1;
+}
+.weatherDesc {
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.weatherStats {
+  display: flex;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+.weatherStats span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.weatherForecast {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+.forecastDay {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
+}
+.forecastLabel {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.forecastIcon { font-size: 20px; line-height: 1.1; }
+.forecastTemp {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.forecastMin {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.metricTile {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.metricTile::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--tile-accent);
+  opacity: 0.9;
+}
+.metricTile:hover {
+  border-color: var(--tile-accent-border, var(--border-primary));
+  transform: translateY(-1px);
+}
+
+.metricHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: var(--text-muted);
+}
+.metricIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--tile-accent-bg);
+  color: var(--tile-accent);
+}
+.metricLabel {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.metricValue {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.metricPercent {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.metricSubtitle {
+  margin-top: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.progress {
+  margin-top: 12px;
+  height: 6px;
+  background: var(--border-subtle);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.progressFill {
+  display: block;
+  height: 100%;
+  background: var(--status-ok);
+  transition: width 0.4s ease, background-color 0.3s;
+}
+.progress.ok    .progressFill { background: var(--status-ok); }
+.progress.warn  .progressFill { background: var(--status-warn); }
+.progress.error .progressFill { background: var(--status-error); }
+
+/* Accent palette per tile */
+.accent-orange { --tile-accent: var(--accent-orange); --tile-accent-bg: rgba(249,115,22,0.12); --tile-accent-border: rgba(249,115,22,0.35); }
+.accent-cyan   { --tile-accent: var(--accent-cyan);   --tile-accent-bg: rgba(251, 191, 36,0.12);  --tile-accent-border: rgba(251, 191, 36,0.35); }
+.accent-purple { --tile-accent: var(--accent-purple); --tile-accent-bg: rgba(168,85,247,0.12); --tile-accent-border: rgba(168,85,247,0.35); }
+.accent-green  { --tile-accent: var(--accent-green);  --tile-accent-bg: rgba(16,185,129,0.12); --tile-accent-border: rgba(16,185,129,0.35); }
+.accent-blue   { --tile-accent: var(--accent-blue);   --tile-accent-bg: rgba(251, 146, 60,0.12); --tile-accent-border: rgba(251, 146, 60,0.35); }
+.accent-yellow { --tile-accent: var(--accent-yellow); --tile-accent-bg: rgba(245,158,11,0.12); --tile-accent-border: rgba(245,158,11,0.35); }
+.accent-red    { --tile-accent: var(--accent-red);    --tile-accent-bg: rgba(239,68,68,0.12);  --tile-accent-border: rgba(239,68,68,0.35); }
+.accent-pink   { --tile-accent: var(--accent-pink);   --tile-accent-bg: rgba(236,72,153,0.12); --tile-accent-border: rgba(236,72,153,0.35); }
+.accent-teal   { --tile-accent: var(--accent-teal);   --tile-accent-bg: rgba(20,184,166,0.12); --tile-accent-border: rgba(20,184,166,0.35); }
+
+/* ── Status grid ──────────────────────────────────────────────────────── */
+.statusGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.statusCard {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+  overflow: hidden;
+}
+.statusCard::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  width: 2px;
+  background: var(--tile-accent);
+}
+.statusCardHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.statusCardHeader svg { color: var(--tile-accent); }
+.statusCardValue {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.statusCardSub {
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Agents section ───────────────────────────────────────────────────── */
+.agentsSection {
+  margin-top: 8px;
+  padding-bottom: 16px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+.sectionTitleMark {
+  width: 3px;
+  height: 16px;
+  background: var(--accent-orange);
+  border-radius: 2px;
+  box-shadow: 0 0 8px rgba(249,115,22,0.5);
+}
+.sectionLink {
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  border: none;
+  border-radius: var(--radius-pill);
+  padding: 6px 14px;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.15s;
+}
+.sectionLink:hover { background: var(--btn-primary-hover); transform: translateY(-1px); }
+
+.agentsEmpty {
+  padding: 18px;
+  background: var(--bg-card);
+  border: 1px dashed var(--border-primary);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.linkBtn {
+  background: none;
+  border: none;
+  color: var(--accent-orange);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.agentsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.agentCard {
+  --agent-color: var(--accent-orange);
+  background: var(--bg-card);
+  border: 1px solid color-mix(in srgb, var(--agent-color) 35%, var(--border-primary));
+  border-radius: var(--radius-md);
+  padding: 14px;
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+  overflow: hidden;
+}
+.agentCard::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--agent-color);
+  opacity: 0.9;
+}
+.agentCard:hover {
+  transform: translateY(-2px);
+  border-color: var(--agent-color);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.35), 0 0 12px color-mix(in srgb, var(--agent-color) 20%, transparent);
+}
+.agentIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--agent-color) 20%, transparent);
+  border: 1px solid color-mix(in srgb, var(--agent-color) 40%, transparent);
+  color: var(--agent-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+.agentName {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+.agentModel {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.agentStatus {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  color: var(--status-ok);
+  font-size: 11px;
+  font-weight: 600;
+}
+.agentDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-ok);
+  box-shadow: 0 0 6px currentColor;
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .hero { flex-direction: column; align-items: flex-start; }
+  .metricGrid { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+  .metricValue { font-size: 24px; }
+}

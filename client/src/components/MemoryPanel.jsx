@@ -1,7 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Brain, X, ChevronLeft, Trash2, Search } from 'lucide-react';
 import { useMemoryDebug, useMemoryFiles, useMemoryFile, useSaveMemoryFile, useDeleteMemoryFile } from '../api/memory';
-import { useProviders } from '../api/providers';
 import styles from './MemoryPanel.module.css';
 import apStyles from './AgentsPanel.module.css';
 
@@ -12,18 +11,18 @@ export default function MemoryPanel({ onClose }) {
   const [searchQ, setSearchQ] = useState('');
   const [msg, setMsg] = useState('');
 
-  // Fetch agents list reusing providers (agents API is simpler)
-  const { data: agentsData } = useProviders(); // placeholder - we need agents
   const { data: debug } = useMemoryDebug(agentKey);
   const { data: files } = useMemoryFiles(agentKey);
   const { data: fileData } = useMemoryFile(agentKey, selectedFile);
   const saveFile = useSaveMemoryFile();
   const deleteFile = useDeleteMemoryFile();
 
-  // Cargar contenido cuando se selecciona archivo
-  if (fileData?.content !== undefined && editContent === '' && selectedFile) {
-    setEditContent(fileData.content);
-  }
+  // Cargar contenido cuando se selecciona archivo o cambia el fileData.
+  useEffect(() => {
+    if (selectedFile && fileData?.content !== undefined) {
+      setEditContent(fileData.content);
+    }
+  }, [selectedFile, fileData?.content]);
 
   function openFile(filename) {
     setSelectedFile(filename);

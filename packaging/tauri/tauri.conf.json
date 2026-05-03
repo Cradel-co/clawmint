@@ -1,0 +1,83 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Clawmint",
+  "version": "1.0.0",
+  "identifier": "com.clawmint.desktop",
+  "build": {
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "node ../../packaging/build/bundle-server.js",
+    "devUrl": "http://localhost:3001",
+    "frontendDist": "../resources/client/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Clawmint",
+        "width": 1100,
+        "height": 720,
+        "minWidth": 720,
+        "minHeight": 480,
+        "resizable": true,
+        "visible": false,
+        "decorations": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    },
+    "trayIcon": {
+      "id": "main",
+      "iconPath": "icons/icon.png",
+      "iconAsTemplate": false,
+      "tooltip": "Clawmint"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "deb", "appimage"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "../resources/server": "resources/server",
+      "../resources/client": "resources/client"
+    },
+    "externalBin": ["../resources/node"],
+    "shortDescription": "Clawmint desktop — agents AI multi-provider para Telegram + web.",
+    "longDescription": "Server Node.js + UI web para orquestar agentes AI (Anthropic, OpenAI, Gemini, Grok, etc) expuestos como bots de Telegram, WebChat y APIs HTTP. Esta shell desktop ejecuta el server como sidecar en segundo plano y embebe el panel en un webview nativo del OS.",
+    "windows": {
+      "nsis": {
+        "installMode": "perMachine",
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico",
+        "template": "../windows/installer.nsi"
+      },
+      "wix": null
+    },
+    "linux": {
+      "deb": {
+        "depends": ["libc6"],
+        "files": {
+          "/etc/systemd/system/clawmint.service": "../linux/clawmint.service"
+        }
+      },
+      "appimage": {
+        "bundleMediaFramework": false
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/bpadilla/clawmint/releases/latest/download/latest.json"
+      ],
+      "pubkey": "REPLACE_ME_WITH_ED25519_PUBKEY_FROM_tauri_signer_generate"
+    }
+  }
+}

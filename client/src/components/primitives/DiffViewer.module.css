@@ -1,0 +1,104 @@
+.root {
+  border: 1px solid var(--oc2-border-weak, var(--border-primary));
+  border-radius: var(--radius-md, 6px);
+  overflow: hidden;
+  background: var(--oc2-surface-base, var(--bg-panel));
+  font-family: var(--font-mono);
+  font-size: var(--font-sm, 12px);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  padding: var(--space-1, 4px) var(--space-3, 12px);
+  background: var(--oc2-surface-raised, var(--bg-card));
+  border-bottom: 1px solid var(--oc2-border-weaker, var(--border-subtle));
+  font-family: var(--font-ui);
+  font-size: var(--font-xs, 11px);
+}
+
+.path {
+  color: var(--oc2-text-base, var(--text-secondary));
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spacer { flex: 1; }
+
+.stats {
+  display: inline-flex;
+  gap: var(--space-2, 8px);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.added   { color: var(--oc2-success, var(--accent-green)); }
+.removed { color: var(--oc2-error,   var(--accent-red)); }
+
+.body {
+  overflow: auto;
+}
+
+.table {
+  border-collapse: collapse;
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: var(--font-sm, 12px);
+  line-height: var(--lh-snug, 1.4);
+}
+
+.gutter {
+  width: 24px;
+  text-align: center;
+  user-select: none;
+  color: var(--oc2-text-weaker, var(--text-hint));
+  font-weight: var(--weight-medium, 500);
+  padding: 0 var(--space-1, 4px);
+  vertical-align: top;
+}
+
+.lineNum {
+  width: 40px;
+  text-align: right;
+  user-select: none;
+  color: var(--oc2-text-weaker, var(--text-hint));
+  padding: 0 var(--space-1, 4px);
+  font-variant-numeric: tabular-nums;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.content {
+  padding: 0 var(--space-2, 8px);
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--oc2-text-base, var(--text-secondary));
+  width: 100%;
+}
+
+.row_add {
+  background: var(--oc2-diff-add-bg, rgba(159, 242, 154, 0.12));
+}
+.row_add .gutter,
+.row_add .content {
+  color: var(--oc2-success, var(--accent-green));
+}
+
+.row_del {
+  background: var(--oc2-diff-del-bg, rgba(252, 83, 58, 0.08));
+}
+.row_del .gutter,
+.row_del .content {
+  color: var(--oc2-error, var(--accent-red));
+}
+
+.row_hunk {
+  background: var(--oc2-surface-raised-hover, var(--bg-hover));
+}
+.row_hunk .content {
+  color: var(--oc2-syntax-keyword, var(--accent-purple));
+  font-weight: var(--weight-medium, 500);
+}

@@ -5,7 +5,10 @@
  *
  * Expone: user_list, user_info, user_link
  * Usa ctx.usersRepo (server/storage/UsersRepository.js).
+ * Non-admins solo pueden ver su propia info.
  */
+
+const { isAdmin, resolveUserId } = require('./user-sandbox');
 
 function _requireUsers(ctx) {
   if (!ctx.usersRepo) throw new Error('Módulo de usuarios no disponible');
@@ -20,6 +23,21 @@ const USER_LIST = {
 
   execute(args = {}, ctx = {}) {
     _requireUsers(ctx);
+
+    // Non-admins solo ven su propia info
+    if (!isAdmin(ctx)) {
+      const userId = resolveUserId(ctx);
+      if (!userId) return 'Error: no se pudo identificar al usuario.';
+      const user = ctx.usersRepo.getById(userId);
+      if (!user) return 'Usuario no encontrado.';
+      const channels = (user.identities || []).map(i => {
+        const meta = i.metadata && typeof i.metadata === 'object' ? i.metadata : {};
+        const label = meta.username ? `@${meta.username}` : i.identifier;
+        return `${i.channel}:${label}`;
+      }).join(', ');
+      return `Tu usuario:\n• ${user.name} [${user.role}] — id:${user.id}\n  Canales: ${channels || 'ninguno'}`;
+    }
+
     const users = args.query
       ? ctx.usersRepo.searchByName(args.query)
       : ctx.usersRepo.listAll();
@@ -49,6 +67,13 @@ const USER_INFO = {
 
   execute(args = {}, ctx = {}) {
     _requireUsers(ctx);
+
+    // Non-admins solo pueden ver su propia info
+    if (!isAdmin(ctx)) {
+      const userId = resolveUserId(ctx);
+      if (!userId) return 'Error: no se pudo identificar al usuario.';
+      args.id = userId; // Forzar a su propio ID
+    }
 
     let user = null;
     if (args.id) {
@@ -89,6 +114,7 @@ const USER_LINK = {
 
   execute(args = {}, ctx = {}) {
     _requireUsers(ctx);
+    if (!isAdmin(ctx)) return 'Error: solo administradores pueden vincular identidades.';
     if (!args.user_id) return 'Error: parámetro user_id requerido';
     if (!args.channel) return 'Error: parámetro channel requerido';
     if (!args.identifier) return 'Error: parámetro identifier requerido';

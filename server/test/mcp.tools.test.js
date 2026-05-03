@@ -17,6 +17,15 @@ const SEARCH_FILES = filesTools.find(t => t.name === 'search_files');
 const PTY_WRITE = ptyTools.find(t => t.name === 'pty_write');
 const PTY_READ  = ptyTools.find(t => t.name === 'pty_read');
 
+// Admin ctx bypasses user-sandbox para tests de archivos locales
+const ADMIN_CTX = {
+  userId: 'admin-test',
+  usersRepo: {
+    findByIdentity: () => ({ id: 'admin-test', role: 'admin' }),
+    getById: () => ({ id: 'admin-test', role: 'admin' }),
+  },
+};
+
 afterAll(() => destroyAll());
 
 // ── bash tool ─────────────────────────────────────────────────────────────────
@@ -72,13 +81,13 @@ describe('read_file tool', () => {
   });
 
   test('archivo inexistente retorna error', () => {
-    expect(READ_FILE.execute({ path: '/ruta-fantasma-99999/x.txt' })).toContain('Error');
+    expect(READ_FILE.execute({ path: '/ruta-fantasma-99999/x.txt' }, ADMIN_CTX)).toContain('Error');
   });
 
   test('lee contenido de un archivo existente', () => {
     const f = path.join(dir, 'test.txt');
     fs.writeFileSync(f, 'contenido de prueba', 'utf8');
-    expect(READ_FILE.execute({ path: f })).toBe('contenido de prueba');
+    expect(READ_FILE.execute({ path: f }, ADMIN_CTX)).toBe('contenido de prueba');
   });
 });
 
@@ -99,14 +108,14 @@ describe('write_file tool', () => {
 
   test('escribe archivo y retorna confirmación', () => {
     const f = path.join(dir, 'salida.txt');
-    const r = WRITE_FILE.execute({ path: f, content: 'prueba escritura' });
+    const r = WRITE_FILE.execute({ path: f, content: 'prueba escritura' }, ADMIN_CTX);
     expect(r).toContain('Archivo escrito');
     expect(fs.readFileSync(f, 'utf8')).toBe('prueba escritura');
   });
 
   test('crea directorios intermedios automáticamente', () => {
     const f = path.join(dir, 'sub', 'dir', 'nested.txt');
-    WRITE_FILE.execute({ path: f, content: 'nested' });
+    WRITE_FILE.execute({ path: f, content: 'nested' }, ADMIN_CTX);
     expect(fs.existsSync(f)).toBe(true);
   });
 });
@@ -123,7 +132,7 @@ describe('list_dir tool', () => {
   afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }); });
 
   test('lista entradas del directorio con tipo file/dir', () => {
-    const r = LIST_DIR.execute({ path: dir });
+    const r = LIST_DIR.execute({ path: dir }, ADMIN_CTX);
     expect(r).toContain('archivo.txt');
     expect(r).toContain('subcarpeta');
     expect(r).toMatch(/file\t|dir\t/);
@@ -132,11 +141,11 @@ describe('list_dir tool', () => {
   test('directorio vacío retorna "(directorio vacío)"', () => {
     const empty = path.join(dir, 'empty');
     fs.mkdirSync(empty);
-    expect(LIST_DIR.execute({ path: empty })).toBe('(directorio vacío)');
+    expect(LIST_DIR.execute({ path: empty }, ADMIN_CTX)).toBe('(directorio vacío)');
   });
 
   test('directorio inexistente retorna error', () => {
-    expect(LIST_DIR.execute({ path: '/dir-que-no-existe-999' })).toContain('Error');
+    expect(LIST_DIR.execute({ path: '/dir-que-no-existe-999' }, ADMIN_CTX)).toContain('Error');
   });
 });
 
@@ -157,7 +166,7 @@ describe('search_files tool', () => {
   });
 
   test('encuentra archivos por extensión', () => {
-    const r = SEARCH_FILES.execute({ pattern: '*.js', dir });
+    const r = SEARCH_FILES.execute({ pattern: '*.js', dir }, ADMIN_CTX);
     expect(r).toContain('test.js');
   });
 });
@@ -243,7 +252,7 @@ describe('tools/index.js', () => {
 
   test('execute() llama al tool correcto y retorna string', async () => {
     const id = 'idx-exec-' + Date.now();
-    const r  = await toolsIndex.execute('bash', { command: 'echo idx_ok' }, { shellId: id });
+    const r  = await toolsIndex.execute('bash', { command: 'echo idx_ok' }, { shellId: id, ...ADMIN_CTX });
     expect(r).toContain('idx_ok');
     destroyShell(id);
   });

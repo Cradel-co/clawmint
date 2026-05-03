@@ -1,0 +1,255 @@
+/**
+ * theme-oc2.css — paleta OC-2 portada de OpenCode
+ *   source: https://github.com/sst/opencode/blob/main/packages/ui/src/theme/themes/oc-2.json
+ *
+ * Activación: agregar `data-theme-oc2="true"` al <html> (lo hace ThemeContext
+ * cuando VITE_FEATURE_NEW_UI=true). Sin ese atributo, el cliente usa el tema
+ * navy legacy definido en index.css.
+ *
+ * La paleta mapea también a los CSS vars legacy (--bg-primary, --accent-cyan,
+ * etc) para que componentes no migrados sigan funcionando con colores OC-2.
+ *
+ * Variables nuevas (prefix oc2-) introducen semántica más rica:
+ *   surface-*  → fondos por elevación
+ *   text-*     → jerarquía tipográfica
+ *   border-*   → bordes con jerarquía
+ *   diff-*     → sumas/restas en code diff
+ *   syntax-*   → syntax highlighting (16 slots)
+ */
+
+/* ── OC-2 dark (default) ───────────────────────────────────────────────────── */
+[data-theme-oc2="true"],
+[data-theme-oc2="true"][data-theme="dark"] {
+  /* Palette base */
+  --oc2-neutral:     #1f1f1f;
+  --oc2-ink:         #f1ece8;
+  --oc2-primary:     #fab283;
+  --oc2-success:     #12c905;
+  --oc2-warning:     #fcd53a;
+  --oc2-error:       #fc533a;
+  --oc2-info:        #edb2f1;
+  --oc2-interactive: #034cff;
+
+  /* Surfaces (elevation) */
+  --oc2-surface-base:         #1C1C1C;
+  --oc2-surface-base-hover:   rgba(255, 255, 255, 0.05);
+  --oc2-surface-raised:       #232323;
+  --oc2-surface-raised-hover: #282828;
+  --oc2-surface-weak:         #0D172B;
+  --oc2-surface-success:      #022B00;
+  --oc2-surface-critical:     #1F0603;
+
+  /* Text hierarchy */
+  --oc2-text-strong:  #EDEDED;
+  --oc2-text-base:    #A0A0A0;
+  --oc2-text-weak:    #707070;
+  --oc2-text-weaker:  #505050;
+
+  /* Borders */
+  --oc2-border-weak:   #282828;
+  --oc2-border-weaker: #232323;
+
+  /* Icons */
+  --oc2-icon-base:      #7E7E7E;
+  --oc2-icon-weak:      #343434;
+  --oc2-icon-success:   #0ABE00;
+
+  /* Diff */
+  --oc2-diff-add:     #c8ffc4;
+  --oc2-diff-delete:  #fc533a;
+  --oc2-diff-add-bg:  rgba(200, 255, 196, 0.08);
+  --oc2-diff-del-bg:  rgba(252, 83, 58, 0.08);
+
+  /* Syntax highlight (16 slots) */
+  --oc2-syntax-comment:      #8f8f8f;
+  --oc2-syntax-keyword:      #edb2f1;
+  --oc2-syntax-string:       #00ceb9;
+  --oc2-syntax-primitive:    #8cb0ff;
+  --oc2-syntax-property:     #fab283;
+  --oc2-syntax-type:         #fcd53a;
+  --oc2-syntax-constant:     #93e9f6;
+  --oc2-syntax-critical:     #fab283;
+  --oc2-syntax-diff-delete:  #fab283;
+  --oc2-syntax-diff-unknown: #edb2f1;
+
+  /* ── Mapeo retrocompat a vars legacy ───────────────────────────────────── */
+  --bg-primary:   var(--oc2-surface-base);
+  --bg-secondary: var(--oc2-surface-raised);
+  --bg-header:    var(--oc2-surface-raised);
+  --bg-panel:     var(--oc2-surface-raised);
+  --bg-input:     var(--oc2-surface-base);
+  --bg-hover:     var(--oc2-surface-raised-hover);
+  --bg-active:    var(--oc2-surface-raised-hover);
+  --bg-card:      var(--oc2-surface-raised);
+
+  --border-primary:   var(--oc2-border-weak);
+  --border-secondary: var(--oc2-border-weaker);
+  --border-subtle:    var(--oc2-border-weaker);
+  --border-accent:    rgba(3, 76, 255, 0.25);
+
+  --text-primary:   var(--oc2-text-strong);
+  --text-secondary: var(--oc2-text-base);
+  --text-muted:     var(--oc2-text-weak);
+  --text-hint:      var(--oc2-text-weaker);
+
+  --accent-cyan:   var(--oc2-interactive);
+  --accent-blue:   var(--oc2-interactive);
+  --accent-green:  var(--oc2-success);
+  --accent-red:    var(--oc2-error);
+  --accent-yellow: var(--oc2-warning);
+  --accent-purple: var(--oc2-info);
+  --accent-teal:   var(--oc2-primary);
+  --accent-orange: var(--oc2-primary);
+
+  --focus-ring:        var(--oc2-interactive);
+  --btn-primary-bg:    var(--oc2-interactive);
+  --btn-primary-hover: #1a5dff;
+  --btn-primary-text:  #ffffff;
+
+  --skeleton-bg:    var(--oc2-surface-raised);
+  --skeleton-shine: var(--oc2-surface-raised-hover);
+
+  --header-gradient:  var(--oc2-surface-raised);
+  --sidebar-gradient: var(--oc2-surface-base);
+  --overlay-bg:       rgba(0, 0, 0, 0.6);
+  --shadow-popup:     0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-toast:     0 4px 24px rgba(0, 0, 0, 0.6);
+
+  --on-accent:       #ffffff;
+  --on-accent-muted: rgba(255, 255, 255, 0.75);
+
+  --bubble-user-bg:   var(--oc2-interactive);
+  --bubble-user-text: #ffffff;
+
+  /* Tipografía OC-2 */
+  --font-ui:   'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* ── OC-2 light ────────────────────────────────────────────────────────────── */
+[data-theme-oc2="true"][data-theme="light"] {
+  --oc2-neutral:     #f7f7f7;
+  --oc2-ink:         #171311;
+  --oc2-primary:     #dcde8d;
+  --oc2-success:     #12c905;
+  --oc2-warning:     #ffdc17;
+  --oc2-error:       #fc533a;
+  --oc2-info:        #a753ae;
+  --oc2-interactive: #034cff;
+
+  --oc2-surface-base:         #F8F8F8;
+  --oc2-surface-base-hover:   rgba(0, 0, 0, 0.04);
+  --oc2-surface-raised:       #F3F3F3;
+  --oc2-surface-raised-hover: #EDEDED;
+  --oc2-surface-weak:         #F5FAFF;
+  --oc2-surface-success:      #E6FFE5;
+  --oc2-surface-critical:     #FFF2F0;
+
+  --oc2-text-strong:  #171717;
+  --oc2-text-base:    #6F6F6F;
+  --oc2-text-weak:    #8F8F8F;
+  --oc2-text-weaker:  #C7C7C7;
+
+  --oc2-border-weak:   #DBDBDB;
+  --oc2-border-weaker: #E8E8E8;
+
+  --oc2-icon-base:      #8F8F8F;
+  --oc2-icon-weak:      #C7C7C7;
+  --oc2-icon-success:   #0ABE00;
+
+  --oc2-diff-add:     #9ff29a;
+  --oc2-diff-delete:  #fc533a;
+  --oc2-diff-add-bg:  rgba(159, 242, 154, 0.12);
+  --oc2-diff-del-bg:  rgba(252, 83, 58, 0.08);
+
+  --oc2-syntax-comment:      #7a7a7a;
+  --oc2-syntax-keyword:      #a753ae;
+  --oc2-syntax-string:       #00ceb9;
+  --oc2-syntax-primitive:    #034cff;
+  --oc2-syntax-property:     #a753ae;
+  --oc2-syntax-type:         #8a6f00;
+  --oc2-syntax-constant:     #007b80;
+  --oc2-syntax-critical:     #ff8c00;
+  --oc2-syntax-diff-delete:  #ff8c00;
+  --oc2-syntax-diff-unknown: #a753ae;
+
+  /* Mapeo retrocompat (light) */
+  --bg-primary:   var(--oc2-surface-base);
+  --bg-secondary: var(--oc2-surface-raised);
+  --bg-header:    var(--oc2-surface-raised);
+  --bg-panel:     var(--oc2-surface-raised);
+  --bg-input:     #ffffff;
+  --bg-hover:     var(--oc2-surface-raised-hover);
+  --bg-active:    #E0E0E0;
+  --bg-card:      var(--oc2-surface-raised);
+
+  --border-primary:   var(--oc2-border-weak);
+  --border-secondary: var(--oc2-border-weaker);
+  --border-subtle:    var(--oc2-border-weaker);
+  --border-accent:    rgba(3, 76, 255, 0.25);
+
+  --text-primary:   var(--oc2-text-strong);
+  --text-secondary: var(--oc2-text-base);
+  --text-muted:     var(--oc2-text-weak);
+  --text-hint:      var(--oc2-text-weaker);
+
+  --on-accent:       #ffffff;
+  --on-accent-muted: rgba(255, 255, 255, 0.75);
+}
+
+/* ── Scales shared ─────────────────────────────────────────────────────────── */
+[data-theme-oc2="true"] {
+  /* Spacing base 4px — escalas consistentes para todo el UI */
+  --space-0:  0;
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Border radius */
+  --radius-xs:   2px;
+  --radius-sm:   4px;
+  --radius-md:   6px;
+  --radius-lg:   8px;
+  --radius-xl:   12px;
+  --radius-2xl:  16px;
+  --radius-full: 9999px;
+
+  /* Typography scale */
+  --font-xs:   11px;
+  --font-sm:   12px;
+  --font-base: 13px;
+  --font-md:   14px;
+  --font-lg:   16px;
+  --font-xl:   20px;
+  --font-2xl:  24px;
+  --font-3xl:  32px;
+
+  /* Line heights */
+  --lh-tight:  1.2;
+  --lh-snug:   1.4;
+  --lh-base:   1.5;
+  --lh-relaxed: 1.6;
+  --lh-loose:  1.8;
+
+  /* Font weights */
+  --weight-regular:  400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+
+  /* Transitions */
+  --t-fast:   0.15s ease;
+  --t-base:   0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --t-slow:   0.35s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Letter spacing */
+  --tracking-tight:   -0.01em;
+  --tracking-normal:  0;
+  --tracking-wide:    0.02em;
+}

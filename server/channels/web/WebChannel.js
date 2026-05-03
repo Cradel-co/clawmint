@@ -43,7 +43,7 @@ const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
  * y upload de imágenes.
  */
 class WebChannel extends BaseChannel {
-  constructor({ convSvc, providers, providerConfig, agents, chatSettingsRepo, messagesRepo, eventBus, logger, transcriber, tts, usersRepo, authService, scheduler } = {}) {
+  constructor({ convSvc, providers, providerConfig, agents, chatSettingsRepo, messagesRepo, eventBus, logger, transcriber, tts, usersRepo, authService, scheduler, titleGenerator } = {}) {
     super({ eventBus, logger });
     this.convSvc          = convSvc;
     this.providers        = providers;
@@ -56,6 +56,7 @@ class WebChannel extends BaseChannel {
     this._usersRepo       = usersRepo || null;
     this._authService     = authService || null;
     this._scheduler       = scheduler || null;
+    this._titleGenerator  = titleGenerator || null;
     /** @type {Map<string, object>} sessionId → { ws, state } */
     this.sessions         = new Map();
     /** @type {Map<string, { state: object, parkedAt: number }>} */
@@ -185,15 +186,28 @@ class WebChannel extends BaseChannel {
     // Cargar historial de mensajes de SQLite
     const savedMessages = this.messagesRepo?.load(sessionId) || [];
 
+    // Resolver userId del sistema unificado
+    let sysUserId = authUser ? authUser.id : null;
+    if (!sysUserId && this._usersRepo) {
+      const sysUser = this._usersRepo.findByIdentity('web', sessionId);
+      if (sysUser) sysUserId = sysUser.id;
+    }
+
+    // Modo de sesión: 'normal' | 'household' (compartida con el hogar) | 'incognito' (no se guarda)
+    const sessionMode = (opts.mode === 'household' || opts.mode === 'incognito') ? opts.mode : 'normal';
+
     const state = {
-      provider: saved?.provider || opts.provider || this.providerConfig?.getConfig()?.default || 'anthropic',
+      provider: saved?.provider || opts.provider || this.providerConfig?.getChannelDefault?.('web') || this.providerConfig?.getConfig()?.default || 'anthropic',
       agent: opts.agent || null,
       model: saved?.model || null,
-      history: savedMessages,
-      claudeSession: saved?.claude_session_id || null,
+      history: sessionMode === 'incognito' ? [] : savedMessages,
+      claudeSession: sessionMode === 'incognito' ? null : (saved?.claude_session_id || null),
+      geminiSession: null,
       claudeMode: saved?.claude_mode || 'auto',
       cwd: saved?.cwd || process.env.HOME || '~',
       processing: false,
+      userId: sysUserId,
+      mode: sessionMode,
     };
 
     this.sessions.set(sessionId, { ws, state });
@@ -399,6 +413,55 @@ class WebChannel extends BaseChannel {
     try { this.messagesRepo?.cleanup(); } catch {}
   }
 
+  /** Lista el historial de sesiones para el panel de historial del cliente */
+  listSessionHistory(opts = {}) {
+    if (!this.messagesRepo) return [];
+    const limit = typeof opts === 'number' ? opts : (opts.limit || 200);
+    const userId = (opts && typeof opts === 'object') ? opts.userId : null;
+    const includeArchived = (opts && typeof opts === 'object') ? !!opts.includeArchived : false;
+    return this.messagesRepo.listSessions({ limit, userId, includeArchived }).map(s => ({
+      sessionId:    s.session_id,
+      messageCount: s.message_count,
+      lastAt:       s.last_at,
+      preview:      s.first_user_msg ? s.first_user_msg.slice(0, 200) : null,
+      title:        s.title || null,
+      pinned:       !!s.pinned,
+      archived:     !!s.archived,
+      agentKey:     s.agent_key || null,
+    }));
+  }
+
+  /** Búsqueda full-text en mensajes y títulos. */
+  searchSessions(query, opts = {}) {
+    if (!this.messagesRepo) return [];
+    return this.messagesRepo.search(query, opts).map(s => ({
+      sessionId:    s.session_id,
+      lastAt:       s.last_at,
+      messageCount: s.message_count,
+      snippet:      s.snippet ? s.snippet.slice(0, 240) : null,
+      title:        s.title || null,
+      agentKey:     s.agent_key || null,
+      pinned:       !!s.pinned,
+    }));
+  }
+
+  /** Cambiar título / pinned / archived de una sesión. */
+  updateSessionMeta(sessionId, fields) {
+    if (!this.messagesRepo || !sessionId) return false;
+    this.messagesRepo.setMeta(sessionId, fields);
+    return true;
+  }
+
+  /** Borra una sesión completa (mensajes + meta) y la quita de RAM. */
+  deleteSession(sessionId) {
+    if (!this.messagesRepo || !sessionId) return false;
+    this.messagesRepo.deleteSession(sessionId);
+    this.sessions.delete(sessionId);
+    this._parked.delete(sessionId);
+    try { this.chatSettingsRepo?.clearSession?.(WebChannel.BOT_KEY, sessionId); } catch {}
+    return true;
+  }
+
   // ── BaseChannel interface ──────────────────────────────────────────────────
 
   async send(destination, text) {
@@ -573,7 +636,11 @@ class WebChannel extends BaseChannel {
         }
         if (arg === 'ninguno' || arg === 'none') {
           state.agent = null;
-          this._sendJson(ws, { type: 'command_result', text: 'Agente desactivado.', agent: null });
+          // Resetear sesiones CLI: el agent prompt cambia, hay que rearmar la sesión
+          state.geminiSession = null;
+          state.claudeSession = null;
+          this._saveSettings(sessionId, state);
+          this._sendJson(ws, { type: 'command_result', text: 'Agente desactivado. Nueva sesión iniciada.', agent: null });
           return;
         }
         const a = this.agents.get(arg);
@@ -582,18 +649,22 @@ class WebChannel extends BaseChannel {
           return;
         }
         state.agent = arg;
-        this._sendJson(ws, { type: 'command_result', text: `Agente activo: ${arg}`, agent: arg });
+        // Resetear sesiones CLI: el agent prompt cambia, hay que rearmar la sesión
+        state.geminiSession = null;
+        state.claudeSession = null;
+        this._saveSettings(sessionId, state);
+        this._sendJson(ws, { type: 'command_result', text: `Agente activo: ${arg}. Nueva sesión iniciada.`, agent: arg });
         return;
       }
 
       case '/modelo':
       case '/model': {
-        if (!arg) {
-          this._sendJson(ws, { type: 'command_result', text: `Modelo actual: ${state.model || '(default del provider)'}` });
-          return;
-        }
-        state.model = arg;
-        this._sendJson(ws, { type: 'command_result', text: `Modelo: ${arg}` });
+        const provObj = this.providers.get(state.provider);
+        // Refresca la lista dinámicamente si el provider expone fetchModels (ollama, gemini-cli con API key)
+        const refresh = (provObj && typeof provObj.fetchModels === 'function')
+          ? provObj.fetchModels().catch(() => null)
+          : Promise.resolve();
+        refresh.then(() => this._handleModelCommand(ws, sessionId, state, provObj, arg));
         return;
       }
 
@@ -641,6 +712,7 @@ class WebChannel extends BaseChannel {
         state.claudeMode = arg;
         this._saveSettings(sessionId, state);
         this._sendJson(ws, { type: 'command_result', text: `Modo: ${arg}` });
+        this._sendStatus(ws, state);
         return;
       }
 
@@ -663,7 +735,7 @@ class WebChannel extends BaseChannel {
         const help = [
           '/provider [nombre] — cambiar provider de IA',
           '/agente [nombre] — seleccionar agente',
-          '/modelo [nombre] — cambiar modelo',
+          '/modelo [nombre] — listar/cambiar modelo del provider actual',
           '/cd [ruta] — cambiar directorio',
           '/nueva — nueva conversación',
           '/modo [ask|auto|plan] — modo de permisos (Claude Code)',
@@ -758,6 +830,7 @@ class WebChannel extends BaseChannel {
         files,
         history: state.history,
         claudeSession: state.claudeSession,
+        geminiSession: state.geminiSession,
         claudeMode: state.claudeMode,
         onChunk,
         onStatus,
@@ -765,21 +838,44 @@ class WebChannel extends BaseChannel {
         shellId: sessionId,
         botKey: WebChannel.BOT_KEY,
         channel: 'web',
+        userId: state.userId || null,
       });
 
       if (result.history) state.history = result.history;
       if (result.newSession) state.claudeSession = result.newSession;
+      if (result.newGeminiSession) state.geminiSession = result.newGeminiSession;
 
       if (!result.history) {
         state.history.push({ role: 'user', content: text });
         state.history.push({ role: 'assistant', content: result.text });
       }
 
-      // Persistir mensajes en SQLite
-      try {
-        this.messagesRepo?.pushPair(sessionId, text, result.text);
-      } catch (err) {
-        this.logger.error('[WebChannel] Error persistiendo mensajes:', err.message);
+      // Persistencia: skip total en incognito; sino guardar mensajes + meta (user_id, agent_key, share_scope)
+      if (state.mode === 'incognito') {
+        // No persistir nada — sesión efímera
+      } else {
+        const isFirstTurn = (this.messagesRepo?.countMessages(sessionId) || 0) === 0;
+        try {
+          this.messagesRepo?.pushPair(sessionId, text, result.text);
+          this.messagesRepo?.setMeta(sessionId, {
+            user_id:     state.userId || null,
+            agent_key:   state.agent || null,
+            share_scope: state.mode === 'household' ? 'household' : 'user',
+          });
+        } catch (err) {
+          this.logger.error('[WebChannel] Error persistiendo mensajes:', err.message);
+        }
+
+        // Auto-título tras el primer turno (no bloqueante; modular vía TitleGenerator)
+        if (isFirstTurn && this._titleGenerator && !this.messagesRepo?.getMeta?.(sessionId)?.title) {
+          this._titleGenerator.generate(text, result.text)
+            .then(title => {
+              if (!title) return;
+              this.messagesRepo?.setMeta(sessionId, { title });
+              this._sendJson(ws, { type: 'session_title', sessionId, title });
+            })
+            .catch(err => this.logger.warn?.(`[WebChannel] auto-title falló: ${err.message}`));
+        }
       }
 
       // Filtrar texto meta/noise de la IA
@@ -855,12 +951,46 @@ class WebChannel extends BaseChannel {
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
+  _handleModelCommand(ws, sessionId, state, provObj, arg) {
+    const models = Array.isArray(provObj?.models) ? provObj.models : [];
+    if (!arg) {
+      if (models.length === 0) {
+        this._sendJson(ws, {
+          type: 'command_result',
+          text: `Modelo actual: ${state.model || '(default del provider)'}\n\nEl provider "${state.provider}" no expone una lista estática de modelos. Usá /modelo <nombre> para setear uno manualmente.`,
+        });
+        return;
+      }
+      const list = models.map(m => `${m === state.model ? '→ ' : '  '}${m}`).join('\n');
+      this._sendJson(ws, {
+        type: 'command_result',
+        text: `Modelo actual: ${state.model || '(default del provider)'}\n\nModelos disponibles para ${state.provider}:\n${list}\n\nUsá /modelo <nombre> para cambiar.`,
+      });
+      return;
+    }
+    if (models.length > 0 && !models.includes(arg)) {
+      this._sendJson(ws, {
+        type: 'command_result',
+        text: `Modelo "${arg}" no válido para ${state.provider}.\nDisponibles: ${models.join(', ')}`,
+      });
+      return;
+    }
+    state.model = arg;
+    state.geminiSession = null;
+    state.claudeSession = null;
+    this._saveSettings(sessionId, state);
+    this._sendJson(ws, { type: 'command_result', text: `Modelo: ${arg}. Nueva sesión iniciada.` });
+  }
+
   _sendStatus(ws, state) {
     this._sendJson(ws, {
       type: 'status',
       provider: state.provider,
       agent: state.agent,
       cwd: state.cwd,
+      claudeMode: state.claudeMode,
+      model: state.model,
+      mode: state.mode || 'normal',
     });
   }
 
@@ -870,6 +1000,7 @@ class WebChannel extends BaseChannel {
 
   _saveSettings(sessionId, state) {
     if (!this.chatSettingsRepo) return;
+    if (state?.mode === 'incognito') return;  // sesión efímera, no persistir settings
     try {
       this.chatSettingsRepo.save(WebChannel.BOT_KEY, sessionId, {
         provider: state.provider,

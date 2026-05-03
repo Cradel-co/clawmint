@@ -1,6 +1,8 @@
-# Clawmint
+# Clawmint — Agente Familiar Doméstico
 
-Terminal en tiempo real accesible desde el navegador y Telegram. Combina PTY virtual (node-pty), WebSocket, REST API, y un bot de Telegram como frontend alternativo para Claude Code y otros agentes.
+Asistente IA doméstico que corre en el hogar (Raspberry Pi, mini PC, NAS). Cada miembro de la familia accede desde Telegram o el navegador. Gestiona correos, calendario, recordatorios, tareas y más — todo privado, todo local.
+
+> Visión completa: `docs/vision.md`
 
 ## Instrucciones de comunicación
 
@@ -8,6 +10,17 @@ Terminal en tiempo real accesible desde el navegador y Telegram. Combina PTY vir
 - Ser conciso y directo, sin relleno.
 - Usar siempre **rutas absolutas** (base: `/home/marcos/marcos/clawmint/`) para no perder contexto del directorio de trabajo.
 - No explicar lo obvio; el usuario conoce el proyecto.
+
+## Principios y reglas
+
+Este proyecto sigue un conjunto explícito de principios y reglas de desarrollo. No se duplican acá — vivien en `docs/`:
+
+- **Filosofía**: `docs/philosophy.md` — minimalismo intencional, honestidad de verificación, reversibilidad primero, root cause sobre workaround, colaboración sobre ejecución ciega.
+- **Reglas concretas**: `docs/development-rules.md` — código, commits, docs, testing, seguridad, interacción con el usuario.
+- **Mentalidad y técnicas senior**: `docs/engineering-craftsmanship.md` — patrones extraídos directamente del código de Claude Code (tipos como contrato, jerarquías de error, retry contextual, cleanup registry, event buffering, etc.). Referencia para decisiones técnicas no triviales.
+- **Plan técnico**: `server/ROADMAP.md` — fases con principios de modularidad aplicados (un módulo = una responsabilidad, DI por constructor, eventos tipados, flags por feature, fail-open).
+
+Si algo de lo escrito acá contradice esos documentos, ellos ganan. Si hay que cambiar una regla, se edita allá — no acá.
 
 ## Stack
 
@@ -38,6 +51,7 @@ clawmint/
 │   │   ├── telegram.js         # Bots + chats + multimedia Telegram
 │   │   ├── webchat.js          # Sessions + multimedia WebChat
 │   │   ├── providers.js        # Config providers IA
+│   │   ├── openai-compat.js    # API compatible OpenAI — GET /v1/models, POST /v1/chat/completions
 │   │   ├── voice-providers.js  # Config TTS
 │   │   └── nodriza.js          # Config/status P2P nodriza
 │   ├── ws/                     # WebSocket handlers (extraídos de index.js)
@@ -63,7 +77,10 @@ clawmint/
 │   │   ├── Logger.js             # Logger con niveles, archivo y rotación (>50MB)
 │   │   └── systemStats.js        # Stats del sistema (CPU, RAM, uptime)
 │   ├── services/
-│   │   └── ConversationService.js # Motor de conversación con IA (retry, rate limit, modos, costo, compresión)
+│   │   ├── ConversationService.js # Motor de conversación con IA (retry, rate limit, modos, costo, compresión)
+│   │   ├── AuthService.js         # Auth + JWT auto-persistido + invitations + multi-user approval
+│   │   ├── McpAuthService.js      # OAuth handlers para MCPs (Google/GitHub/Spotify)
+│   │   └── LocationService.js     # LAN + Tailscale (rango 100.x) + IP pública (ipwho.is, cache 24h) + override manual
 │   ├── providers/
 │   │   ├── index.js             # Registry de proveedores IA
 │   │   ├── anthropic.js         # Anthropic SDK directo (+ usage tracking)
@@ -84,12 +101,15 @@ clawmint/
 │   │   ├── sqlite-wrapper.js    # Wrapper sql.js compatible con better-sqlite3
 │   │   ├── DatabaseProvider.js  # Inicialización y acceso a la DB
 │   │   ├── ChatSettingsRepository.js # Persistencia: provider, cwd, sesión, modo, historial
-│   │   └── BotsRepository.js    # Persistencia de configuración de bots
+│   │   ├── BotsRepository.js    # Persistencia de configuración de bots
+│   │   ├── InvitationsRepository.js   # Invitaciones por código (Fase A)
+│   │   ├── HouseholdDataRepository.js # Datos compartidos del hogar (Fase B)
+│   │   └── SystemConfigRepository.js  # Config global cifrada (OAuth creds sin .env)
 │   ├── mcp/
 │   │   ├── index.js             # Router MCP (herramientas expuestas)
 │   │   ├── ShellSession.js      # Sesión shell para MCP (idle timeout 30min)
 │   │   └── tools/
-│   │       ├── index.js         # Registry de herramientas MCP (32 tools)
+│   │       ├── index.js         # Registry de herramientas MCP (130+ tools modulares)
 │   │       ├── bash.js          # Shell con estado persistente
 │   │       ├── git.js           # Git: 12 acciones (status, diff, log, commit, push, etc.)
 │   │       ├── files.js         # read_file, write_file, edit_file, list_dir, search_files
@@ -99,7 +119,19 @@ clawmint/
 │   │       ├── webchat.js       # Integración WebChat para MCP
 │   │       ├── critter.js       # Control remoto P2P (channel: 'p2p')
 │   │       ├── critter-status.js   # Estado de critter (global, sin channel)
-│   │       └── critter-registry.js # Registry de peers P2P conectados
+│   │       ├── critter-registry.js # Registry de peers P2P conectados
+│   │       ├── location.js      # server_info, server_location, weather_get
+│   │       ├── userLocation.js  # user_location_save/get/forget (geocoding OSM)
+│   │       ├── environment.js   # air_quality, sun, moon_phase, uv_index, holiday_check, is_weekend
+│   │       ├── arFinance.js     # dolar_ar, currency_convert, crypto_price, wikipedia, recipes, joke
+│   │       ├── briefs.js        # day_summary, morning_brief, bedtime_brief, week_ahead
+│   │       ├── household.js     # grocery_*, family_event_*, house_note_*, service_*, inventory_* (Fase B)
+│   │       └── routines.js      # routine_morning_set/bedtime_set/weather_alert/disable/list (Fase C)
+│   ├── mcp-oauth-providers/     # Handlers OAuth auto-registrables (Google/GitHub/Spotify)
+│   │   ├── index.js             # registerAll({mcpAuthService, systemConfigRepo})
+│   │   ├── google.js            # Calendar/Gmail/Drive/Tasks (un par client_id/secret)
+│   │   ├── github.js
+│   │   └── spotify.js
 │   ├── mcps.js                  # Gestión de servidores MCP externos
 │   ├── tts.js                   # Módulo TTS central
 │   ├── tts-config.js            # Configuración de proveedores TTS
@@ -124,14 +156,30 @@ clawmint/
 │       ├── App.jsx
 │       ├── config.js              # Config centralizada (SERVER_HOST, API_BASE, WS_URL)
 │       └── components/
-│           ├── TerminalPanel.jsx  # Terminal xterm.js (con cleanup de listeners)
+│           ├── Dashboard.jsx          # Mission Control (landing default) — métricas + clima + agentes
+│           ├── HouseholdPanel.jsx     # Hogar: 5 tabs (mercadería/eventos/notas/servicios/inventario)
+│           ├── UserLocationSection.jsx # Geocoding via OSM (en ProfilePanel)
+│           ├── UserRoutinesSection.jsx # Morning/bedtime/weather alert (en ProfilePanel)
+│           ├── TerminalPanel.jsx      # Terminal xterm.js (con cleanup de listeners)
 │           ├── TabBar.jsx
 │           ├── AgentsPanel.jsx
 │           ├── ProvidersPanel.jsx
 │           ├── CommandBar.jsx
 │           ├── TelegramPanel.jsx
-│           ├── WebChatPanel.jsx   # Chat web con ConversationService
-│           └── WebChatPanel.css
+│           ├── WebChatPanel.jsx       # Chat web con ConversationService
+│           ├── WebChatPanel.css
+│           ├── layout/
+│           │   ├── Sidebar.jsx        # NAV_GROUPS labeled + scroll
+│           │   ├── AppHeader.jsx      # Brand + search + health pill + bell con badge pendientes
+│           │   ├── StatusFooter.jsx   # CPU/RAM/DISK/uptime permanente (poll 5s)
+│           │   └── sectionMeta.js     # SECTION_META + NAV_GROUPS + SECTION_FLAGS
+│           ├── admin/
+│           │   ├── UsersPanel.jsx     # Status badges + Approve/Reject/Reactivate + modal Invitar
+│           │   └── OAuthCredentialsPanel.jsx  # Google/GitHub/Spotify desde UI
+│           └── features/
+│               ├── IntegrationsPanel.jsx  # Hub catálogo de servicios externos
+│               ├── DevicesPanel.jsx       # Home Assistant (setup guide + status MCP)
+│               └── MusicPanel.jsx         # Spotify (setup guide + status MCP)
 ├── ROADMAP.md                    # 9 sesiones de implementación priorizadas
 └── docs/                          # Documentación del proyecto
 ```
@@ -182,16 +230,22 @@ pm2 save             # guardar estado para auto-arranque
   - Ollama usa modo **non-streaming** cuando hay tools (workaround para bug de Ollama con streaming + tools).
   - Ollama carga los modelos disponibles **dinámicamente** desde `/api/tags` (cache 30s).
   - Todos los providers emiten `{ type: 'usage', promptTokens, completionTokens }` para tracking.
-- **MCP**: 32 herramientas modulares en `mcp/tools/`:
-  - `bash` — shell con estado persistente
-  - `git` — 12 acciones (status, diff, log, commit, push, pull, branch, checkout, stash, blame, show)
-  - `read_file`, `write_file`, `edit_file` (buscar/reemplazar con diffs), `list_dir`, `search_files`
-  - `pty_create`, `pty_exec` (ejecutar + esperar resultado), `pty_write`, `pty_read`
-  - `memory_list/read/write/append/delete`
-  - `telegram_send_message/photo/document/voice/video/edit/delete`, `telegram_list_bots`
-  - `webchat_send_message/photo/document/voice/video/edit/delete`, `webchat_list_sessions`
-  - `critter_status`
-  - **Filtrado por channel**: cada tool puede tener un campo `channel` opcional. Las tools de critter tienen `channel: 'p2p'` y solo aparecen en sesiones P2P.
+- **MCP**: 130+ herramientas modulares en `mcp/tools/` (32 archivos):
+  - **Core**: `bash`, `git` (12 acciones), `read_file`/`write_file`/`edit_file`/`list_dir`/`search_files`, `pty_create`/`pty_exec`/`pty_write`/`pty_read`, `memory_list/read/write/append/delete`.
+  - **Channels**: `telegram_send_*` (message/photo/document/voice/video/edit/delete) + `webchat_*` (idem) + `telegram_list_bots`/`webchat_list_sessions`.
+  - **P2P**: `critter_*` (con `channel: 'p2p'` — solo visible en sesiones P2P) + `critter_status` (global).
+  - **Productividad**: `task_*`, `skill_*` (list/invoke), `cron_*` (cron jobs), `typed_memory_*`, `hooks_*`, `glob`/`grep`/`webfetch`/`websearch`, `notebook_edit`, `enter_plan_mode`/`exit_plan_mode`, `monitor_process`, `push_notification`.
+  - **Server info**: `server_info` (hostname/platform/cpu/uptime), `server_location` (LAN+Tailscale+IP pública+manual override), `weather_get` (Open-Meteo, prioriza user pref > server location).
+  - **Datos del entorno**: `air_quality_get`, `sun_get` (cálculo nativo), `moon_phase` (cálculo nativo), `uv_index_get`, `holiday_check` (date.nager.at), `is_weekend`.
+  - **Finanzas/cultura**: `dolar_ar` (blue/oficial/MEP/CCL), `currency_convert` (open.er-api), `crypto_price` (coingecko), `wikipedia_summary`, `recipe_random`/`recipe_search` (themealdb), `joke_get` (jokeapi), `feriados_ar`.
+  - **Briefs proactivos**: `day_summary`, `morning_brief`, `bedtime_brief` (lenguaje natural), `week_ahead`.
+  - **User location**: `user_location_save` (geocoding OSM auto), `user_location_get`, `user_location_forget`.
+  - **Hogar (Fase B)**: `grocery_*` (mercadería), `family_event_*` (eventos con alerta), `house_note_*` (notas), `service_*` (vencimientos), `inventory_*` (despensa), `household_summary`.
+  - **Pro-actividad (Fase C)**: `routine_morning_set`, `routine_bedtime_set`, `routine_weather_alert`, `routine_disable`, `routine_list` — wrappers sobre Scheduler que generan crons + payloads listos.
+  - **OAuth MCP**: `mcp_authenticate`, `mcp_complete_authentication`, `mcp_list_authenticated`.
+  - **LSP**: `lsp_go_to_definition`/`find_references`/`hover`/`document_symbols`/`workspace_symbols`/`diagnostics`.
+  - **Filtrado por channel**: cada tool puede tener `channel` opcional (ej. critter='p2p').
+  - **Filtrado por env**: `MCP_DISABLED_TOOLS` (CSV) para rollback sin rebuild.
 - **ConversationService**: motor unificado de conversación con IA.
   - Retry 3x con exponential backoff para errores transitorios (429, 500, timeout).
   - No reintenta si ya ejecutó tools (previene side effects duplicados).
@@ -207,7 +261,33 @@ pm2 save             # guardar estado para auto-arranque
   - TerminalPanel: cleanup de `term.onData()` disposable al desmontar.
 - **DynamicCallbackRegistry**: soporta tipos `message`, `command`, `prompt`, `url`, `func`.
 - **Config centralizada del client**: `client/.env` con `VITE_SERVER_URL`. `client/src/config.js` expone `SERVER_HOST`, `API_BASE`, `WS_URL`.
-- **PM2**: `ecosystem.config.js` carga `.env` automáticamente. `--stack-size=65536`. Client usa `node_modules/vite/bin/vite.js` directo (fix Windows).
+- **PM2**: `ecosystem.config.js` con 3 perfiles: `clawmint` (dev con watch), `clawmint-client-dev` (vite HMR :5173), `clawmint-prod` (sin watch, NODE_ENV=production, autorestart, max-memory 1GB, logs separados en `server/logs/prod-*.log`). `--stack-size=65536`.
+- **API compatible OpenAI** (`server/routes/openai-compat.js`): expone `/v1/models` y `/v1/chat/completions` sin requerir el auth de Clawmint — tiene su propio middleware de API key estática. Auth: env `OPENAI_COMPAT_API_KEY` → `system_config.openai_compat_api_key` → 503 si no está configurada. Modelo por defecto: env `OPENAI_COMPAT_DEFAULT_MODEL` → `system_config.openai_compat_default_model` → `anthropic/claude-haiku-4-5-20251001`. Tools MCP deshabilitadas intencionalmente (pasa `noopExecuteTool` para prevenir el fallback al executor global). SPA catch-all en `index.js` excluye `/v1` con regex `^\/(?!api|ws|mcp|v1).*`.
+
+- **Multi-usuario con aprobación**: tabla `users` tiene columna `status` con valores `active`/`pending`/`disabled`.
+  - Primer usuario en DB vacía → `role='admin'` + `status='active'` automático.
+  - Usuarios subsiguientes → `role='user'` + `status='pending'` (no reciben tokens al registrar; HTTP 202 con mensaje "espera aprobación").
+  - Login valida `status='active'`; pending → 403 con `code: 'pending'`; disabled → 403 con `code: 'disabled'`.
+  - Admin aprueba/rechaza desde `Configuración → Usuarios`. Aprobar = `setStatus('active')`. Rechazar = soft-delete (`status='disabled'`, conserva email).
+
+- **Onboarding por invitación**: admin genera código de un solo uso desde el modal del UsersPanel. TTL configurable (1h-1sem). Se comparte como link `?invite=CODE` o QR. El invitado se registra y queda **activo automáticamente** (bypass del pending). Tabla `invitations` con soft-revoke + cleanup.
+
+- **Instalable sin `.env`**: la app es packageable y funciona en primer arranque sin configuración manual.
+  - `JWT_SECRET` se auto-genera en primer arranque y persiste en `${CONFIG_DIR}/.jwt-secret.key` (mode 0600). Mismo patrón que `tokenCrypto`.
+  - OAuth credentials de providers MCP (Google/GitHub/Spotify) se setean desde el panel admin `OAuthCredentialsPanel`. Se guardan cifradas en `system_config` (TokenCrypto). Los handlers `mcp-oauth-providers/` leen dinámicamente — no requiere restart.
+  - Fallback a env vars (`GOOGLE_CLIENT_ID/SECRET`, etc.) si están seteadas.
+
+- **Datos compartidos del hogar (Fase B)**: tabla `household_data` flexible con `kind` (grocery_item/family_event/house_note/service/inventory). Cualquier user `status='active'` puede leer/escribir via `/api/household/:kind`. Acceso desde Telegram/WebChat via 18 MCP tools (`grocery_*`, `family_event_*`, etc.). Panel "Hogar" en sidebar (grupo "Familia") con 5 tabs.
+
+- **Pro-actividad (Fase C)**: tools `routine_morning_set({time})`, `routine_bedtime_set`, `routine_weather_alert({rain_threshold})`. Wrappers que crean `scheduled_actions` con cron derivado de la hora HH:MM. Scheduler tick cada 30s detecta y dispara `_executeAiTask` con payload natural language → el agente despacha `morning_brief` + `telegram_send_message`.
+
+- **LocationService**: combina LAN (`os.networkInterfaces`) + Tailscale (rango 100.64.0.0/10) + IP pública via ipwho.is (cache 24h, free sin key) + override manual (admin desde UI). Usado por tools `weather_get`/`sun_get`/`air_quality_get` para auto-resolver coords (prioridad: user pref > server location > args).
+
+- **Sidebar nav (NAV_GROUPS)**: 7 grupos labeled — `Overview` (Dashboard) · `Control` (Terminal/Chat) · `Comms` (Telegram/Contactos) · `Familia` (Hogar) · `Productividad` (Tasks/Scheduler/Skills) · `Servicios` (Integraciones/Dispositivos/Música) · `Settings` (Configuración con 24+ tabs). Items gated por feature flags (`SECTION_FLAGS`).
+
+- **Paleta visual**: warm-only — `--accent-orange #f97316` (primary brand), `--accent-red #ef4444`, `--accent-amber #fbbf24` (alias `--accent-cyan`), `--accent-peach #fb923c` (alias `--accent-blue`), `--accent-yellow #f59e0b`. Mission Control near-black background `#0a0a0c`.
+
+- **WS reconnect infinito** con cap de 30s entre intentos (antes se rendía a los 5). Listeners `visibilitychange` + `online` fuerzan reconexión inmediata cuando user vuelve a la tab. `wsConnected` default `false` para no mostrar "Health OK" engañoso al bootstrap.
 
 ## Nodriza (P2P con deskcritter)
 
@@ -291,11 +371,55 @@ POST /api/telegram/bots/:key/chats/:chatId/voice
 POST /api/telegram/bots/:key/chats/:chatId/video
 ```
 
-## Health check
+## Health check + system info
 
 ```
-GET /api/health → { ok, uptime, startedAt, pid, node }
+GET /api/health             → { ok, uptime, startedAt, pid, node }                 (público)
+GET /api/system/stats       → { system: {cpu, ram, disk, uptime, host}, server, ws,
+                                 sessions, telegram, providers, nodriza }            (auth)
+GET /api/system/location    → { hostname, lan, tailscale, public, manual, resolved } (auth)
+GET /api/system/lan-addresses → { addresses: [{address, interface, isTailscale}] }   (auth)
+PUT /api/system/location    → admin-only, body { latitude, longitude, name }
 ```
+
+`/api/system/stats` lo consume el Dashboard (Mission Control) con polling 3s + el StatusFooter con 5s. Usa `fs.statfsSync` (Node 18.15+) para disk — no spawnea procesos en Windows (evita flash de consola).
+
+## Auth + multi-user (REST)
+
+```
+POST /api/auth/register         body { email, password, name, inviteCode? }
+                                → 201 { user, accessToken, refreshToken } (admin o invitado)
+                                → 202 { user, pending: true, message }     (pending)
+POST /api/auth/login            → 200 ok | 403 { code: 'pending'|'disabled' }
+POST /api/auth/admin/users/:id/{approve,reject,reactivate}  (admin)
+GET  /api/auth/admin/users/pending/count                     (admin) — para badge
+POST /api/auth/admin/invitations         body { ttlHours?, role?, familyRole? }  (admin)
+GET  /api/auth/admin/invitations         → list con status                       (admin)
+DELETE /api/auth/admin/invitations/:code → soft revoke                           (admin)
+GET  /api/auth/invitations/:code         → { valid, status, family_role, role }  (público)
+```
+
+## SystemConfig (admin)
+
+```
+GET /api/system-config/oauth                → status por provider (sin secrets)
+PUT /api/system-config/oauth/:provider      body { client_id, client_secret }
+DELETE /api/system-config/oauth/:provider
+GET/PUT/DELETE /api/system-config/:key      → CRUD genérico key/value
+```
+
+## Household (auth user activo)
+
+```
+GET  /api/household/summary                  → counts + upcoming
+GET  /api/household/upcoming?days=7
+GET  /api/household/:kind                    → list (qs: includeCompleted, upcomingOnly, limit)
+POST /api/household/:kind                    body { title, data, dateAt, alertDaysBefore }
+PATCH/DELETE /api/household/:kind/:id
+POST /api/household/:kind/:id/{complete,uncomplete}
+```
+
+`:kind` ∈ `grocery_item | family_event | house_note | service | inventory`.
 
 ## WebChat
 
@@ -305,3 +429,85 @@ Panel de chat web (`WebChatPanel.jsx`) que usa `ConversationService` — mismo m
 - **Status**: recibe `{ type: 'chat_status', status, detail }` (pensando/tool/listo)
 - **Comandos**: `/provider`, `/agente`, `/modelo`, `/cd`, `/nueva`, `/modo`, `/estado`, `/ayuda`
 - **Streaming**: chunks via `{ type: 'chat_chunk', text }`, fin con `{ type: 'chat_done', text }`
+
+## API Compatible OpenAI (`/v1`)
+
+Gateway REST compatible con la API de OpenAI. Permite conectar Open WebUI, LM Studio, SillyTavern, scripts Python con `openai` SDK, etc. sin modificar el cliente. El provider y modelo que responden se controlan desde el servidor.
+
+**Archivo:** `server/routes/openai-compat.js` — factory `createOpenAICompatRouter({ providersModule, providerConfig, systemConfigRepo, logger })`.
+
+### Auth
+
+API key estática propia (distinta al JWT de usuarios). Resolución en orden:
+1. Env var `OPENAI_COMPAT_API_KEY`
+2. `system_config` key `openai_compat_api_key` (se setea desde ProvidersPanel → sección "API Compatible OpenAI")
+3. Si ninguna → 503 `api_key_not_set`
+
+Los clientes la envían como `Authorization: Bearer <api-key>`.
+
+### Modelo por defecto
+
+Resolución en orden:
+1. Env var `OPENAI_COMPAT_DEFAULT_MODEL`
+2. `system_config` key `openai_compat_default_model`
+3. Hardcoded: `anthropic/claude-haiku-4-5-20251001`
+
+Se configura desde ProvidersPanel con un dropdown de todos los providers/modelos disponibles. Auto-guarda al cambiar.
+
+### Endpoints
+
+```
+GET  /v1/models              → { object: 'list', data: [{id, object, created, owned_by}] }
+POST /v1/chat/completions    → OpenAI-compatible (stream true/false)
+```
+
+**`GET /v1/models`** — lista todos los providers API disponibles (excluye `claude-code` y `gemini-cli`). Cada provider aparece como shortcut (`anthropic`) y por modelo específico (`anthropic/claude-haiku-4-5-20251001`). Incluye `default` que resuelve al modelo por defecto configurado.
+
+**`POST /v1/chat/completions`** — body estándar OpenAI:
+
+```json
+{
+  "model": "anthropic/claude-haiku-4-5-20251001",
+  "messages": [
+    { "role": "system", "content": "Sos un asistente." },
+    { "role": "user",   "content": "Hola" }
+  ],
+  "stream": false,
+  "max_tokens": 1024
+}
+```
+
+### Formato del campo `model`
+
+| Valor | Resultado |
+|-------|-----------|
+| `""` / omitido / `"default"` | modelo por defecto configurado (Haiku built-in) |
+| `"anthropic"` | Anthropic con su modelo configurado en provider-config |
+| `"anthropic/claude-opus-4-6"` | Anthropic, modelo específico |
+| `"openai/gpt-4o-mini"` | OpenAI, modelo específico |
+| `"ollama/llama3.2"` | Ollama local, modelo específico |
+| `"gemini/gemini-2.5-flash"` | Google Gemini, modelo específico |
+| `"claude-code"` | ❌ 400 — CLI-only, no soportado |
+
+### Diseño interno
+
+- **Sin tools MCP**: pasa `noopExecuteTool` explícito para prevenir que los providers caigan al executor global de MCP (bash, read_file, etc.). Si el modelo intenta llamar una tool, recibe un error y responde sin ella.
+- **SPA catch-all**: `index.js` excluye `/v1` de la regex `^\/(?!api|ws|mcp|v1).*` para que el router SPA no intercepte las rutas del endpoint.
+- **Streaming**: los providers emiten `event.text` acumulado → el endpoint calcula el delta con `event.text.slice(accumulated.length)` antes de enviar cada chunk SSE.
+- **Providers soportados**: `anthropic`, `openai`, `gemini`, `grok`, `deepseek`, `ollama`, `opencode`.
+
+### Configuración en ProvidersPanel
+
+Sección "API Compatible OpenAI" al final del panel (Configuración → Providers):
+- **Proveedor / modelo por defecto**: dropdown con optgroups por provider. Muestra `⚠ sin API key` para providers no configurados. Auto-guarda en `system_config.openai_compat_default_model`.
+- **Endpoint URL**: campo read-only con copy-to-clipboard → `http://servidor:3001/v1`.
+- **API Key**: campo password para setear/cambiar/eliminar la key en `system_config.openai_compat_api_key`. Requiere rol admin.
+
+### Configurar clientes externos
+
+| Cliente | Campo "Base URL" / "API URL" | Campo "API Key" |
+|---------|------------------------------|-----------------|
+| Open WebUI | `http://servidor:3001/v1` | la key del panel |
+| LM Studio | `http://servidor:3001/v1` | la key del panel |
+| SillyTavern | `http://servidor:3001/v1` | la key del panel |
+| Python `openai` SDK | `base_url="http://servidor:3001/v1"` | `api_key="la-key"` |

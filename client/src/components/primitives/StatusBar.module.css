@@ -1,0 +1,76 @@
+.root {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  padding: var(--space-1, 4px) var(--space-3, 12px);
+  background: var(--oc2-surface-raised, var(--bg-card));
+  border-top: 1px solid var(--oc2-border-weaker, var(--border-subtle));
+  font-family: var(--font-mono);
+  font-size: var(--font-xs, 11px);
+  color: var(--oc2-text-base, var(--text-secondary));
+  min-height: 24px;
+  flex-shrink: 0;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--oc2-text-weaker, var(--text-hint));
+  flex-shrink: 0;
+}
+
+.dot_connected    { background: var(--oc2-success, var(--accent-green)); box-shadow: 0 0 4px var(--oc2-success, var(--accent-green)); }
+.dot_disconnected { background: var(--oc2-text-weak, var(--text-muted)); }
+.dot_reconnecting { background: var(--oc2-warning, var(--accent-yellow)); animation: sb-pulse 1s ease-in-out infinite; }
+.dot_error        { background: var(--oc2-error, var(--accent-red)); }
+
+@keyframes sb-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.3; }
+}
+
+.item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1, 4px);
+  white-space: nowrap;
+}
+
+.label {
+  color: var(--oc2-text-weak, var(--text-muted));
+  text-transform: lowercase;
+  font-weight: var(--weight-regular, 400);
+}
+
+.value {
+  color: var(--oc2-text-strong, var(--text-primary));
+  font-weight: var(--weight-medium, 500);
+  font-variant-numeric: tabular-nums;
+}
+
+.ctxBar {
+  display: inline-block;
+  width: 48px;
+  height: 4px;
+  background: var(--oc2-border-weak, var(--border-primary));
+  border-radius: var(--radius-full, 9999px);
+  overflow: hidden;
+  margin-left: var(--space-1, 4px);
+  vertical-align: middle;
+}
+
+.ctxFill {
+  display: block;
+  height: 100%;
+  background: var(--oc2-success, var(--accent-green));
+  transition: width var(--t-base, 0.25s ease);
+}
+
+.ctxFill[data-level="warning"]  { background: var(--oc2-warning, var(--accent-yellow)); }
+.ctxFill[data-level="critical"] { background: var(--oc2-error,   var(--accent-red));    }
+
+.spacer {
+  flex: 1;
+  min-width: var(--space-2, 8px);
+}

@@ -1,0 +1,99 @@
+.root {
+  border: 1px solid var(--oc2-border-weak, var(--border-primary));
+  border-radius: var(--radius-md, 6px);
+  overflow: hidden;
+  background: var(--oc2-surface-raised, var(--bg-card));
+  font-family: var(--font-mono);
+  font-size: var(--font-sm, 12px);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-1, 4px) var(--space-3, 12px);
+  background: var(--oc2-surface-raised-hover, var(--bg-hover));
+  border-bottom: 1px solid var(--oc2-border-weaker, var(--border-subtle));
+  font-size: var(--font-xs, 11px);
+}
+
+.lang {
+  color: var(--oc2-text-weak, var(--text-muted));
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide, 0.02em);
+  font-weight: var(--weight-medium, 500);
+  font-family: var(--font-ui);
+}
+
+.copyBtn {
+  background: transparent;
+  border: none;
+  color: var(--oc2-text-weak, var(--text-muted));
+  font-family: var(--font-ui);
+  font-size: var(--font-xs, 11px);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs, 2px);
+  transition: background var(--t-fast, 0.15s ease), color var(--t-fast, 0.15s ease);
+}
+
+.copyBtn:hover {
+  background: var(--oc2-surface-base-hover, transparent);
+  color: var(--oc2-text-strong, var(--text-primary));
+}
+
+.body {
+  overflow: auto;
+}
+
+.pre {
+  margin: 0;
+  padding: var(--space-3, 12px);
+  font-family: var(--font-mono);
+  font-size: var(--font-sm, 12px);
+  line-height: var(--lh-snug, 1.4);
+  color: var(--oc2-text-base, var(--text-secondary));
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.pre code {
+  font-family: inherit;
+  color: inherit;
+  background: transparent;
+}
+
+.lnTable {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.lnCell {
+  color: var(--oc2-text-weaker, var(--text-hint));
+  text-align: right;
+  padding: 0 var(--space-3, 12px) 0 0;
+  user-select: none;
+  vertical-align: top;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  font-size: var(--font-xs, 11px);
+}
+
+.lnContent {
+  width: 100%;
+  white-space: pre;
+}
+
+/* Shiki wrapper */
+.shikiWrap :global(pre), .shikiPre {
+  margin: 0;
+  padding: var(--space-3, 12px);
+  background: var(--oc2-surface-raised, var(--bg-card)) !important;
+  font-size: var(--font-sm, 12px);
+  line-height: var(--lh-snug, 1.4);
+}
+
+.shikiWrap :global(code), .shikiCode {
+  font-family: var(--font-mono);
+  background: transparent !important;
+}

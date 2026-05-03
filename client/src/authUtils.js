@@ -54,15 +54,30 @@ export function isTokenExpired(token) {
 
 /**
  * Registra un nuevo usuario.
+ *
+ * Retorna:
+ *   - { user, accessToken, refreshToken } si es el primer admin (status 201).
+ *   - { user, pending: true, message }   si quedó pendiente de aprobación (status 202).
+ *
+ * En el caso pending NO se setean tokens en localStorage — el cliente debe
+ * mostrar la pantalla "esperando aprobación" y volver al login después.
  */
-export async function register(email, password, name) {
+export async function register(email, password, name, opts = {}) {
+  const body = { email, password, name };
+  if (opts.inviteCode) body.inviteCode = opts.inviteCode;
   const res = await fetch(`${API_BASE}/api/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password, name }),
+    body: JSON.stringify(body),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Error al registrar');
+
+  if (data.pending) {
+    // No setear tokens — el user no está activo todavía.
+    return { pending: true, user: data.user, message: data.message };
+  }
+
   setStoredTokens(data.accessToken, data.refreshToken);
   setStoredUser(data.user);
   return data;
@@ -70,6 +85,9 @@ export async function register(email, password, name) {
 
 /**
  * Login con email y contraseña.
+ *
+ * En errores 403 con `code: 'pending' | 'disabled'`, propaga el code en el
+ * Error para que la UI muestre el mensaje correcto.
  */
 export async function login(email, password) {
   const res = await fetch(`${API_BASE}/api/auth/login`, {
@@ -78,7 +96,12 @@ export async function login(email, password) {
     body: JSON.stringify({ email, password }),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Error al iniciar sesión');
+  if (!res.ok) {
+    const err = new Error(data.error || 'Error al iniciar sesión');
+    if (data.code) err.code = data.code; // 'pending' | 'disabled'
+    err.status = res.status;
+    throw err;
+  }
   setStoredTokens(data.accessToken, data.refreshToken);
   setStoredUser(data.user);
   return data;

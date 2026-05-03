@@ -1,13 +1,69 @@
 'use strict';
 const express = require('express');
 
-module.exports = function createWebchatRouter({ webChannel }) {
+module.exports = function createWebchatRouter({ webChannel, authService }) {
   const router = express.Router();
+
+  // Helper: extrae user_id del JWT si vino. No bloquea — solo lo usa para filtrar.
+  function getUserId(req) {
+    if (!authService) return null;
+    const auth = req.headers.authorization || '';
+    const m = /^Bearer\s+(.+)$/i.exec(auth);
+    if (!m) return null;
+    try {
+      const payload = authService.verifyAccessToken(m[1]);
+      return payload?.sub || null;
+    } catch { return null; }
+  }
 
   // GET /webchat/sessions — listar sesiones activas
   router.get('/sessions', (_req, res) => {
     if (!webChannel) return res.status(503).json({ error: 'WebChannel no disponible' });
     res.json(webChannel.listSessions());
+  });
+
+  // GET /webchat/history — historial de sesiones pasadas (filtrado por user)
+  router.get('/history', (req, res) => {
+    if (!webChannel) return res.status(503).json({ error: 'WebChannel no disponible' });
+    const userId = getUserId(req);
+    const includeArchived = req.query.archived === '1' || req.query.archived === 'true';
+    res.json({ sessions: webChannel.listSessionHistory({ userId, includeArchived }) });
+  });
+
+  // GET /webchat/search?q=X — full-text search en mensajes y títulos
+  router.get('/search', (req, res) => {
+    if (!webChannel) return res.status(503).json({ error: 'WebChannel no disponible' });
+    const q = (req.query.q || '').toString();
+    if (!q.trim()) return res.json({ results: [] });
+    const userId = getUserId(req);
+    const results = webChannel.searchSessions(q, { userId, limit: 50 });
+    res.json({ results });
+  });
+
+  // PATCH /webchat/sessions/:id — renombrar / pin / archivar / share
+  // Body: { title?, pinned?, archived?, share_scope? }
+  router.patch('/sessions/:id', express.json(), (req, res) => {
+    if (!webChannel) return res.status(503).json({ error: 'WebChannel no disponible' });
+    const { id } = req.params;
+    const body = req.body || {};
+    const fields = {};
+    if (typeof body.title === 'string')      fields.title = body.title.trim().slice(0, 200) || null;
+    if (typeof body.pinned === 'boolean')    fields.pinned = body.pinned ? 1 : 0;
+    if (typeof body.archived === 'boolean')  fields.archived = body.archived ? 1 : 0;
+    if (body.share_scope === 'household' || body.share_scope === 'user') {
+      fields.share_scope = body.share_scope;
+    }
+    if (Object.keys(fields).length === 0) return res.status(400).json({ error: 'Sin campos para actualizar' });
+    webChannel.updateSessionMeta(id, fields);
+    res.json({ ok: true, fields });
+  });
+
+  // DELETE /webchat/sessions/:id — borrado duro (mensajes + meta + chat_settings)
+  router.delete('/sessions/:id', (req, res) => {
+    if (!webChannel) return res.status(503).json({ error: 'WebChannel no disponible' });
+    const { id } = req.params;
+    const ok = webChannel.deleteSession(id);
+    res.json({ ok });
   });
 
   // POST /webchat/sessions/:sessionId/message — enviar texto a una sesión

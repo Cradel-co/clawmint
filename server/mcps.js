@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-const MCPS_DIR = path.join(__dirname, 'mcps');
+const { MCPS_DIR } = require('./paths');
 
 // Asegurar directorio
 if (!fs.existsSync(MCPS_DIR)) fs.mkdirSync(MCPS_DIR, { recursive: true });
@@ -327,9 +327,32 @@ function generateConfigFile() {
   const port = process.env.PORT || 3001;
   config.mcpServers.clawmint = { type: 'http', url: `http://localhost:${port}/mcp` };
 
-  const configPath = path.join(__dirname, 'mcp-config.json');
+  const { CONFIG_FILES } = require('./paths');
+  const configPath = CONFIG_FILES.mcpConfig;
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
+
+  // Sincronizar también a gemini (~/.gemini/settings.json) preservando otros settings.
+  try { syncToGeminiSettings(config.mcpServers); } catch { /* gemini no instalado, ignorar */ }
+
   return configPath;
+}
+
+/**
+ * Merge `mcpServers` en ~/.gemini/settings.json sin tocar otras claves.
+ * Skip silencioso si gemini no está instalado.
+ */
+function syncToGeminiSettings(mcpServers) {
+  const os = require('os');
+  const geminiDir = path.join(os.homedir(), '.gemini');
+  if (!fs.existsSync(geminiDir)) return;
+
+  const settingsPath = path.join(geminiDir, 'settings.json');
+  let settings = {};
+  if (fs.existsSync(settingsPath)) {
+    try { settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8')); } catch { settings = {}; }
+  }
+  settings.mcpServers = mcpServers;
+  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
 }
 
 module.exports = { list, get, add, update, remove, sync, unsync, syncAll, generateConfigFile, MCPS_DIR, searchSmithery, installFromRegistry };

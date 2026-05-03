@@ -63,10 +63,18 @@ module.exports = function createMemoryRouter({ memory }) {
     });
   });
 
-  // GET /memory/graph?agentKey=xxx — grafo para visualización futura
+  // GET /memory/graph?agentKey=xxx — grafo para visualización (agentKey opcional; sin él = todos)
   router.get('/graph', (req, res) => {
     const agentKey = req.query.agentKey || null;
     res.json(memory.buildGraph(agentKey));
+  });
+
+  // GET /memory/search?q=texto — búsqueda de texto libre global (todos los agentes)
+  router.get('/search', (req, res) => {
+    const q = (req.query.q || '').trim();
+    if (!q) return res.json([]);
+    const results = memory.globalSearch(q);
+    res.json(results);
   });
 
   // GET /memory/:agentKey/search?tags=auth,jwt&q=texto — búsqueda semántica

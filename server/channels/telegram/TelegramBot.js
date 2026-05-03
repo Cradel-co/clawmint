@@ -7,8 +7,9 @@ const ResponseRenderer   = require('./ResponseRenderer');
 const OutboundQueue      = require('./OutboundQueue');
 
 const { httpsPost, httpsPostMultipart, stripAnsi, chunkText, tdbg } = require('./utils');
+const { CONFIG_FILES } = require('../../paths');
 
-const MCP_CONFIG_PATH = path.join(__dirname, '..', '..', 'mcp-config.json');
+const MCP_CONFIG_PATH = CONFIG_FILES.mcpConfig;
 
 const POLL_TIMEOUT   = 25;
 const RATE_WINDOW_MS = 60 * 60 * 1000;
@@ -484,9 +485,10 @@ class TelegramBot {
     }
 
     // Auto-crear usuario en el sistema unificado (DESPUÉS de whitelist check)
+    let sysUser = null;
     if (this._usersRepo && msg.from) {
       try {
-        this._usersRepo.getOrCreate('telegram', String(chatId),
+        sysUser = this._usersRepo.getOrCreate('telegram', String(chatId),
           msg.from.first_name || `user_${chatId}`, this.key,
           { username: msg.from.username, first_name: msg.from.first_name, last_name: msg.from.last_name });
       } catch { /* no bloquear el flujo */ }
@@ -513,6 +515,7 @@ class TelegramBot {
 
       chat = {
         chatId,
+        userId:         sysUser?.id || null,
         username:       msg.from?.username || null,
         firstName:      msg.from?.first_name || 'Usuario',
         sessionId:      null,
@@ -534,6 +537,9 @@ class TelegramBot {
       };
       this.chats.set(chatId, chat);
     }
+
+    // Actualizar userId si aún no estaba asignado
+    if (sysUser && !chat.userId) chat.userId = sysUser.id;
 
     if (chat.rateLimited) {
       if (Date.now() >= chat.rateLimitedUntil) {

@@ -14,6 +14,7 @@ class UsersRepository {
       id         TEXT PRIMARY KEY,
       name       TEXT NOT NULL,
       role       TEXT NOT NULL DEFAULT 'user',
+      status     TEXT NOT NULL DEFAULT 'pending',
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
@@ -39,20 +40,43 @@ class UsersRepository {
   init() {
     if (!this._db) return;
     this._db.exec(UsersRepository.SCHEMA);
+    // Migración idempotente: agregar columna `status` a DBs existentes y marcar
+    // todos los usuarios pre-existentes como 'active' (no se les pide aprobar).
+    try { this._db.exec(`ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'`); } catch { /* ya existe */ }
+    try { this._db.exec(`UPDATE users SET status='active' WHERE status IS NULL OR status=''`); } catch { /* sin filas */ }
+    // Una vez: si hay users pre-existentes y NINGUNO marcado como active, asumir migración
+    // (todos los pre-existentes son legacy → activos).
+    try {
+      const total = this._db.prepare('SELECT COUNT(*) AS c FROM users').get();
+      const active = this._db.prepare("SELECT COUNT(*) AS c FROM users WHERE status='active'").get();
+      if (total && total.c > 0 && active && active.c === 0) {
+        this._db.exec("UPDATE users SET status='active'");
+      }
+    } catch { /* noop */ }
     this._initContacts();
   }
 
   // ── CRUD usuarios ─────────────────────────────────────────────────────────
 
-  create(name, role = 'user') {
+  /**
+   * Crea un usuario con role + status indicados.
+   * Los signatures aceptados:
+   *   create(name)
+   *   create(name, role)
+   *   create(name, role, status)
+   *   create(name, { role, status })
+   */
+  create(name, roleOrOpts = 'user', statusArg = 'pending') {
     if (!this._db) return null;
+    const role   = typeof roleOrOpts === 'object' ? (roleOrOpts.role || 'user') : roleOrOpts;
+    const status = typeof roleOrOpts === 'object' ? (roleOrOpts.status || 'pending') : statusArg;
     const now = Date.now();
     const id = crypto.randomUUID();
     this._db.prepare(`
-      INSERT INTO users (id, name, role, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(id, name, role, now, now);
-    return { id, name, role, created_at: now, updated_at: now };
+      INSERT INTO users (id, name, role, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(id, name, role, status, now, now);
+    return { id, name, role, status, created_at: now, updated_at: now };
   }
 
   getById(id) {
@@ -65,7 +89,7 @@ class UsersRepository {
 
   update(id, fields) {
     if (!this._db) return false;
-    const allowed = ['name', 'role'];
+    const allowed = ['name', 'role', 'status'];
     const sets = [];
     const vals = [];
     for (const key of allowed) {
@@ -93,6 +117,53 @@ class UsersRepository {
     return result.changes > 0;
   }
 
+  /** Cuenta total de usuarios. Usado por /api/auth/status para detectar first-run. */
+  count() {
+    if (!this._db) return 0;
+    try {
+      const row = this._db.prepare('SELECT COUNT(*) AS c FROM users').get();
+      return row ? Number(row.c) : 0;
+    } catch { return 0; }
+  }
+
+  /** Cuenta usuarios por status (active/pending/disabled). */
+  countByStatus(status) {
+    if (!this._db) return 0;
+    try {
+      const row = this._db.prepare('SELECT COUNT(*) AS c FROM users WHERE status = ?').get(status);
+      return row ? Number(row.c) : 0;
+    } catch { return 0; }
+  }
+
+  /** Cuenta usuarios por role (user/admin). Usado para evitar quedarse sin admins. */
+  countByRole(role) {
+    if (!this._db) return 0;
+    try {
+      const row = this._db.prepare('SELECT COUNT(*) AS c FROM users WHERE role = ?').get(role);
+      return row ? Number(row.c) : 0;
+    } catch { return 0; }
+  }
+
+  /** Cambia el status de un user. Retorna true si modificó alguna fila. */
+  setStatus(id, status) {
+    if (!this._db) return false;
+    if (!['active', 'pending', 'disabled'].includes(status)) {
+      throw new Error(`status inválido: ${status}`);
+    }
+    const result = this._db.prepare(
+      'UPDATE users SET status = ?, updated_at = ? WHERE id = ?'
+    ).run(status, Date.now(), id);
+    return result.changes > 0;
+  }
+
+  /** Lista usuarios filtrados por status. */
+  listByStatus(status) {
+    if (!this._db) return [];
+    const users = this._db.prepare('SELECT * FROM users WHERE status = ? ORDER BY name').all(status);
+    for (const u of users) u.identities = this.getIdentities(u.id);
+    return users;
+  }
+
   listAll() {
     if (!this._db) return [];
     const users = this._db.prepare('SELECT * FROM users ORDER BY name').all();
@@ -113,7 +184,7 @@ class UsersRepository {
       WHERE ui.channel = ? AND ui.identifier = ?
     `).get(channel, String(identifier));
     if (!row) return null;
-    const user = { id: row.id, name: row.name, role: row.role, created_at: row.created_at, updated_at: row.updated_at };
+    const user = { id: row.id, name: row.name, role: row.role, status: row.status, created_at: row.created_at, updated_at: row.updated_at };
     user.identities = this.getIdentities(user.id);
     return user;
   }
@@ -135,7 +206,7 @@ class UsersRepository {
       try {
         const meta = JSON.parse(row.metadata);
         if (meta.username && meta.username.toLowerCase() === clean) {
-          const user = { id: row.id, name: row.name, role: row.role, created_at: row.created_at, updated_at: row.updated_at };
+          const user = { id: row.id, name: row.name, role: row.role, status: row.status, created_at: row.created_at, updated_at: row.updated_at };
           user.identities = this.getIdentities(user.id);
           return user;
         }

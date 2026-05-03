@@ -6,8 +6,9 @@ const os                   = require('os');
 const { getSystemStats }   = require('../../core/systemStats');
 const dynamicRegistry      = require('./DynamicCallbackRegistry');
 const { exec }             = require('child_process');
+const { CONFIG_FILES }     = require('../../paths');
 
-const MCP_CONFIG_PATH = path.join(__dirname, '..', '..', 'mcp-config.json');
+const MCP_CONFIG_PATH = CONFIG_FILES.mcpConfig;
 
 /**
  * CallbackHandler — maneja _handleCallbackQuery y el motor de menús declarativo.

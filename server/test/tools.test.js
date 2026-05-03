@@ -5,6 +5,14 @@ const { destroy: destroyShell, destroyAll } = require('../mcp/ShellSession');
 
 afterAll(() => destroyAll());
 
+const ADMIN_CTX = {
+  userId: 'admin-test',
+  usersRepo: {
+    findByIdentity: () => ({ id: 'admin-test', role: 'admin' }),
+    getById: () => ({ id: 'admin-test', role: 'admin' }),
+  },
+};
+
 describe('tools.js — adaptador', () => {
   test('TOOLS es un array no vacío', () => {
     expect(Array.isArray(tools.TOOLS)).toBe(true);
@@ -69,7 +77,7 @@ describe('tools.js — adaptador', () => {
 
   test('executeTool() delega a mcp y retorna string', async () => {
     const id = 'adapter-' + Date.now();
-    const r  = await tools.executeTool('bash', { command: 'echo adapter_ok' }, { shellId: id });
+    const r  = await tools.executeTool('bash', { command: 'echo adapter_ok' }, { shellId: id, ...ADMIN_CTX });
     expect(r).toContain('adapter_ok');
     destroyShell(id);
   });

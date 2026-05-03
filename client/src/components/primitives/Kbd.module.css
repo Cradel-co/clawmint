@@ -1,0 +1,21 @@
+.group {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.key {
+  display: inline-block;
+  padding: 1px 5px;
+  font-family: var(--font-mono);
+  font-size: var(--font-xs, 11px);
+  line-height: 1.4;
+  color: var(--oc2-text-base, var(--text-secondary));
+  background: var(--oc2-surface-raised, var(--bg-card));
+  border: 1px solid var(--oc2-border-weak, var(--border-primary));
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm, 4px);
+  min-width: 18px;
+  text-align: center;
+  user-select: none;
+}

@@ -4,6 +4,9 @@ dist/
 *.local
 .claude/
 docs/b2b/
+server/.jwt-secret.key
+server/.token-master.key
+server/*.key
 server/agents.json
 server/agents/*.json
 !server/agents/coordinator.json

@@ -14,7 +14,8 @@ let _idleTimer = null;
 
 // ─── Configuración por defecto ───────────────────────────────────────────────
 
-const CONFIG_FILE = path.join(__dirname, 'whisper-config.json');
+const { CONFIG_DIR, MODELS_DIR } = require('./paths');
+const CONFIG_FILE = path.join(CONFIG_DIR, 'whisper-config.json');
 
 const DEFAULTS = {
   model: 'Xenova/whisper-medium',
@@ -98,7 +99,7 @@ async function _loadModel(modelId) {
       await modelManager.acquire('whisper', () => _unloadModel(resolvedModel));
       console.log(`[transcriber] Cargando modelo ${resolvedModel}...`);
       const { pipeline, env } = await import('@huggingface/transformers');
-      env.cacheDir = path.join(__dirname, 'models-cache');
+      env.cacheDir = MODELS_DIR;
       _pipeline = await pipeline('automatic-speech-recognition', resolvedModel, {
         dtype: 'q8',
         device: 'cpu',

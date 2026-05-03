@@ -2,9 +2,10 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const { LOG_FILES } = require('../paths');
 
-const LOG_FILE        = path.join(__dirname, '..', 'server.log');
-const LOG_CONFIG_FILE = path.join(__dirname, '..', 'logs.json');
+const LOG_FILE        = LOG_FILES.serverLog;
+const LOG_CONFIG_FILE = LOG_FILES.logsJson;
 
 function _loadLogConfig() {
   try {

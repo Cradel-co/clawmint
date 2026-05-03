@@ -2,8 +2,9 @@
 
 const path = require('path');
 const ClaudePrintSession = require('../../core/ClaudePrintSession');
+const { CONFIG_FILES } = require('../../paths');
 
-const MCP_CONFIG_PATH = path.join(__dirname, '..', '..', 'mcp-config.json');
+const MCP_CONFIG_PATH = CONFIG_FILES.mcpConfig;
 
 /**
  * P2PBotAdapter — adaptador que implementa la interfaz de "bot" que

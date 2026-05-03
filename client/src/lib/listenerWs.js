@@ -30,7 +30,23 @@ export function initListenerWs() {
 
   manager.connect();
 
+  // Forzar reconexión cuando el user vuelve a la tab o cuando vuelve la red.
+  // Cubre el caso típico: la tab estaba en background, el server se reinició,
+  // los retries quedaron en cooldown de 30s — al volver a foreground, reset.
+  const onVisibility = () => {
+    if (!document.hidden && manager && !manager.connected) {
+      manager.forceReconnect();
+    }
+  };
+  const onOnline = () => {
+    if (manager && !manager.connected) manager.forceReconnect();
+  };
+  document.addEventListener('visibilitychange', onVisibility);
+  window.addEventListener('online', onOnline);
+
   return () => {
+    document.removeEventListener('visibilitychange', onVisibility);
+    window.removeEventListener('online', onOnline);
     manager?.disconnect();
     manager = null;
   };

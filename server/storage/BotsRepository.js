@@ -33,7 +33,12 @@ class BotsRepository {
 
   constructor(db, jsonPath) {
     this._db = db;
-    this._jsonPath = jsonPath || path.join(__dirname, '..', 'bots.json');
+    if (jsonPath) {
+      this._jsonPath = jsonPath;
+    } else {
+      const { CONFIG_FILES } = require('../paths');
+      this._jsonPath = CONFIG_FILES.bots;
+    }
   }
 
   init() {

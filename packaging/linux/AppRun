@@ -1,0 +1,25 @@
+#!/bin/sh
+# AppRun — entrypoint del .AppImage. A diferencia del .deb (system-wide),
+# el AppImage es PORTABLE: corre como el user que lo ejecuta, y persiste datos
+# en $HOME/.config/clawmint (respetando XDG_CONFIG_HOME si está seteado).
+set -e
+
+APPDIR="$(dirname "$(readlink -f "$0")")"
+
+# Data dir: XDG_CONFIG_HOME si está, sino ~/.config/clawmint
+if [ -z "$CLAWMINT_DATA_DIR" ]; then
+  if [ -n "$XDG_CONFIG_HOME" ]; then
+    export CLAWMINT_DATA_DIR="$XDG_CONFIG_HOME/clawmint"
+  else
+    export CLAWMINT_DATA_DIR="$HOME/.config/clawmint"
+  fi
+fi
+
+export CLAWMINT_RESOURCES_DIR="$APPDIR/usr/lib/clawmint/resources"
+
+# Crear dirs si no existen
+mkdir -p "$CLAWMINT_DATA_DIR"/config "$CLAWMINT_DATA_DIR"/data/memory \
+         "$CLAWMINT_DATA_DIR"/logs "$CLAWMINT_DATA_DIR"/models "$CLAWMINT_DATA_DIR"/mcps
+
+# Launch Tauri shell; el shell spawnea el node sidecar con estos env vars.
+exec "$APPDIR/usr/bin/clawmint" "$@"
