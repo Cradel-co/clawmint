@@ -14,6 +14,8 @@ const DEFAULT_CONFIG = {
     grok:      { apiKey: '', model: 'grok-3-fast' },
     deepseek:  { apiKey: '', model: 'deepseek-chat' },
     ollama:    { apiKey: '', model: 'llama3.2' },
+    zen:       { apiKey: '', model: 'glm-5.2' },
+    go:        { apiKey: '', model: 'glm-5.2' },
   },
 };
 
@@ -47,6 +49,8 @@ function getApiKey(name) {
     grok:      'XAI_API_KEY',
     deepseek:  'DEEPSEEK_API_KEY',
     ollama:    'OLLAMA_API_KEY',
+    zen:       'OPENCODE_ZEN_API_KEY',
+    go:        'OPENCODE_GO_API_KEY',
   };
   const envKey = envMap[name];
   if (envKey && process.env[envKey]) return process.env[envKey];

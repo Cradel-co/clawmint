@@ -862,7 +862,7 @@ class ConversationService {
 
     if (onStatus) onStatus('thinking');
 
-    const chatArgs = { systemPrompt, history: updatedHistory, apiKey, model: useModel, executeTool: execToolFn, channel: toolChannel, agentRole, ...extraOpts };
+    const chatArgs = { systemPrompt, history: updatedHistory, apiKey, model: useModel, chatId, executeTool: execToolFn, channel: toolChannel, agentRole, ...extraOpts };
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       // No reintentar si ya se ejecutaron tools (side effects no son idempotentes)

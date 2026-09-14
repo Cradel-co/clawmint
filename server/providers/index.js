@@ -1,5 +1,7 @@
 'use strict';
 
+const { createOpencodeProvider } = require('./opencode');
+
 const providers = {
   'claude-code': require('./claude-code'),
   'gemini-cli':  require('./gemini-cli'),
@@ -9,6 +11,8 @@ const providers = {
   'grok':        require('./grok'),
   'deepseek':    require('./deepseek'),
   'ollama':      require('./ollama'),
+  'zen':         createOpencodeProvider('zen'),
+  'go':          createOpencodeProvider('go'),
 };
 
 module.exports = {
@@ -21,9 +25,10 @@ module.exports = {
     }));
   },
   async listAsync() {
-    const ollama = providers['ollama'];
-    if (ollama && typeof ollama.fetchModels === 'function') {
-      await ollama.fetchModels();
+    for (const p of Object.values(providers)) {
+      if (typeof p.fetchModels === 'function') {
+        try { await p.fetchModels(); } catch {}
+      }
     }
     return this.list();
   },

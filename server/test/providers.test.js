@@ -20,10 +20,10 @@ async function collect(gen) {
 describe('providers/index.js', () => {
   const providers = require('../providers');
 
-  test('list() retorna un array de 6 providers', () => {
+  test('list() retorna un array de 10 providers', () => {
     const list = providers.list();
     expect(Array.isArray(list)).toBe(true);
-    expect(list).toHaveLength(6);
+    expect(list).toHaveLength(10);
   });
 
   test('list() — cada provider tiene name, label, models', () => {
@@ -34,7 +34,7 @@ describe('providers/index.js', () => {
     }
   });
 
-  test('list() incluye claude-code, anthropic, gemini, openai, grok, ollama', () => {
+  test('list() incluye claude-code, anthropic, gemini, openai, grok, ollama, zen, go', () => {
     const names = providers.list().map(p => p.name);
     expect(names).toContain('claude-code');
     expect(names).toContain('anthropic');
@@ -42,6 +42,8 @@ describe('providers/index.js', () => {
     expect(names).toContain('openai');
     expect(names).toContain('grok');
     expect(names).toContain('ollama');
+    expect(names).toContain('zen');
+    expect(names).toContain('go');
   });
 
   test('get("gemini") retorna el provider de Gemini', () => {
@@ -372,5 +374,259 @@ describe('providers/gemini.js', () => {
     const callArgs = mockAI.models.generateContent.mock.calls[0][0];
     // Debe pasar los primeros mensajes como "contents" y el último como parte del body
     expect(callArgs.contents.some(c => c.role === 'model')).toBe(true);
+  });
+});
+
+// ── providers/opencode.js (zen / go) ─────────────────────────────────────────
+
+// Mock del SDK openai antes de importar opencode.js
+// Forma CJS: el módulo mockeado ES el constructor (los providers hacen new OpenAI())
+jest.mock('openai', () => {
+  const MockOpenAI = jest.fn().mockImplementation(() => ({
+    chat: { completions: { create: jest.fn() } },
+  }));
+  MockOpenAI.default = MockOpenAI;
+  return MockOpenAI;
+});
+
+describe('providers/opencode.js', () => {
+  const OpenAI = require('openai');
+  const { createOpencodeProvider } = require('../providers/opencode');
+
+  const BASE_HISTORY = [
+    { role: 'user', content: 'hola' },
+  ];
+
+  function makeMockResponse(content, opts = {}) {
+    return {
+      choices: [{
+        message: { role: 'assistant', content },
+        finish_reason: opts.finish || 'stop',
+      }],
+      usage: { prompt_tokens: 10, completion_tokens: 5 },
+    };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test('createOpencodeProvider("zen") tiene name zen y baseURL de Zen', () => {
+    const p = createOpencodeProvider('zen');
+    expect(p.name).toBe('zen');
+    expect(p.label).toBe('OpenCode Zen');
+    expect(typeof p.chat).toBe('function');
+  });
+
+  test('createOpencodeProvider("go") tiene name go y baseURL de Go', () => {
+    const p = createOpencodeProvider('go');
+    expect(p.name).toBe('go');
+    expect(p.label).toBe('OpenCode Go');
+  });
+
+  test('createOpencodeProvider con modo inválido lanza error', () => {
+    expect(() => createOpencodeProvider('otro')).toThrow('Modo OpenCode inválido');
+  });
+
+  test('sin apiKey yields error done inmediatamente', async () => {
+    const p = createOpencodeProvider('zen');
+    const events = await collect(p.chat({
+      systemPrompt: '',
+      history: BASE_HISTORY,
+      apiKey: '',
+      model: 'glm-5.2',
+    }));
+
+    expect(events[0].type).toBe('done');
+    expect(events[0].fullText).toContain('API key de OpenCode Zen no configurada');
+  });
+
+  test('chat() instancia OpenAI con baseURL correcto según modo', async () => {
+    const p = createOpencodeProvider('go');
+    const client = OpenAI.mock.results[0]; // limpiar resultados previos
+    OpenAI.mockImplementation(() => ({
+      chat: {
+        completions: {
+          create: jest.fn().mockResolvedValue(makeMockResponse('hola!')),
+        },
+      },
+    }));
+
+    await collect(p.chat({
+      systemPrompt: 'sys',
+      history: BASE_HISTORY,
+      apiKey: 'test-key',
+      model: 'glm-5.2',
+      chatId: 'telegram:123',
+    }));
+
+    const ctorArgs = OpenAI.mock.calls[OpenAI.mock.calls.length - 1][0];
+    expect(ctorArgs.baseURL).toBe('https://opencode.ai/zen/go/v1');
+    expect(ctorArgs.apiKey).toBe('test-key');
+    expect(ctorArgs.defaultHeaders['User-Agent']).toContain('clawmint');
+    expect(ctorArgs.defaultHeaders['x-opencode-session']).toBe('telegram:123');
+  });
+
+  test('sin chatId no envía header x-opencode-session', async () => {
+    const p = createOpencodeProvider('zen');
+    OpenAI.mockImplementation(() => ({
+      chat: {
+        completions: {
+          create: jest.fn().mockResolvedValue(makeMockResponse('hola!')),
+        },
+      },
+    }));
+
+    await collect(p.chat({
+      history: BASE_HISTORY,
+      apiKey: 'test-key',
+      model: 'glm-5.2',
+    }));
+
+    const ctorArgs = OpenAI.mock.calls[OpenAI.mock.calls.length - 1][0];
+    expect(ctorArgs.defaultHeaders['x-opencode-session']).toBeUndefined();
+  });
+
+  test('respuesta de texto → yields text + usage + done', async () => {
+    const p = createOpencodeProvider('zen');
+    OpenAI.mockImplementation(() => ({
+      chat: {
+        completions: {
+          create: jest.fn().mockResolvedValue(makeMockResponse('Hola desde Zen!')),
+        },
+      },
+    }));
+
+    const events = await collect(p.chat({
+      systemPrompt: 'sys',
+      history: BASE_HISTORY,
+      apiKey: 'test-key',
+      model: 'glm-5.2',
+    }));
+
+    const textEvent = events.find(e => e.type === 'text');
+    const usageEvent = events.find(e => e.type === 'usage');
+    const doneEvent = events.find(e => e.type === 'done');
+
+    expect(textEvent.text).toBe('Hola desde Zen!');
+    expect(usageEvent.promptTokens).toBe(10);
+    expect(usageEvent.completionTokens).toBe(5);
+    expect(doneEvent.fullText).toBe('Hola desde Zen!');
+  });
+
+  test('tool_calls → tool_call + tool_result + done (tool loop)', async () => {
+    const p = createOpencodeProvider('go');
+    const createMock = jest.fn()
+      .mockResolvedValueOnce({
+        choices: [{
+          message: {
+            role: 'assistant',
+            content: null,
+            tool_calls: [{
+              id: 'tc_1',
+              function: { name: 'bash', arguments: JSON.stringify({ command: 'echo test' }) },
+            }],
+          },
+          finish_reason: 'tool_calls',
+        }],
+      })
+      .mockResolvedValueOnce(makeMockResponse('El comando retornó: test'));
+
+    OpenAI.mockImplementation(() => ({
+      chat: { completions: { create: createMock } },
+    }));
+
+    const execTool = jest.fn().mockResolvedValue('test');
+
+    const events = await collect(p.chat({
+      history: BASE_HISTORY,
+      apiKey: 'test-key',
+      model: 'glm-5.2',
+      executeTool: execTool,
+    }));
+
+    const toolCall   = events.find(e => e.type === 'tool_call');
+    const toolResult = events.find(e => e.type === 'tool_result');
+    const done       = events.find(e => e.type === 'done');
+
+    expect(toolCall).toBeTruthy();
+    expect(toolCall.name).toBe('bash');
+    expect(toolCall.args.command).toBe('echo test');
+
+    expect(toolResult).toBeTruthy();
+    expect(toolResult.result).toBe('test');
+
+    expect(done).toBeTruthy();
+    expect(done.fullText).toContain('El comando retornó');
+
+    expect(execTool).toHaveBeenCalledWith('bash', { command: 'echo test' });
+  });
+
+  test('error de la API → yields done con mensaje de error', async () => {
+    const p = createOpencodeProvider('zen');
+    OpenAI.mockImplementation(() => ({
+      chat: {
+        completions: {
+          create: jest.fn().mockRejectedValue(new Error('429 rate limit')),
+        },
+      },
+    }));
+
+    const events = await collect(p.chat({
+      history: BASE_HISTORY,
+      apiKey: 'test-key',
+      model: 'glm-5.2',
+    }));
+
+    expect(events[0].type).toBe('done');
+    expect(events[0].fullText).toContain('429 rate limit');
+  });
+
+  test('fetchModels() filtra modelos que no son /chat/completions', async () => {
+    const p = createOpencodeProvider('zen');
+    const globalFetch = global.fetch;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: [
+          { id: 'glm-5.2' },
+          { id: 'claude-opus-4-6' },
+          { id: 'gpt-5.5' },
+          { id: 'gemini-3-flash' },
+          { id: 'kimi-k3' },
+          { id: 'grok-4.6' },
+          { id: 'qwen3.7-plus' },
+          { id: 'deepseek-v4-pro' },
+          { id: 'muse-spark-1.2' },
+        ],
+      }),
+    });
+    try {
+      const models = await p.fetchModels();
+      expect(models).toContain('glm-5.2');
+      expect(models).toContain('kimi-k3');
+      expect(models).toContain('deepseek-v4-pro');
+      expect(models).not.toContain('claude-opus-4-6');
+      expect(models).not.toContain('gpt-5.5');
+      expect(models).not.toContain('gemini-3-flash');
+      expect(models).not.toContain('grok-4.6');
+      expect(models).not.toContain('qwen3.7-plus');
+      expect(models).not.toContain('muse-spark-1.2');
+    } finally {
+      global.fetch = globalFetch;
+    }
+  });
+
+  test('fetchModels() hace fallback a lista estática si /models falla', async () => {
+    const p = createOpencodeProvider('go');
+    const globalFetch = global.fetch;
+    global.fetch = jest.fn().mockRejectedValue(new Error('network down'));
+    try {
+      const models = await p.fetchModels();
+      expect(models).toContain('glm-5.2');
+      expect(models).toContain('kimi-k3');
+    } finally {
+      global.fetch = globalFetch;
+    }
   });
 });

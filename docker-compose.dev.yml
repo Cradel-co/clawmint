@@ -1,0 +1,42 @@
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: server-dev
+    container_name: clawmint-server-dev
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3011:3001"
+    env_file:
+      - ./server/.env
+    environment:
+      NODE_ENV: development
+    volumes:
+      - ./server:/app/server
+      - server-dev-node-modules:/app/server/node_modules
+      - server-dev-memory:/app/server/memory
+      - server-dev-skills:/app/server/skills
+
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: client-dev
+    container_name: clawmint-client-dev
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_SERVER_URL: "localhost:3011"
+    volumes:
+      - ./client:/app/client
+      - client-dev-node-modules:/app/client/node_modules
+    depends_on:
+      - server
+
+volumes:
+  server-dev-node-modules:
+  server-dev-memory:
+  server-dev-skills:
+  client-dev-node-modules:
