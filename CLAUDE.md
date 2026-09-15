@@ -89,7 +89,7 @@ clawmint/
 │   │   ├── index.js             # Router MCP (herramientas expuestas)
 │   │   ├── ShellSession.js      # Sesión shell para MCP (idle timeout 30min)
 │   │   └── tools/
-│   │       ├── index.js         # Registry de herramientas MCP (32 tools)
+│   │       ├── index.js         # Registry de herramientas MCP (33 tools)
 │   │       ├── bash.js          # Shell con estado persistente
 │   │       ├── git.js           # Git: 12 acciones (status, diff, log, commit, push, etc.)
 │   │       ├── files.js         # read_file, write_file, edit_file, list_dir, search_files
@@ -182,7 +182,7 @@ pm2 save             # guardar estado para auto-arranque
   - Ollama usa modo **non-streaming** cuando hay tools (workaround para bug de Ollama con streaming + tools).
   - Ollama carga los modelos disponibles **dinámicamente** desde `/api/tags` (cache 30s).
   - Todos los providers emiten `{ type: 'usage', promptTokens, completionTokens }` para tracking.
-- **MCP**: 32 herramientas modulares en `mcp/tools/`:
+- **MCP**: 33 herramientas modulares en `mcp/tools/`:
   - `bash` — shell con estado persistente
   - `git` — 12 acciones (status, diff, log, commit, push, pull, branch, checkout, stash, blame, show)
   - `read_file`, `write_file`, `edit_file` (buscar/reemplazar con diffs), `list_dir`, `search_files`
@@ -190,6 +190,7 @@ pm2 save             # guardar estado para auto-arranque
   - `memory_list/read/write/append/delete`
   - `telegram_send_message/photo/document/voice/video/edit/delete`, `telegram_list_bots`
   - `webchat_send_message/photo/document/voice/video/edit/delete`, `webchat_list_sessions`
+  - `web_fetch` — descarga una URL pública (GET) y devuelve texto legible del HTML o HTML crudo (precios, docs, etc.)
   - `critter_status`
   - **Filtrado por channel**: cada tool puede tener un campo `channel` opcional. Las tools de critter tienen `channel: 'p2p'` y solo aparecen en sesiones P2P.
 - **ConversationService**: motor unificado de conversación con IA.

@@ -6,6 +6,7 @@ const pty           = require('./pty');            // array
 const telegram      = require('./telegram');       // array
 const memory        = require('./memory');         // array
 const webchat       = require('./webchat');        // array
+const web           = require('./web');            // array
 const git           = require('./git');
 const critter       = require('./critter');        // array, channel: 'p2p'
 const critterStatus = require('./critter-status');
@@ -14,7 +15,7 @@ const scheduled     = require('./scheduled');      // array
 const contacts      = require('./contacts');       // array
 const orchestration = require('./orchestration');  // array, coordinatorOnly
 
-const ALL_TOOLS = [bash, git, ...files, ...pty, ...telegram, ...memory, ...webchat, ...critter, critterStatus, ...users, ...scheduled, ...contacts, ...orchestration];
+const ALL_TOOLS = [bash, git, ...files, ...pty, ...telegram, ...memory, ...webchat, ...web, ...critter, critterStatus, ...users, ...scheduled, ...contacts, ...orchestration];
 
 const _byName = new Map(ALL_TOOLS.map(t => [t.name, t]));
 
